@@ -1,0 +1,159 @@
+{
+  "entities": {
+    "RaffleConfig": {
+      "title": "RaffleConfig",
+      "description": "Configuration metadata for the active raffle",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "The title of the raffle prize" },
+        "description": { "type": "string", "description": "Detailed description of the raffle prize" },
+        "price": { "type": "number", "description": "Cost per raffle number" },
+        "totalNumbers": { "type": "integer", "description": "Total count of numbers in the raffle grid" },
+        "isActive": { "type": "boolean", "description": "Whether the raffle is active and accepting numbers selection" },
+        "isRaffleActive": { "type": "boolean", "description": "Whether the raffle is active and open for actions on the web client in real time" },
+        "imageUrl": { "type": "string", "description": "URL structure for the raffle prize image" },
+        "pixKey": { "type": "string", "description": "The receiver's PIX key" },
+        "pixReceiver": { "type": "string", "description": "The receiver's name" },
+        "pixBank": { "type": "string", "description": "The receiver's bank" },
+        "pixPhone": { "type": "string", "description": "The receiver's contact phone number" },
+        "winnerNumber": { "type": "string", "description": "Winner number if raffle is finished" },
+        "winnerName": { "type": "string", "description": "Winner name if raffle is finished" },
+        "purchaseMode": { "type": "string", "enum": ["manual", "aleatorio"], "description": "The purchase selection mode" },
+        "drawMode": { "type": "string", "enum": ["automatico", "federal"], "description": "The draw evaluation mode" },
+        "federalConcurso": { "type": "string", "description": "Federal Lottery contest identifier" },
+        "federalData": { "type": "string", "description": "Federal Lottery contest date" },
+        "federalRegra": { "type": "string", "description": "Federal Lottery rule chosen" }
+      },
+      "required": ["title", "description", "price", "totalNumbers", "isActive"]
+    },
+    "RaffleNumber": {
+      "title": "RaffleNumber",
+      "description": "Individual cota details for the raffle grid to eliminate arrays and conflicts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The three digit number representing the quota (e.g., '007')" },
+        "status": { "type": "string", "enum": ["reserved", "paid"], "description": "State of the number" },
+        "orderId": { "type": "string", "description": "Reference to the associated order" },
+        "name": { "type": "string", "description": "Purchaser/Claimant name" },
+        "phone": { "type": "string", "description": "Purchaser/Claimant phone" },
+        "sessionId": { "type": "string", "description": "Active session owner ID who locked it" },
+        "expiresAt": { "type": "integer", "description": "Expiration timestamp in ms for reservations" },
+        "isBonus": { "type": "boolean", "description": "Whether this cota is a promotional bonus" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of the modification" }
+      },
+      "required": ["id", "status", "updatedAt"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Transaction log for each payment to enable complete idempotency",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The payment transactions identifier (or SIM_ simulated)" },
+        "orderId": { "type": "string", "description": "Reference to the associated order ID" },
+        "status": { "type": "string", "enum": ["pending_payment", "approved", "rejected", "refunded", "canceled"], "description": "Current state of the transaction" },
+        "amount": { "type": "number", "description": "Value paid in cents or full numbers" },
+        "createdAt": { "type": "string", "description": "ISO timestamp of generation" },
+        "isSimulated": { "type": "boolean", "description": "Whether this is a simulated workflow payment" }
+      },
+      "required": ["id", "orderId", "status", "amount", "createdAt"]
+    },
+    "Reservation": {
+      "title": "Reservation",
+      "description": "An isolated copy of reservations for complete data compliance and search safety",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Order/Reservation short uppercase ID" },
+        "name": { "type": "string", "description": "Client full name" },
+        "phone": { "type": "string", "description": "Client phone number" },
+        "nums": { "type": "array", "description": "List of reserved cotas" },
+        "bonusNums": { "type": "array", "description": "List of assigned bonus cotas" },
+        "val": { "type": "number", "description": "Total value in BRL" },
+        "status": { "type": "string", "enum": ["pending_payment", "Pago", "Cancelado", "Reembolsado", "expired"], "description": "State of the reservation" },
+        "createdAt": { "type": "string", "description": "Creation ISO date" },
+        "expiresAt": { "type": "integer", "description": "Expiration time in millseconds" }
+      },
+      "required": ["id", "name", "phone", "nums", "val", "status", "createdAt"]
+    },
+    "Draw": {
+      "title": "Draw",
+      "description": "Historical log of performed drawings using Cryptographically Secure Randomization",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The generated ID of the drawing" },
+        "timestamp": { "type": "string", "description": "ISO Timestamp when drawn" },
+        "prize": { "type": "string", "description": "Raffle title/prize at duration" },
+        "winnerNumber": { "type": "string", "description": "Drawn winner quota number" },
+        "winnerName": { "type": "string", "description": "Drawn winner owner full name" },
+        "totalParticipants": { "type": "integer", "description": "Unique count of paid numbers participating" },
+        "method": { "type": "string", "description": "CSPRNG validation check string" }
+      },
+      "required": ["id", "timestamp", "prize", "winnerNumber", "winnerName", "totalParticipants"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "An individual order/reservation for numbers in the raffle",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "The custom short ID of the order" },
+        "name": { "type": "string", "description": "Name of the participant" },
+        "phone": { "type": "string", "description": "Phone number of the participant" },
+        "nums": { "type": "array", "description": "List of reserved raffle numbers (e.g., ['001', '012'])" },
+        "bonusNums": { "type": "array", "description": "List of assigned bonus cotas (e.g., ['013', '014'])" },
+        "val": { "type": "number", "description": "Total value of the order" },
+        "status": { "type": "string", "enum": [
+          "Aguardando",
+          "Pago",
+          "Cancelado",
+          "pending_payment",
+          "paid",
+          "refunded",
+          "confirmed",
+          "Reembolsado",
+          "expired"
+        ], "description": "Current payment and validation status of the order" }
+      },
+      "required": ["id", "name", "phone", "nums", "val", "status"]
+    },
+    "Lock": {
+      "title": "Lock",
+      "description": "A temporary selection lock for a raffle number",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string", "description": "Unique session identifier of the user who locked the number" },
+        "expiresAt": { "type": "integer", "description": "Timestamp in milliseconds when the lock expires" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of the lock creation" }
+      },
+      "required": ["sessionId", "expiresAt"]
+    }
+  },
+  "firestore": {
+    "/raffles/{raffleId}": {
+      "schema": "RaffleConfig",
+      "description": "Config of each independent raffle campaign"
+    },
+    "/raffles/{raffleId}/numbers/{numberId}": {
+      "schema": "RaffleNumber",
+      "description": "Cotas details nested subcollection for each raffle"
+    },
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Payment logs"
+    },
+    "/reservations/{reservationId}": {
+      "schema": "Reservation",
+      "description": "Reservation replicates for scale verification"
+    },
+    "/draws/{drawId}": {
+      "schema": "Draw",
+      "description": "Draw results history"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Legacy compatibility order log"
+    },
+    "/locks/{numberId}": {
+      "schema": "Lock",
+      "description": "Collection containing temporary selection locks for numbers"
+    }
+  }
+}

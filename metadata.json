@@ -1,0 +1,8 @@
+{
+  "name": "RifaMaster",
+  "description": "Rifa de teste",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

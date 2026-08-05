@@ -1,0 +1,235 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Explicitly lock down admin sessions and security collections against client SDK calls
+    match /admin_sessions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    match /admin_security/{ipId} {
+      allow read, write: if false;
+    }
+
+    // Global helper to check document ID safety
+    function isValidId(id) {
+       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Is Admin configuration write helper
+    function isAdminConfigWrite(data) {
+      return exists(/databases/$(database)/documents/admins/config)
+          && data.get('adminToken', '') == get(/databases/$(database)/documents/admins/config).data.token;
+    }
+
+    // Helper to validate lock payloads
+    function isValidLock(data) {
+      return data.keys().hasAll(['sessionId', 'expiresAt'])
+          && data.keys().size() >= 2 && data.keys().size() <= 6
+          && data.sessionId is string && data.sessionId.size() <= 100
+          && (data.expiresAt is int || data.expiresAt is float) && data.expiresAt > 0
+          && (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100));
+    }
+
+    // Helper to validate config schemas safely
+    function isValidConfig(data) {
+      return data.get('title', '') is string && data.get('title', '').size() <= 300
+          && data.get('description', '') is string && data.get('description', '').size() <= 5000
+          && (data.get('price', 10) is int || data.get('price', 10) is float) && data.get('price', 10) > 0
+          && (data.get('totalNumbers', 150) is int || data.get('totalNumbers', 150) is float) && data.get('totalNumbers', 150) > 0 && data.get('totalNumbers', 150) <= 10000
+          && data.get('isActive', true) is bool
+          && (!('isRaffleActive' in data) || data.get('isRaffleActive', true) is bool)
+          && (data.get('imageUrl', '') == null || (data.get('imageUrl', '') is string && data.get('imageUrl', '').size() <= 1000000))
+          && (data.get('pixKey', '') == null || (data.get('pixKey', '') is string && data.get('pixKey', '').size() <= 200))
+          && (data.get('pixReceiver', '') == null || (data.get('pixReceiver', '') is string && data.get('pixReceiver', '').size() <= 200))
+          && (data.get('pixBank', '') == null || (data.get('pixBank', '') is string && data.get('pixBank', '').size() <= 200))
+          && (data.get('pixPhone', '') == null || (data.get('pixPhone', '') is string && data.get('pixPhone', '').size() <= 100))
+          && (data.get('winnerNumber', '') == null || (data.get('winnerNumber', '') is string && data.get('winnerNumber', '').size() <= 20))
+          && (data.get('winnerName', '') == null || (data.get('winnerName', '') is string && data.get('winnerName', '').size() <= 200))
+          && (!('adminToken' in data) || (data.get('adminToken', '') is string && data.get('adminToken', '').size() <= 128))
+          && (!('purchaseMode' in data) || data.get('purchaseMode', '') == null || (data.get('purchaseMode', '') is string && data.get('purchaseMode', '').size() <= 50))
+          && (!('drawMode' in data) || data.get('drawMode', '') == null || (data.get('drawMode', '') is string && data.get('drawMode', '').size() <= 50))
+          && (!('federalConcurso' in data) || data.get('federalConcurso', '') == null || (data.get('federalConcurso', '') is string && data.get('federalConcurso', '').size() <= 100))
+          && (!('federalData' in data) || data.get('federalData', '') == null || (data.get('federalData', '') is string && data.get('federalData', '').size() <= 100))
+          && (!('federalRegra' in data) || data.get('federalRegra', '') == null || (data.get('federalRegra', '') is string && data.get('federalRegra', '').size() <= 200))
+          && (!('pixKeyType' in data) || data.get('pixKeyType', '') == null || (data.get('pixKeyType', '') is string && data.get('pixKeyType', '').size() <= 100))
+          && (!('pixBankLogo' in data) || data.get('pixBankLogo', '') == null || (data.get('pixBankLogo', '') is string && data.get('pixBankLogo', '').size() <= 2000));
+    }
+
+    // Helper to validate new orders representing a secure initial state
+    function isValidNewOrder(data, orderId) {
+      return data.keys().hasAll(['id', 'name', 'phone', 'nums', 'val', 'status', 'createdAt'])
+          && data.keys().size() >= 7 && data.keys().size() <= 16
+          && data.id == orderId
+          && data.name is string && data.name.size() >= 1 && data.name.size() <= 200
+          && data.phone is string && data.phone.size() >= 5 && data.phone.size() <= 50
+          && data.nums is list && data.nums.size() >= 1 && data.nums.size() <= 1000
+          && (data.val is int || data.val is float) && data.val >= 0
+          && (data.status == 'Aguardando' || data.status == 'pending_payment')
+          && data.createdAt is string && data.createdAt.size() <= 100
+          && (!('paymentId' in data) || data.paymentId == null || (data.paymentId is string && data.paymentId.size() <= 150))
+          && (!('paymentType' in data) || data.paymentType == null || (data.paymentType is string && data.paymentType.size() <= 100))
+          && (!('qrCode' in data) || data.qrCode == null || (data.qrCode is string && data.qrCode.size() <= 2000))
+          && (!('qrCodeBase64' in data) || data.qrCodeBase64 == null || (data.qrCodeBase64 is string && data.qrCodeBase64.size() <= 1000000))
+          && (!('expiresAt' in data) || data.expiresAt == null || ((data.expiresAt is int || data.expiresAt is float) && data.expiresAt > 0))
+          && (!('isSimulated' in data) || data.isSimulated is bool)
+          && (!('bonusNums' in data) || data.bonusNums is list);
+    }
+
+    function isValidRaffleNumber(data) {
+      return data.keys().hasAll(['status', 'updatedAt'])
+          && data.keys().size() >= 2 && data.keys().size() <= 12
+          && data.status is string && data.status.size() <= 50
+          && data.updatedAt is string && data.updatedAt.size() <= 100
+          && (!('id' in data) || (data.id is string && data.id.size() >= 1 && data.id.size() <= 128))
+          && (!('orderId' in data) || (data.orderId is string && data.orderId.size() <= 128))
+          && (!('name' in data) || (data.name is string && data.name.size() <= 200))
+          && (!('phone' in data) || (data.phone is string && data.phone.size() <= 100))
+          && (!('sessionId' in data) || (data.sessionId is string && data.sessionId.size() <= 100))
+          && (!('expiresAt' in data) || (data.expiresAt is int || data.expiresAt is float))
+          && (!('paymentId' in data) || (data.paymentId is string && data.paymentId.size() <= 128))
+          && (!('isBonus' in data) || data.isBonus is bool);
+    }
+
+    function isValidPayment(data) {
+      return data.keys().hasAll(['id', 'orderId', 'status', 'amount', 'createdAt'])
+          && data.keys().size() >= 5 && data.keys().size() <= 8
+          && data.id is string && data.id.size() <= 100
+          && data.orderId is string && data.orderId.size() <= 50
+          && data.status in ['pending_payment', 'approved', 'rejected', 'refunded', 'canceled', 'expired']
+          && (data.amount is int || data.amount is float)
+          && data.createdAt is string && data.createdAt.size() <= 100;
+    }
+
+    function isValidReservation(data) {
+      return data.keys().hasAll(['id', 'name', 'phone', 'nums', 'val', 'status', 'createdAt'])
+          && data.keys().size() >= 7 && data.keys().size() <= 11
+          && data.id is string && data.id.size() <= 100
+          && data.name is string && data.name.size() >= 1 && data.name.size() <= 200
+          && data.phone is string && data.phone.size() >= 5 && data.phone.size() <= 50
+          && data.nums is list && data.nums.size() >= 1 && data.nums.size() <= 1000
+          && (data.val is int || data.val is float)
+          && data.status in ['pending_payment', 'Pago', 'Cancelado', 'Reembolsado', 'expired']
+          && data.createdAt is string && data.createdAt.size() <= 100
+          && (!('bonusNums' in data) || data.bonusNums is list);
+    }
+
+    function isValidDraw(data) {
+      return data.keys().hasAll(['id', 'timestamp', 'prize', 'winnerNumber', 'winnerName', 'totalParticipants'])
+          && data.keys().size() >= 6 && data.keys().size() <= 15
+          && data.id is string && data.id.size() <= 100
+          && data.timestamp is string && data.timestamp.size() <= 50
+          && data.prize is string && data.prize.size() <= 300
+          && data.winnerNumber is string && data.winnerNumber.size() <= 10
+          && data.winnerName is string && data.winnerName.size() <= 200
+          && (data.totalParticipants is int || data.totalParticipants is float);
+    }
+
+    // Immutable admins configuration root document configuration
+    match /admins/{configId} {
+      allow read: if false; // strictly secret! No one can read it from the client
+      allow create: if !exists(/databases/$(database)/documents/admins/config) 
+                 && configId == 'config' 
+                 && request.resource.data.keys().hasAll(['token']) 
+                 && request.resource.data.keys().size() == 1 
+                 && request.resource.data.token is string 
+                 && request.resource.data.token.size() == 64;
+      allow update: if configId == 'config'
+                 && request.resource.data.keys().hasAll(['token']) 
+                 && request.resource.data.keys().size() == 1 
+                 && request.resource.data.token is string 
+                 && request.resource.data.token.size() == 64;
+      allow delete: if false; // locked forever once bootstrapped
+    }
+
+    // Secure locks
+    match /locks/{numberId} {
+      allow read: if true;
+      allow create, update: if isValidId(numberId) && isValidLock(request.resource.data);
+      allow delete: if true; 
+    }
+
+    // Secure orders
+    match /orders/{orderId} {
+      allow read, list: if true;
+      allow create: if isValidId(orderId) && orderId.matches('^[A-Z0-9]{5}$') && isValidNewOrder(request.resource.data, orderId);
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'nums', 'bonusNums', 'val', 'approvedAt', 'canceledAt', 'paymentCollisionError', 'paymentCollisionReason', 'receivedLatePayment'])
+                    && (!('status' in request.resource.data) || request.resource.data.status in ['Aguardando', 'pending_payment', 'Pago', 'Cancelado', 'paid', 'refunded', 'confirmed', 'Reembolsado', 'expired'])
+                    && (!('nums' in request.resource.data) || request.resource.data.nums is list)
+                    && (!('val' in request.resource.data) || (request.resource.data.val is int || request.resource.data.val is float))
+                    && (!('approvedAt' in request.resource.data) || request.resource.data.approvedAt == null || request.resource.data.approvedAt is string)
+                    && (!('canceledAt' in request.resource.data) || request.resource.data.canceledAt == null || request.resource.data.canceledAt is string);
+      allow delete: if true;
+    }
+
+    // Secure reservations
+    match /reservations/{reservationId} {
+      allow read, list: if true;
+      allow create: if isValidId(reservationId) && isValidReservation(request.resource.data);
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'val', 'nums', 'bonusNums', 'approvedAt', 'canceledAt', 'paymentCollisionError'])
+                    && (!('status' in request.resource.data) || request.resource.data.status in ['pending_payment', 'Pago', 'Cancelado', 'Reembolsado', 'expired'])
+                    && (!('nums' in request.resource.data) || request.resource.data.nums is list)
+                    && (!('val' in request.resource.data) || (request.resource.data.val is int || request.resource.data.val is float))
+                    && (!('approvedAt' in request.resource.data) || request.resource.data.approvedAt == null || request.resource.data.approvedAt is string)
+                    && (!('canceledAt' in request.resource.data) || request.resource.data.canceledAt == null || request.resource.data.canceledAt is string);
+      allow delete: if true;
+    }
+
+    // Secure payments
+    match /payments/{paymentId} {
+      allow read, list: if true;
+      allow create, update: if isValidId(paymentId) && isValidPayment(request.resource.data);
+      allow delete: if true;
+    }
+
+    // Secure draws
+    match /draws/{drawId} {
+      allow read, list: if true;
+      allow create, update: if isValidId(drawId) && isValidDraw(request.resource.data);
+      allow delete: if true;
+    }
+
+    // Global Winners History collection ("Histórico de Ganhadores")
+    match /winners_history/{winnerId} {
+      allow read, list: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Secure Store Products collection ("Loja Premium")
+    match /store_products/{productId} {
+      allow read, list: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Secure Store Settings ("Status e Configurações da Loja")
+    match /store_settings/{configId} {
+      allow read, list: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Secure raffle legacy/current configurations
+    match /raffle/config {
+      allow read: if true;
+      allow create, update: if isValidConfig(request.resource.data) && isAdminConfigWrite(request.resource.data);
+      allow delete: if false;
+    }
+
+    match /raffles/{raffleId} {
+      allow read, list: if true;
+      allow create, update: if isValidId(raffleId) && isValidConfig(request.resource.data) && isAdminConfigWrite(request.resource.data);
+      allow delete: if true;
+    }
+
+    // Secure raffle number allocations
+    match /raffles/{raffleId}/numbers/{numberId} {
+      allow read, list: if true;
+      allow create, update: if isValidId(raffleId) && isValidId(numberId) && isValidRaffleNumber(request.resource.data);
+      allow delete: if true;
+    }
+  }
+}

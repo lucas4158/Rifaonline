@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
+  <defs>
+    <radialGradient id="bgGrad" cx="50%" cy="50%" r="75%">
+      <stop offset="0%" stop-color="#180A28" />
+      <stop offset="55%" stop-color="#0A0512" />
+      <stop offset="100%" stop-color="#040206" />
+    </radialGradient>
+
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFF2C2" />
+      <stop offset="25%" stop-color="#FFB700" />
+      <stop offset="65%" stop-color="#FF6B00" />
+      <stop offset="100%" stop-color="#C42A00" />
+    </linearGradient>
+
+    <linearGradient id="highlightGrad" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.9" />
+      <stop offset="40%" stop-color="#FFE5B2" stop-opacity="0.5" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.6" />
+    </linearGradient>
+
+    <filter id="iconGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#FF7700" flood-opacity="0.35" />
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000000" flood-opacity="0.8" />
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#bgGrad)" />
+
+  <g filter="url(#iconGlow)" transform="translate(256, 256) scale(3.5) translate(-55, -55)">
+    <path 
+      d="M 76 16 C 56 10, 32 16, 24 35 M 20 48 C 20 78, 44 102, 74 102 C 86 102, 94 94, 98 86 C 102 78, 100 69, 100 69" 
+      stroke="url(#goldGrad)" 
+      stroke-width="5" 
+      stroke-linecap="round" 
+      fill="none"
+    />
+    <path 
+      d="M 76 16 C 56 10, 32 16, 24 35" 
+      stroke="url(#highlightGrad)" 
+      stroke-width="1.8" 
+      stroke-linecap="round" 
+      fill="none"
+    />
+
+    <path 
+      d="M 23 35 Q 31 43, 38 35 L 29 51 C 23 63, 23 78, 41 85 L 31 85 C 13 78, 15 58, 19 49 Z" 
+      fill="url(#goldGrad)"
+    />
+    <path 
+      d="M 23 35 Q 31 43, 38 35 L 29 51 C 23 63, 23 78, 41 85 L 31 85 C 13 78, 15 58, 19 49 Z" 
+      fill="url(#highlightGrad)"
+      opacity="0.3"
+    />
+
+    <circle 
+      cx="77" 
+      cy="27" 
+      r="6" 
+      stroke="url(#goldGrad)" 
+      stroke-width="5" 
+      fill="none" 
+    />
+    <circle 
+      cx="77" 
+      cy="27" 
+      r="6" 
+      stroke="url(#highlightGrad)" 
+      stroke-width="1.5" 
+      fill="none" 
+      opacity="0.6"
+    />
+
+    <path 
+      d="M 73 31 L 43 67 C 37 77, 47 90, 59 88 C 72 86, 79 74, 79 74" 
+      stroke="url(#goldGrad)" 
+      stroke-width="9" 
+      stroke-linecap="round" 
+      fill="none"
+    />
+    <path 
+      d="M 73 31 L 43 67 C 37 77, 47 90, 59 88 C 72 86, 79 74, 79 74" 
+      stroke="url(#highlightGrad)" 
+      stroke-width="2.8" 
+      stroke-linecap="round" 
+      fill="none"
+      opacity="0.4"
+    />
+
+    <path 
+      d="M 79 74 L 83 54 L 69 62 Q 75 70, 79 74 Z" 
+      fill="url(#goldGrad)" 
+    />
+    <path 
+      d="M 79 74 L 83 54 L 69 62 Q 75 70, 79 74 Z" 
+      fill="url(#highlightGrad)" 
+      opacity="0.4"
+    />
+  </g>
+</svg>

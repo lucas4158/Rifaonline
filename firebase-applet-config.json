@@ -1,0 +1,12 @@
+{
+  "projectId": "rifamaster-prod",
+  "appId": "1:957403073233:web:c2bfa8915867d8dfe553f0",
+  "apiKey": "AIzaSyAJ7N-7FbSMt_WipEvJ2ygbru6LJJdLOKY",
+  "authDomain": "rifamaster-prod.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "rifamaster-prod.firebasestorage.app",
+  "messagingSenderId": "957403073233",
+  "measurementId": "",
+  "oAuthClientId": "957403073233-pm056japmmc9p6jhff1faq8j4bnvculc.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
+}
