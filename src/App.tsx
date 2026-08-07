@@ -533,7 +533,7 @@ function LayoutWithHeader({
                   document.getElementById("como-funciona-section")?.scrollIntoView({ behavior: "smooth" });
                 }, 100);
               }}
-              className="inline-flex md:hidden bg-zinc-900/40 hover:bg-zinc-900/60 border border-zinc-800/80 text-zinc-300 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg transition-all active:scale-95 cursor-pointer"
+              className="hidden xs:inline-flex md:hidden bg-zinc-900/40 hover:bg-zinc-900/60 border border-zinc-800/80 text-zinc-300 text-[10px] font-black uppercase tracking-wider px-2.5 sm:px-3 py-1.5 rounded-lg transition-all active:scale-95 cursor-pointer"
             >
               Como Funciona
             </button>
@@ -546,7 +546,7 @@ function LayoutWithHeader({
                   document.getElementById("rifas-section")?.scrollIntoView({ behavior: "smooth" });
                 }, 100);
               }}
-              className="inline-flex md:hidden bg-[#a3e635]/10 hover:bg-[#a3e635]/20 border border-[#a3e635]/30 text-[#a3e635] text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg transition-all active:scale-95 cursor-pointer"
+              className="inline-flex md:hidden bg-[#a3e635]/10 hover:bg-[#a3e635]/20 border border-[#a3e635]/30 text-[#a3e635] text-[10px] font-black uppercase tracking-wider px-2.5 sm:px-3 py-1.5 rounded-lg transition-all active:scale-95 cursor-pointer shrink-0"
             >
               Ver Rifas
             </button>
@@ -567,7 +567,7 @@ function LayoutWithHeader({
                   className="fixed inset-0 z-[100]" 
                   onClick={() => setIsMenuOpen(false)}
                 />
-                <div className="absolute right-0 mt-3.5 w-64 rounded-[20px] border border-zinc-800/90 bg-zinc-950/98 p-2 shadow-2xl backdrop-blur-2xl z-[101] overflow-hidden divide-y divide-zinc-900/80">
+                <div className="absolute right-0 mt-3.5 w-64 max-w-[calc(100vw-24px)] rounded-[20px] border border-zinc-800/90 bg-zinc-950/98 p-2 shadow-2xl backdrop-blur-2xl z-[101] overflow-hidden divide-y divide-zinc-900/80">
                   <div className="space-y-1 pb-1">
                     {/* Minha Conta */}
                     <button
@@ -3544,7 +3544,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                 transition={{ duration: 0.6, type: "spring" }}
                 className="max-w-7xl mx-auto px-4 py-16 sm:py-24"
               >
-                <div className="bg-gradient-to-br from-[#a3e635]/10 via-zinc-900 to-[#a3e635]/5 border-2 border-[#a3e635]/30 rounded-[2.5rem] p-10 sm:p-14 relative overflow-hidden shadow-[0_0_50px_-12px_rgba(163,230,53,0.25)] flex flex-col md:flex-row items-center justify-between gap-8 min-h-[400px]">
+                <div className="bg-gradient-to-br from-[#a3e635]/10 via-zinc-900 to-[#a3e635]/5 border-2 border-[#a3e635]/30 rounded-[2.5rem] p-5 sm:p-10 md:p-14 relative overflow-hidden shadow-[0_0_50px_-12px_rgba(163,230,53,0.25)] flex flex-col md:flex-row items-center justify-between gap-8 min-h-[400px]">
                   <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none animate-pulse">
                     <PartyPopper className="w-64 h-64 text-[#a3e635]" />
                   </div>
@@ -3569,10 +3569,10 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                       <span className="bg-[#a3e635]/15 text-[#a3e635] text-xs font-black uppercase tracking-widest px-4 py-1.5 rounded-full border border-[#a3e635]/20">
                         Sorteio Realizado 🏆
                       </span>
-                      <h3 className="text-4xl sm:text-5xl font-black text-white mt-4 tracking-tighter leading-none">
+                      <h3 className="text-3xl sm:text-4xl md:text-5xl font-black text-white mt-4 tracking-tighter leading-none">
                         Parabéns ao Ganhador! 🎉
                       </h3>
-                      <p className="text-zinc-400 text-base mt-3 max-w-xl leading-relaxed">
+                      <p className="text-zinc-400 text-sm sm:text-base mt-3 max-w-xl leading-relaxed">
                         Nossos sinceros parabéns para o grande felizardo(a)
                         deste sorteio especial! Entraremos em contato
                         diretamente com o proprietário(a) do bilhete premiado
@@ -3585,7 +3585,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                     </div>
                   </div>
 
-                  <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-3xl p-8 flex flex-col items-center sm:items-start min-w-[320px] text-center sm:text-left gap-4 relative z-10 shadow-inner">
+                  <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-3xl p-6 sm:p-8 flex flex-col items-center sm:items-start w-full sm:w-auto min-w-0 max-w-full sm:min-w-[280px] text-center sm:text-left gap-4 relative z-10 shadow-inner">
                     <div>
                       <p className="text-zinc-500 text-[10px] uppercase font-black tracking-widest mb-1">
                         Número Sorteado
@@ -4317,7 +4317,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               <span className="text-xs text-zinc-500 uppercase font-black tracking-wider shrink-0">
                                 Código Reserva
                               </span>
-                              <span className="text-sm font-mono font-black text-[#a3e635] truncate max-w-[150px] sm:max-w-none text-right">
+                              <span className="text-xs font-mono font-black text-[#a3e635] truncate min-w-0 max-w-[120px] xs:max-w-[160px] sm:max-w-none text-right">
                                 {mpPaymentInfo?.orderId}
                               </span>
                             </div>
@@ -4325,7 +4325,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               <span className="text-xs text-zinc-500 uppercase font-black tracking-wider shrink-0">
                                 Titular
                               </span>
-                              <span className="text-sm font-bold text-zinc-350 truncate max-w-[150px] sm:max-w-none text-right">
+                              <span className="text-xs sm:text-sm font-bold text-zinc-350 truncate min-w-0 max-w-[120px] xs:max-w-[160px] sm:max-w-none text-right">
                                 {raffleConfig.pixReceiver || "Admin"}
                               </span>
                             </div>
@@ -4333,16 +4333,16 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               <span className="text-xs text-zinc-500 uppercase font-black tracking-wider shrink-0">
                                 Banco
                               </span>
-                              <span className="text-sm font-bold text-zinc-350 flex items-center gap-2 truncate max-w-[150px] sm:max-w-none text-right justify-end">
+                              <span className="text-xs sm:text-sm font-bold text-zinc-350 flex items-center gap-2 truncate min-w-0 max-w-[120px] xs:max-w-[160px] sm:max-w-none text-right justify-end">
                                 {raffleConfig.pixBankLogo && (
                                   <img
                                     src={raffleConfig.pixBankLogo}
                                     alt="Logo"
-                                    className="w-4 h-4 object-contain rounded-sm"
+                                    className="w-4 h-4 object-contain rounded-sm shrink-0"
                                     referrerPolicy="no-referrer"
                                   />
                                 )}
-                                <span>{raffleConfig.pixBank || "Banco do Recebedor"}</span>
+                                <span className="truncate">{raffleConfig.pixBank || "Banco do Recebedor"}</span>
                               </span>
                             </div>
                             {raffleConfig.pixKeyType && (
@@ -4350,7 +4350,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                 <span className="text-xs text-zinc-500 uppercase font-black tracking-wider shrink-0">
                                   Tipo de Chave
                                 </span>
-                                <span className="text-sm font-bold text-zinc-350 truncate max-w-[150px] sm:max-w-none text-right">
+                                <span className="text-xs sm:text-sm font-bold text-zinc-350 truncate min-w-0 max-w-[120px] xs:max-w-[160px] sm:max-w-none text-right">
                                   {raffleConfig.pixKeyType}
                                 </span>
                               </div>
@@ -4359,7 +4359,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               <span className="text-xs text-zinc-500 uppercase font-black tracking-wider shrink-0">
                                 Chave Pix
                               </span>
-                              <span className="text-sm font-mono font-bold text-zinc-350 truncate max-w-[150px] sm:max-w-none text-right">
+                              <span className="text-xs sm:text-sm font-mono font-bold text-zinc-350 truncate min-w-0 max-w-[120px] xs:max-w-[160px] sm:max-w-none text-right">
                                 {raffleConfig.pixKey || "Suporte/Manual"}
                               </span>
                             </div>

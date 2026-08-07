@@ -115,7 +115,7 @@ export const ProductBuyModal: React.FC<ProductBuyModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto animate-fadeIn">
-      <div className="relative w-full max-w-xl bg-[#0B0B0E] border border-[#2B2B38] rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-[0_25px_80px_rgba(0,0,0,0.9)] text-white overflow-hidden my-auto">
+      <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto bg-[#0B0B0E] border border-[#2B2B38] rounded-2xl sm:rounded-3xl p-5 sm:p-7 shadow-[0_25px_80px_rgba(0,0,0,0.9)] text-white my-auto">
         
         {/* Glow background */}
         <div className="absolute -top-20 -right-20 w-64 h-64 bg-[#FF8A00]/20 rounded-full blur-[90px] pointer-events-none" />
