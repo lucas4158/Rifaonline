@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { getSupabaseClient } from "../../services/supabase/supabaseClient";
+import { adminService } from "../../services/adminService";
 import { Trophy, Loader2, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { RaffleConfig } from "../../types";
 
@@ -66,22 +67,13 @@ export function DrawsView({ selectedRaffleId, raffleConfig }: DrawsViewProps) {
 
       const adminToken = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
 
-      const res = await fetch("/api/admin-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "draw",
-          raffleId: selectedRaffleId,
-          adminToken,
-        }),
-      });
+      const data = await adminService.draw(adminToken, selectedRaffleId);
 
-      const data = await res.json();
-      if (data.success) {
+      if (data && (data.success || data.winnerNumber)) {
         setSuccess(`Sorteio realizado com sucesso! Número vencedor: ${data.winnerNumber}`);
         fetchDraws();
       } else {
-        throw new Error(data.error || "Erro ao executar sorteio");
+        throw new Error(data?.error || "Erro ao executar sorteio");
       }
     } catch (err: any) {
       setError(err.message || "Erro desconhecido ao executar sorteio");
