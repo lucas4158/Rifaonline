@@ -123,7 +123,7 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••"
                 disabled={isLoading}
-                className="w-full bg-[#1A1F1B] border border-[#1A1F1B] focus:border-[#A3E635]/80 focus:ring-4 focus:ring-[#A3E635]/10 rounded-2xl px-6 py-4.5 text-center text-3xl tracking-[1em] outline-none transition-all font-mono text-white placeholder-zinc-800 disabled:opacity-50"
+                className="w-full bg-[#1A1F1B] border border-[#1A1F1B] focus:border-amber-500/80 focus:ring-4 focus:ring-amber-500/10 rounded-2xl px-6 py-4.5 text-center text-3xl tracking-[1em] outline-none transition-all font-mono text-white placeholder-zinc-800 disabled:opacity-50"
               />
             </div>
           </div>
@@ -132,7 +132,7 @@ export default function Login() {
             id="btn-admin-login-submit"
             type="submit"
             disabled={isLoading}
-            className="w-full bg-[#A3E635] hover:bg-[#bef264] active:scale-[0.98] text-black font-black py-4.5 rounded-2xl text-xs uppercase tracking-widest transition-all shadow-lg shadow-[#A3E635]/10 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-bebas"
+            className="w-full bg-amber-500 hover:bg-amber-400 active:scale-[0.98] text-black font-black py-4.5 rounded-2xl text-xs uppercase tracking-widest transition-all shadow-lg shadow-amber-500/10 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-bebas"
           >
             {isLoading ? (
               <>

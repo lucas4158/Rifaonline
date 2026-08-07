@@ -45,9 +45,12 @@ import {
   Play,
   ChevronLeft,
   ChevronRight,
+  Share2,
+  ExternalLink,
+  Lock,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { doc, collection, setDoc, updateDoc, deleteDoc, getDocs, getDoc, writeBatch, onSnapshot } from "firebase/firestore";
+import { doc, collection, setDoc, updateDoc, deleteDoc, getDocs, getDoc, writeBatch, onSnapshot, query, where } from "firebase/firestore";
 import { signInAnonymously } from "firebase/auth";
 
 import { db, auth } from "./services/firebase";
@@ -416,9 +419,9 @@ function LayoutWithHeader({
             
             <div className="flex flex-col justify-center translate-y-0.5" style={{ width: 'max-content' }}>
               <h1 className="text-[22px] sm:text-[28px] md:text-[32px] text-white leading-none font-bold tracking-tight mb-1 text-left">
-                Rifa<span className="text-[#a3e635] font-black">Master</span>
+                Rifa<span className="text-amber-500 font-black">Master</span>
               </h1>
-              <div className="text-[6.5px] sm:text-[8px] md:text-[9px] text-[#bef264] uppercase leading-none font-extrabold font-montserrat tracking-widest opacity-90" style={{ letterSpacing: '0.8px' }}>
+              <div className="text-[6.5px] sm:text-[8px] md:text-[9px] text-amber-400 uppercase leading-none font-extrabold font-montserrat tracking-widest opacity-90" style={{ letterSpacing: '0.8px' }}>
                 PESCA • CAMPING • AVENTURA
               </div>
             </div>
@@ -432,7 +435,7 @@ function LayoutWithHeader({
                 setCurrentPath("/");
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
-              className="text-zinc-400 hover:text-[#a3e635] text-[11px] font-extrabold tracking-widest uppercase transition-colors cursor-pointer"
+              className="text-zinc-400 hover:text-amber-400 text-[11px] font-extrabold tracking-widest uppercase transition-colors cursor-pointer"
             >
               Início
             </button>
@@ -444,7 +447,7 @@ function LayoutWithHeader({
                   document.getElementById("como-funciona-section")?.scrollIntoView({ behavior: "smooth" });
                 }, 100);
               }}
-              className="text-zinc-400 hover:text-[#a3e635] text-[11px] font-extrabold tracking-widest uppercase transition-colors cursor-pointer"
+              className="text-zinc-400 hover:text-amber-400 text-[11px] font-extrabold tracking-widest uppercase transition-colors cursor-pointer"
             >
               Como Funciona
             </button>
@@ -456,7 +459,7 @@ function LayoutWithHeader({
                   document.getElementById("rifas-section")?.scrollIntoView({ behavior: "smooth" });
                 }, 100);
               }}
-              className="text-zinc-400 hover:text-[#a3e635] text-[11px] font-extrabold tracking-widest uppercase transition-colors cursor-pointer"
+              className="text-zinc-400 hover:text-amber-400 text-[11px] font-extrabold tracking-widest uppercase transition-colors cursor-pointer"
             >
               Sorteios
             </button>
@@ -467,7 +470,7 @@ function LayoutWithHeader({
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
               className={`text-[11px] font-extrabold tracking-widest uppercase transition-colors cursor-pointer ${
-                currentPath === "/ganhadores" ? "text-[#a3e635]" : "text-zinc-400 hover:text-[#a3e635]"
+                currentPath === "/ganhadores" ? "text-amber-400" : "text-zinc-400 hover:text-amber-400"
               }`}
             >
               Resultados
@@ -480,7 +483,7 @@ function LayoutWithHeader({
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }}
                 className={`text-[11px] font-extrabold tracking-widest uppercase transition-colors cursor-pointer ${
-                  currentPath === "/loja" ? "text-[#a3e635]" : "text-zinc-400 hover:text-[#a3e635]"
+                  currentPath === "/loja" ? "text-amber-400" : "text-zinc-400 hover:text-amber-400"
                 }`}
               >
                 Loja
@@ -493,7 +496,7 @@ function LayoutWithHeader({
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
               className={`text-[11px] font-extrabold tracking-widest uppercase transition-colors cursor-pointer ${
-                currentPath === "/auditoria" ? "text-[#a3e635]" : "text-zinc-400 hover:text-[#a3e635]"
+                currentPath === "/auditoria" ? "text-amber-400" : "text-zinc-400 hover:text-amber-400"
               }`}
             >
               Auditoria
@@ -506,7 +509,7 @@ function LayoutWithHeader({
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               className="hidden md:flex items-center gap-2 bg-zinc-900/30 hover:bg-zinc-900/60 border border-zinc-800/60 text-zinc-300 hover:text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer"
             >
-              <User className="w-3.5 h-3.5 text-[#a3e635]" />
+              <User className="w-3.5 h-3.5 text-amber-400" />
               <span>Entrar / Cadastrar</span>
             </button>
 
@@ -519,7 +522,7 @@ function LayoutWithHeader({
                   document.getElementById("rifas-section")?.scrollIntoView({ behavior: "smooth" });
                 }, 100);
               }}
-              className="hidden md:inline-flex bg-[#a3e635] hover:bg-[#bef264] text-black text-xs font-black uppercase tracking-wider px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-[#a3e635]/15 active:scale-95 cursor-pointer"
+              className="hidden md:inline-flex bg-amber-500 hover:bg-amber-400 text-black text-xs font-black uppercase tracking-wider px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-amber-500/15 active:scale-95 cursor-pointer"
             >
               Ver Rifas
             </button>
@@ -546,7 +549,7 @@ function LayoutWithHeader({
                   document.getElementById("rifas-section")?.scrollIntoView({ behavior: "smooth" });
                 }, 100);
               }}
-              className="inline-flex md:hidden bg-[#a3e635]/10 hover:bg-[#a3e635]/20 border border-[#a3e635]/30 text-[#a3e635] text-[10px] font-black uppercase tracking-wider px-2.5 sm:px-3 py-1.5 rounded-lg transition-all active:scale-95 cursor-pointer shrink-0"
+              className="inline-flex md:hidden bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 text-[10px] font-black uppercase tracking-wider px-2.5 sm:px-3 py-1.5 rounded-lg transition-all active:scale-95 cursor-pointer shrink-0"
             >
               Ver Rifas
             </button>
@@ -554,10 +557,10 @@ function LayoutWithHeader({
             <div className="relative">
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="flex items-center justify-center bg-zinc-950 hover:bg-zinc-900 border border-zinc-800/80 text-zinc-300 p-2.5 rounded-xl transition-all active:scale-95 cursor-pointer relative z-[102] hover:border-[#a3e635]/40"
+                className="flex items-center justify-center bg-zinc-950 hover:bg-zinc-900 border border-zinc-800/80 text-zinc-300 p-2.5 rounded-xl transition-all active:scale-95 cursor-pointer relative z-[102] hover:border-amber-500/40"
                 aria-label="Menu"
               >
-                <Menu className="w-5 h-5 text-[#a3e635]" />
+                <Menu className="w-5 h-5 text-amber-400" />
               </button>
 
             {isMenuOpen && (
@@ -577,7 +580,7 @@ function LayoutWithHeader({
                         window.dispatchEvent(new PopStateEvent("popstate"));
                       }}
                       className={`flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-bold transition-all cursor-pointer ${
-                        currentPath === "/minha-conta" ? "text-[#a3e635] bg-zinc-900/50" : "text-zinc-300 hover:bg-zinc-900/80 hover:text-white"
+                        currentPath === "/minha-conta" ? "text-amber-400 bg-zinc-900/50" : "text-zinc-300 hover:bg-zinc-900/80 hover:text-white"
                       }`}
                     >
                       <User className="w-4 h-4 text-zinc-400 shrink-0" />
@@ -596,7 +599,7 @@ function LayoutWithHeader({
                       }}
                       className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-bold text-zinc-300 hover:bg-zinc-900/80 hover:text-white transition-all cursor-pointer"
                     >
-                      <Play className="w-4 h-4 text-[#a3e635] shrink-0" />
+                      <Play className="w-4 h-4 text-amber-400 shrink-0" />
                       <span>Como Funciona</span>
                     </button>
 
@@ -609,10 +612,10 @@ function LayoutWithHeader({
                           window.dispatchEvent(new PopStateEvent("popstate"));
                         }}
                         className={`flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-bold transition-all cursor-pointer ${
-                          currentPath === "/loja" ? "text-[#a3e635] bg-zinc-900/50" : "text-zinc-300 hover:bg-zinc-900/80 hover:text-white"
+                          currentPath === "/loja" ? "text-amber-400 bg-zinc-900/50" : "text-zinc-300 hover:bg-zinc-900/80 hover:text-white"
                         }`}
                       >
-                        <Zap className="w-4 h-4 text-[#a3e635] shrink-0 animate-pulse" />
+                        <Zap className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
                         <span>Loja Premium</span>
                       </button>
                     )}
@@ -627,7 +630,7 @@ function LayoutWithHeader({
                         window.dispatchEvent(new PopStateEvent("popstate"));
                       }}
                       className={`flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-bold transition-all cursor-pointer ${
-                        currentPath === "/ganhadores" ? "text-[#a3e635] bg-zinc-900/50" : "text-zinc-300 hover:bg-zinc-900/80 hover:text-white"
+                        currentPath === "/ganhadores" ? "text-amber-400 bg-zinc-900/50" : "text-zinc-300 hover:bg-zinc-900/80 hover:text-white"
                       }`}
                     >
                       <Trophy className="w-4 h-4 text-zinc-400 shrink-0" />
@@ -642,7 +645,7 @@ function LayoutWithHeader({
                         window.dispatchEvent(new PopStateEvent("popstate"));
                       }}
                       className={`flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-bold transition-all cursor-pointer ${
-                        currentPath === "/auditoria" ? "text-[#a3e635] bg-zinc-900/50" : "text-zinc-300 hover:bg-zinc-900/80 hover:text-white"
+                        currentPath === "/auditoria" ? "text-amber-400 bg-zinc-900/50" : "text-zinc-300 hover:bg-zinc-900/80 hover:text-white"
                       }`}
                     >
                       <ShieldCheck className="w-4 h-4 text-zinc-400 shrink-0" />
@@ -679,14 +682,14 @@ function LayoutWithHeader({
                   </div>
 
                   <div className="pt-1.5 space-y-1">
-                    {/* Admin (Styled exactly like the solid green badge in the mockup) */}
+                    {/* Admin */}
                     <button
                       onClick={() => {
                         setIsMenuOpen(false);
                         window.history.pushState(null, "", "/admin");
                         window.dispatchEvent(new PopStateEvent("popstate"));
                       }}
-                      className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-black uppercase tracking-wider bg-[#a3e635] hover:bg-[#bef264] text-black shadow-lg shadow-[#a3e635]/25 transition-all cursor-pointer active:scale-98"
+                      className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-black uppercase tracking-wider bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-500/25 transition-all cursor-pointer active:scale-98"
                     >
                       <ShieldCheck className="w-4 h-4 text-black shrink-0" />
                       <span>Admin</span>
@@ -799,6 +802,113 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
+
+  // Winners history state & carousel controls for public home page
+  const [homeWinners, setHomeWinners] = useState<any[]>([]);
+  const [selectedWinnerModal, setSelectedWinnerModal] = useState<any | null>(null);
+  const [isAuditModalOpen, setIsAuditModalOpen] = useState<boolean>(false);
+
+  const winnersCarouselRef = useRef<HTMLDivElement>(null);
+  const [canScrollWinnersLeft, setCanScrollWinnersLeft] = useState(false);
+  const [canScrollWinnersRight, setCanScrollWinnersRight] = useState(true);
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, "winners_history"),
+      (snap) => {
+        const historyList: any[] = [];
+        snap.forEach((docSnap) => {
+          historyList.push({ id: docSnap.id, ...docSnap.data() });
+        });
+
+        historyList.sort((a, b) => {
+          const timeA = new Date(a.createdAt || a.drawTimestamp || 0).getTime();
+          const timeB = new Date(b.createdAt || b.drawTimestamp || 0).getTime();
+          return timeB - timeA;
+        });
+
+        setHomeWinners(historyList);
+      },
+      (err) => {
+        console.error("Erro no listener de winners_history para home:", err);
+      }
+    );
+
+    return () => unsub();
+  }, []);
+
+  const handleWinnersCarouselScroll = useCallback(() => {
+    if (!winnersCarouselRef.current) return;
+    const { scrollLeft, scrollWidth, clientWidth } = winnersCarouselRef.current;
+    setCanScrollWinnersLeft(scrollLeft > 10);
+    setCanScrollWinnersRight(scrollLeft + clientWidth < scrollWidth - 10);
+  }, []);
+
+  const scrollWinnersLeft = useCallback(() => {
+    if (!winnersCarouselRef.current) return;
+    const firstChild = winnersCarouselRef.current.firstElementChild;
+    if (firstChild) {
+      const cardWidth = firstChild.clientWidth + 24;
+      winnersCarouselRef.current.scrollBy({ left: -cardWidth, behavior: "smooth" });
+    }
+  }, []);
+
+  const scrollWinnersRight = useCallback(() => {
+    if (!winnersCarouselRef.current) return;
+    const firstChild = winnersCarouselRef.current.firstElementChild;
+    if (firstChild) {
+      const cardWidth = firstChild.clientWidth + 24;
+      winnersCarouselRef.current.scrollBy({ left: cardWidth, behavior: "smooth" });
+    }
+  }, []);
+
+  const sampleWinnersList = useMemo(() => [
+    {
+      id: "sample-w1",
+      prizeTitle: "Carretilha Shimano Stella SW 6000XG",
+      prizeImageUrl: "https://images.unsplash.com/photo-1515263487990-61b07816b324?q=80&w=800&auto=format&fit=crop",
+      prizeDescription: "Conjunto japonês de altíssima performance para pesca oceânica e rios.",
+      prizeValue: "11.800,00",
+      winnerName: "Carlos Eduardo Silva",
+      winnerImageUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=200&auto=format&fit=crop",
+      winnerNumber: "042",
+      drawDate: "02/08/2026",
+      drawTime: "19:30",
+      city: "Manaus",
+      state: "AM",
+      status: "Destaque"
+    },
+    {
+      id: "sample-w2",
+      prizeTitle: "Barraca Técnica 4 Estações + Kit Camping Pro",
+      prizeImageUrl: "https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?q=80&w=800&auto=format&fit=crop",
+      prizeDescription: "Equipamento ultra leve e impermeável para expedições selvagens e montanhismo.",
+      prizeValue: "4.500,00",
+      winnerName: "Roberto Mendes Neto",
+      winnerImageUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=200&auto=format&fit=crop",
+      winnerNumber: "189",
+      drawDate: "28/07/2026",
+      drawTime: "20:00",
+      city: "Curitiba",
+      state: "PR"
+    },
+    {
+      id: "sample-w3",
+      prizeTitle: "Mochila Cargueira Deuter 70L + Kit Aventura EDC",
+      prizeImageUrl: "https://images.unsplash.com/photo-1537225228614-56cc3556d7ed?q=80&w=800&auto=format&fit=crop",
+      prizeDescription: "Estrutura ergonômica ajustável para longas travessias.",
+      prizeValue: "3.200,00",
+      winnerName: "Fernanda Lima de Souza",
+      winnerImageUrl: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&auto=format&fit=crop",
+      winnerNumber: "712",
+      drawDate: "15/07/2026",
+      drawTime: "18:00",
+      city: "Goiânia",
+      state: "GO"
+    }
+  ], []);
+
+  const displayWinners = homeWinners.length > 0 ? homeWinners : sampleWinnersList;
 
   const handleCarouselScroll = useCallback(() => {
     if (!customerCarouselRef.current) return;
@@ -951,9 +1061,18 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         await Promise.all(
           list.map(async (rf) => {
             try {
-              // Etapa 4 - Otimização: Eliminação de full scans
-              // Utiliza a contagem consolidada em soldCount diretamente do documento da rifa
-              const paidCount = Number(rf.soldCount || 0);
+              let paidCount = Number(rf.soldCount || 0);
+
+              // Subcollection check if soldCount is 0 or unpopulated to prevent 0% before participating
+              try {
+                const numbersColRef = collection(db, "raffles", rf.id, "numbers");
+                const qPaid = query(numbersColRef, where("status", "==", "paid"));
+                const paidSnap = await getDocs(qPaid);
+                paidCount = Math.max(paidCount, paidSnap.size);
+              } catch (subErr) {
+                // Keep paidCount from rf.soldCount if subcollection query fails
+              }
+
               const total = Number(rf.totalNumbers || 100);
               // Progress reflects only paid cotas
               const percent = Math.min(100, (paidCount / total) * 100);
@@ -2949,8 +3068,8 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                   transition={{ duration: 0.8 }}
                   className="max-w-xl text-left"
                 >
-                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[#a3e635]/20 bg-[#a3e635]/10 text-[#a3e635] text-[10px] font-black uppercase tracking-widest mb-6 shadow-lg shadow-[#a3e635]/5 select-none">
-                    <Compass className="w-3.5 h-3.5 text-[#a3e635] animate-spin" style={{ animationDuration: '6s' }} />
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 text-amber-400 text-[10px] font-black uppercase tracking-widest mb-6 shadow-lg shadow-amber-500/5 select-none">
+                    <Compass className="w-3.5 h-3.5 text-amber-400 animate-spin" style={{ animationDuration: '6s' }} />
                     <span>RIFA MASTER — PESCA &amp; CAMPING PREMIUM</span>
                   </div>
 
@@ -2958,7 +3077,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                     OS MELHORES ITENS DE
                   </span>
                   <h2 className="text-5xl sm:text-6xl md:text-[5.5rem] font-black tracking-tight leading-[0.85] uppercase text-white mb-2 font-montserrat">
-                    <span className="text-[#a3e635] block">PESCA E</span>
+                    <span className="text-amber-400 block">PESCA E</span>
                     <span className="block">CAMPING</span>
                   </h2>
                   <div className="text-xl sm:text-2xl md:text-3xl font-serif italic text-amber-100/90 tracking-wide font-normal lowercase mb-6 leading-none mt-2">
@@ -2974,7 +3093,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                       onClick={() => {
                         document.getElementById("rifas-section")?.scrollIntoView({ behavior: "smooth" });
                       }}
-                      className="w-full sm:w-auto bg-[#a3e635] hover:bg-[#bef264] text-black font-black uppercase text-xs tracking-wider py-4 px-8 rounded-xl shadow-lg shadow-[#a3e635]/20 transition-all duration-300 transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer flex items-center justify-center gap-2"
+                      className="w-full sm:w-auto bg-amber-500 hover:bg-amber-400 text-black font-black uppercase text-xs tracking-wider py-4 px-8 rounded-xl shadow-lg shadow-amber-500/20 transition-all duration-300 transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer flex items-center justify-center gap-2"
                     >
                       <Ticket className="w-4 h-4" />
                       <span>VER RIFAS</span>
@@ -2992,7 +3111,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
                   {/* Trust indicator right under buttons */}
                   <div className="mt-8 flex items-center gap-2.5 text-zinc-500 text-xs font-semibold uppercase tracking-wider select-none">
-                    <ShieldCheck className="w-4 h-4 text-[#a3e635]" />
+                    <ShieldCheck className="w-4 h-4 text-amber-400" />
                     <span>100% Seguro • Ambiente protegido e transações seguras</span>
                   </div>
                 </motion.div>
@@ -3004,7 +3123,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                   transition={{ duration: 0.8, delay: 0.2 }}
                   className="hidden lg:flex w-[48%] relative aspect-[4/3] flex-col items-center justify-center"
                 >
-                  <div className="absolute inset-0 bg-[#a3e635]/5 rounded-[32px] blur-3xl opacity-30 pointer-events-none" />
+                  <div className="absolute inset-0 bg-amber-500/5 rounded-[32px] blur-3xl opacity-30 pointer-events-none" />
                   <div className="relative border border-zinc-800/40 bg-gradient-to-b from-zinc-950/80 to-zinc-950/20 backdrop-blur-md rounded-[24px] p-6 w-full shadow-2xl overflow-hidden group">
                     <img
                       src="https://images.unsplash.com/photo-1515263487990-61b07816b324?q=80&w=800&auto=format&fit=crop"
@@ -3012,7 +3131,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                       referrerPolicy="no-referrer"
                       className="rounded-[16px] w-full h-[240px] object-cover border border-zinc-900/60 object-center transition-transform duration-700 group-hover:scale-[1.02]"
                     />
-                    <div className="absolute top-10 left-10 bg-[#a3e635] text-black text-[9px] font-black uppercase px-2.5 py-1 rounded-md shadow-lg tracking-wider">
+                    <div className="absolute top-10 left-10 bg-amber-500 text-black text-[9px] font-black uppercase px-2.5 py-1 rounded-md shadow-lg tracking-wider">
                       EQUIPAMENTO OFICIAL
                     </div>
                     
@@ -3022,7 +3141,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mt-1">Série Especial Japonesa</p>
                       </div>
                       <div className="text-right">
-                        <span className="text-[#a3e635] text-[9px] font-black block">A PARTIR DE</span>
+                        <span className="text-amber-400 text-[9px] font-black block">A PARTIR DE</span>
                         <span className="text-white text-base font-black">R$ 12,00</span>
                       </div>
                     </div>
@@ -3035,7 +3154,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
             <div className="bg-[#070707] border-b border-[#121212] py-4 sm:py-6 px-2 sm:px-4 relative z-10 select-none">
               <div className="max-w-7xl mx-auto grid grid-cols-4 gap-1 sm:gap-4 divide-x divide-zinc-900/35">
                 <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-1 sm:gap-4 px-1 sm:px-4 w-full">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#a3e635]/10 flex items-center justify-center text-[#a3e635] shrink-0">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 shrink-0">
                     <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
                   <div className="flex flex-col items-center sm:items-start">
@@ -3045,7 +3164,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-1 sm:gap-4 px-1 sm:px-4 w-full">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#a3e635]/10 flex items-center justify-center text-[#a3e635] shrink-0">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 shrink-0">
                     <Trophy className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
                   <div className="flex flex-col items-center sm:items-start">
@@ -3055,7 +3174,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-1 sm:gap-4 px-1 sm:px-4 w-full">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#a3e635]/10 flex items-center justify-center text-[#a3e635] shrink-0">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 shrink-0">
                     <Award className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
                   <div className="flex flex-col items-center sm:items-start">
@@ -3065,7 +3184,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                 </div>
 
                 <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-1 sm:gap-4 px-1 sm:px-4 w-full">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#a3e635]/10 flex items-center justify-center text-[#a3e635] shrink-0">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 shrink-0">
                     <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
                   <div className="flex flex-col items-center sm:items-start">
@@ -3082,7 +3201,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                 <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight uppercase">
                   Rifas em destaque
                 </h3>
-                <div className="w-12 h-1 bg-[#a3e635] mx-auto mt-3 mb-4 rounded-full" />
+                <div className="w-12 h-1 bg-amber-500 mx-auto mt-3 mb-4 rounded-full" />
                 <p className="text-zinc-400 text-xs sm:text-sm tracking-wide">
                   Equipamentos selecionados para pesca, camping e aventura.
                 </p>
@@ -3090,9 +3209,9 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
               {activeRaffles.length === 0 ? (
                 <div className="max-w-2xl mx-auto bg-[#0A0A0A] border border-zinc-800/80 rounded-2xl p-8 sm:p-10 shadow-2xl relative overflow-hidden">
-                  <div className="absolute top-0 left-0 w-1 bg-[#a3e635] h-full" />
+                  <div className="absolute top-0 left-0 w-1 bg-amber-500 h-full" />
                   <div className="flex flex-col sm:flex-row items-start gap-5">
-                    <div className="p-3 bg-[#a3e635]/10 rounded-xl text-[#a3e635] shrink-0">
+                    <div className="p-3 bg-amber-500/10 rounded-xl text-amber-400 shrink-0">
                       <Sparkles className="w-6 h-6" />
                     </div>
                     <div>
@@ -3119,7 +3238,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                   {/* Left Navigation Button */}
                   <button 
                     onClick={scrollCarouselLeft}
-                    className={`absolute -left-2 md:left-0 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-zinc-950/90 border border-zinc-800 text-zinc-400 hover:text-[#a3e635] hover:border-[#a3e635]/50 flex items-center justify-center backdrop-blur-md shadow-2xl transition-all duration-300 opacity-0 group-hover/carousel:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-0 disabled:pointer-events-none`}
+                    className={`absolute -left-2 md:left-0 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-zinc-950/90 border border-zinc-800 text-zinc-400 hover:text-amber-400 hover:border-amber-500/50 flex items-center justify-center backdrop-blur-md shadow-2xl transition-all duration-300 opacity-0 group-hover/carousel:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-0 disabled:pointer-events-none`}
                     disabled={!canScrollLeft}
                     aria-label="Voltar rifa"
                   >
@@ -3145,7 +3264,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         <div 
                           key={raffle.id}
                           className={`bg-[#0A0A0A] border ${
-                            isSelected ? "border-[#a3e635]/60 shadow-[0_15px_40px_rgba(163,230,53,0.06)]" : "border-zinc-900 hover:border-[#a3e635]/25"
+                            isSelected ? "border-amber-500/60 shadow-[0_15px_40px_rgba(245,158,11,0.06)]" : "border-zinc-900 hover:border-amber-500/25"
                           } rounded-2xl overflow-hidden shadow-2xl transition-all duration-500 flex flex-col justify-between group relative w-[88vw] xs:w-[82vw] sm:w-[380px] md:w-[360px] lg:w-[380px] shrink-0 snap-center transform ${
                             isSelected ? "scale-[1.01] z-10" : "scale-[0.98] opacity-80 hover:opacity-100"
                           }`}
@@ -3171,7 +3290,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               />
                             ) : (
                               <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900 text-zinc-700">
-                                <Ticket className="w-12 h-12 opacity-30 text-[#a3e635] mb-2" />
+                                <Ticket className="w-12 h-12 opacity-30 text-amber-400 mb-2" />
                                 <span className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Sem Imagem</span>
                               </div>
                             )}
@@ -3185,7 +3304,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                   <span>Quase Encerrada</span>
                                 </div>
                               ) : (
-                                <div className="bg-[#a3e635] text-black text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full shadow-lg flex items-center gap-1">
+                                <div className="bg-amber-500 text-black text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full shadow-lg flex items-center gap-1">
                                   <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />
                                   <span>Disponível</span>
                                 </div>
@@ -3197,8 +3316,8 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               {raffle.drawMode === "federal" ? "🎰 Loteria Federal" : "⚡ Sorteio Automático"}
                             </div>
 
-                            {/* Price Tag (Verde-Lima Accent) */}
-                            <div className="absolute bottom-4 right-4 bg-zinc-950/95 border border-[#a3e635]/30 text-[#a3e635] font-black text-xs px-3.5 py-1.5 rounded-xl shadow-lg backdrop-blur-md">
+                            {/* Price Tag */}
+                            <div className="absolute bottom-4 right-4 bg-zinc-950/95 border border-amber-500/30 text-amber-400 font-black text-xs px-3.5 py-1.5 rounded-xl shadow-lg backdrop-blur-md">
                               Cota a partir de <span className="text-sm">R$ {Number(raffle.price || 10).toFixed(2).replace(".", ",")}</span>
                             </div>
                           </div>
@@ -3206,10 +3325,10 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                           {/* Card Content */}
                           <div className="p-6 flex-1 flex flex-col justify-between space-y-5">
                             <div>
-                              <div className="text-[9px] text-[#a3e635] font-extrabold uppercase tracking-widest mb-1.5">
+                              <div className="text-[9px] text-amber-400 font-extrabold uppercase tracking-widest mb-1.5">
                                 {raffle.drawMode === "federal" ? "Sorteio Oficial" : "Sorteio Criptográfico"}
                               </div>
-                              <h4 className="text-lg font-extrabold text-white group-hover:text-[#a3e635] transition-colors line-clamp-2 leading-snug">
+                              <h4 className="text-lg font-extrabold text-white group-hover:text-amber-400 transition-colors line-clamp-2 leading-snug">
                                 {raffle.title}
                               </h4>
                               {raffle.description && (
@@ -3225,11 +3344,11 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                 <span className="text-zinc-500 font-semibold uppercase tracking-wider text-[10px]">
                                   Progresso
                                 </span>
-                                <span className="text-[#a3e635] font-black text-sm">{stats.percentSold.toFixed(1)}%</span>
+                                <span className="text-amber-400 font-black text-sm">{stats.percentSold.toFixed(1)}%</span>
                               </div>
                               <div className="w-full h-2 bg-zinc-950 rounded-full overflow-hidden border border-zinc-900 p-0.5">
                                 <div 
-                                  className="h-full bg-gradient-to-r from-[#a3e635] to-[#bef264] rounded-full transition-all duration-500"
+                                  className="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full transition-all duration-500"
                                   style={{ width: `${Math.max(4, stats.percentSold)}%` }}
                                 />
                               </div>
@@ -3246,7 +3365,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                   setSelectedRaffleId(raffle.id);
                                   window.scrollTo({ top: 0, behavior: "smooth" });
                                 }}
-                                className="flex-1 bg-[#a3e635] hover:bg-[#bef264] text-black font-black uppercase text-xs py-3.5 px-4 rounded-xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                                className="flex-1 bg-amber-500 hover:bg-amber-400 text-black font-black uppercase text-xs py-3.5 px-4 rounded-xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
                               >
                                 <span>Participar</span>
                                 <ArrowRight className="w-4 h-4 shrink-0" />
@@ -3260,7 +3379,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                   safeCopyToClipboard(shareUrl);
                                   setGlobalToast({ message: "🔗 Link da rifa copiado com sucesso!", type: "success" });
                                 }}
-                                className="p-3.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-850 hover:border-[#a3e635]/30 text-zinc-400 hover:text-[#a3e635] rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0"
+                                className="p-3.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-850 hover:border-amber-500/30 text-zinc-400 hover:text-amber-400 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0"
                                 title="Compartilhar"
                               >
                                 <Copy className="w-4 h-4" />
@@ -3275,7 +3394,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                   {/* Right Navigation Button */}
                   <button 
                     onClick={scrollCarouselRight}
-                    className={`absolute -right-2 md:right-0 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-zinc-950/90 border border-zinc-800 text-zinc-400 hover:text-[#a3e635] hover:border-[#a3e635]/50 flex items-center justify-center backdrop-blur-md shadow-2xl transition-all duration-300 opacity-0 group-hover/carousel:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-0 disabled:pointer-events-none`}
+                    className={`absolute -right-2 md:right-0 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-zinc-950/90 border border-zinc-800 text-zinc-400 hover:text-amber-400 hover:border-amber-500/50 flex items-center justify-center backdrop-blur-md shadow-2xl transition-all duration-300 opacity-0 group-hover/carousel:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-0 disabled:pointer-events-none`}
                     disabled={!canScrollRight}
                     aria-label="Avançar rifa"
                   >
@@ -3290,7 +3409,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                           key={idx}
                           onClick={() => scrollCarouselToSlide(idx)}
                           className={`h-2 rounded-full transition-all duration-300 ${
-                            activeSlideIndex === idx ? "w-8 bg-[#a3e635]" : "w-2 bg-zinc-800 hover:bg-zinc-700"
+                            activeSlideIndex === idx ? "w-8 bg-amber-500" : "w-2 bg-zinc-800 hover:bg-zinc-700"
                           }`}
                           aria-label={`Ir para slide ${idx + 1}`}
                         />
@@ -3301,13 +3420,169 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
               )}
             </section>
 
+            {/* 2.5. ÚLTIMOS GANHADORES (CARROSSEL) */}
+            <section id="ganhadores-section" className="py-12 sm:py-20 bg-[#070707] border-b border-[#121212] w-full">
+              <div className="max-w-7xl mx-auto px-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between mb-8 sm:mb-12 gap-4">
+                  <div>
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-400 text-[10px] font-black uppercase tracking-widest mb-3">
+                      <Trophy className="w-3.5 h-3.5" />
+                      <span>Contemplados REAIS</span>
+                    </div>
+                    <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight uppercase">
+                      Últimos Ganhadores
+                    </h3>
+                    <p className="text-zinc-400 text-xs sm:text-sm tracking-wide mt-1">
+                      Confira as pessoas reais contempladas nos nossos sorteios de pesca e camping.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      window.history.pushState(null, "", "/hall-da-fama");
+                      if (setCurrentPath) setCurrentPath("/hall-da-fama");
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    className="inline-flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-amber-500/40 text-zinc-300 hover:text-amber-400 px-4 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer shadow-lg shrink-0"
+                  >
+                    <span>Ver Hall da Fama</span>
+                    <ArrowRight className="w-4 h-4 text-amber-400" />
+                  </button>
+                </div>
+
+                {/* Winners Carousel Track */}
+                <div className="relative group/winners-carousel max-w-7xl mx-auto">
+                  {/* Left Navigation Button */}
+                  <button 
+                    onClick={scrollWinnersLeft}
+                    className="absolute -left-2 md:-left-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-zinc-950/90 border border-zinc-800 text-zinc-400 hover:text-amber-400 hover:border-amber-500/50 flex items-center justify-center backdrop-blur-md shadow-2xl transition-all duration-300 opacity-0 group-hover/winners-carousel:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-0 disabled:pointer-events-none"
+                    disabled={!canScrollWinnersLeft}
+                    aria-label="Voltar ganhadores"
+                  >
+                    <ChevronLeft className="w-6 h-6" />
+                  </button>
+
+                  {/* Scrollable track */}
+                  <div 
+                    ref={winnersCarouselRef}
+                    onScroll={handleWinnersCarouselScroll}
+                    className="flex overflow-x-auto gap-5 pb-4 pt-1 scroll-smooth snap-x snap-mandatory scrollbar-none"
+                  >
+                    {displayWinners.map((winner, idx) => {
+                      const isDestaque = winner.status === "Destaque";
+                      return (
+                        <div
+                          key={winner.id || idx}
+                          onClick={() => setSelectedWinnerModal(winner)}
+                          className={`bg-[#0A0A0A] border ${
+                            isDestaque 
+                              ? "border-amber-500/40 hover:border-amber-400/70 shadow-[0_10px_30px_rgba(245,158,11,0.08)]" 
+                              : "border-zinc-900 hover:border-amber-500/30"
+                          } rounded-2xl overflow-hidden shadow-2xl transition-all duration-300 group/wcard cursor-pointer w-[82vw] xs:w-[75vw] sm:w-[320px] md:w-[340px] shrink-0 snap-center flex flex-col justify-between`}
+                        >
+                          {/* Image banner */}
+                          <div className="relative h-44 sm:h-48 w-full overflow-hidden bg-zinc-950">
+                            {winner.prizeImageUrl ? (
+                              <img
+                                src={winner.prizeImageUrl}
+                                alt={winner.prizeTitle}
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-cover group-hover/wcard:scale-105 transition-transform duration-500"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900 text-zinc-700">
+                                <Trophy className="w-10 h-10 text-amber-500/40 mb-1" />
+                                <span className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Sem Imagem</span>
+                              </div>
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-black/20 to-transparent pointer-events-none" />
+
+                            {/* Badge Destaque or Ganhador */}
+                            <div className="absolute top-3 left-3 z-10">
+                              <div className="bg-amber-500 text-black text-[9.5px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full shadow-lg flex items-center gap-1">
+                                <Trophy className="w-3 h-3 fill-black" />
+                                <span>Contemplado</span>
+                              </div>
+                            </div>
+
+                            {/* Cota Tag */}
+                            <div className="absolute bottom-3 right-3 z-10 bg-zinc-950/90 border border-amber-500/40 text-amber-400 text-[11px] font-mono font-black px-3 py-1 rounded-xl shadow-lg backdrop-blur-md">
+                              Cota nº {winner.winnerNumber || "---"}
+                            </div>
+                          </div>
+
+                          {/* Card Body */}
+                          <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                            <div>
+                              <h4 className="text-base font-extrabold text-white group-hover/wcard:text-amber-400 transition-colors line-clamp-1">
+                                {winner.prizeTitle}
+                              </h4>
+                              {winner.drawDate && (
+                                <div className="flex items-center gap-1.5 text-zinc-500 text-[10px] font-bold uppercase tracking-wider mt-1">
+                                  <Calendar className="w-3 h-3 text-zinc-600" />
+                                  <span>Sorteado em {winner.drawDate}</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Winner Profile */}
+                            <div className="bg-zinc-950/80 border border-zinc-900 p-3 rounded-xl flex items-center gap-3">
+                              {winner.winnerImageUrl ? (
+                                <img
+                                  src={winner.winnerImageUrl}
+                                  alt={winner.winnerName}
+                                  referrerPolicy="no-referrer"
+                                  className="w-9 h-9 rounded-full object-cover border-2 border-amber-500 shrink-0"
+                                />
+                              ) : (
+                                <div className="w-9 h-9 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center font-black text-xs shrink-0">
+                                  🏆
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-black text-white truncate uppercase">
+                                  {winner.winnerName || "Ganhador Anônimo"}
+                                </p>
+                                <p className="text-[10px] text-zinc-500 font-bold truncate uppercase">
+                                  {winner.city ? `${winner.city}${winner.state ? ` - ${winner.state}` : ''}` : "Brasil"}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* CTA */}
+                            <button
+                              type="button"
+                              className="w-full bg-zinc-900 hover:bg-amber-500 text-zinc-300 hover:text-black font-black uppercase text-[10px] tracking-wider py-2.5 rounded-xl border border-zinc-800 hover:border-amber-500 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              <span>Ver Detalhes do Prêmio</span>
+                              <ArrowRight className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Right Navigation Button */}
+                  <button 
+                    onClick={scrollWinnersRight}
+                    className="absolute -right-2 md:-right-4 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-zinc-950/90 border border-zinc-800 text-zinc-400 hover:text-amber-400 hover:border-amber-500/50 flex items-center justify-center backdrop-blur-md shadow-2xl transition-all duration-300 opacity-0 group-hover/winners-carousel:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-0 disabled:pointer-events-none"
+                    disabled={!canScrollWinnersRight}
+                    aria-label="Avançar ganhadores"
+                  >
+                    <ChevronRight className="w-6 h-6" />
+                  </button>
+                </div>
+              </div>
+            </section>
+
             {/* 3. CATEGORIAS */}
             <section id="categories-section" className="py-20 sm:py-28 max-w-7xl mx-auto px-4 w-full border-b border-[#121212]">
               <div className="text-center max-w-2xl mx-auto mb-16">
                 <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight uppercase">
                   Categorias de Equipamentos
                 </h3>
-                <div className="w-12 h-1 bg-[#a3e635] mx-auto mt-3 mb-4 rounded-full" />
+                <div className="w-12 h-1 bg-amber-500 mx-auto mt-3 mb-4 rounded-full" />
                 <p className="text-zinc-400 text-xs sm:text-sm tracking-wide">
                   Nossos prêmios são focados nas principais vertentes de vida selvagem e outdoor.
                 </p>
@@ -3315,8 +3590,8 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
               <div className="flex overflow-x-auto pb-4 gap-6 scrollbar-thin scrollbar-thumb-zinc-850 scrollbar-track-transparent snap-x snap-mandatory md:grid md:grid-cols-3 md:gap-8 md:overflow-visible md:pb-0">
                 {/* CATEGORY 1 */}
-                <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 sm:p-8 hover:border-[#a3e635]/20 hover:shadow-[0_15px_30px_rgba(0,0,0,0.5)] transition-all duration-300 group shrink-0 w-[82%] sm:w-[280px] md:w-auto snap-center">
-                  <div className="w-12 h-12 rounded-xl bg-[#a3e635]/10 flex items-center justify-center text-[#a3e635] text-2xl font-bold mb-4 sm:mb-6 group-hover:scale-110 transition-transform">
+                <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 sm:p-8 hover:border-amber-500/20 hover:shadow-[0_15px_30px_rgba(0,0,0,0.5)] transition-all duration-300 group shrink-0 w-[82%] sm:w-[280px] md:w-auto snap-center">
+                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 text-2xl font-bold mb-4 sm:mb-6 group-hover:scale-110 transition-transform">
                     🎣
                   </div>
                   <h4 className="text-base sm:text-lg font-extrabold text-white mb-2 uppercase tracking-wide">Pesca Esportiva</h4>
@@ -3326,8 +3601,8 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                 </div>
 
                 {/* CATEGORY 2 */}
-                <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 sm:p-8 hover:border-[#a3e635]/20 hover:shadow-[0_15px_30px_rgba(0,0,0,0.5)] transition-all duration-300 group shrink-0 w-[82%] sm:w-[280px] md:w-auto snap-center">
-                  <div className="w-12 h-12 rounded-xl bg-[#a3e635]/10 flex items-center justify-center text-[#a3e635] text-2xl font-bold mb-4 sm:mb-6 group-hover:scale-110 transition-transform">
+                <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 sm:p-8 hover:border-amber-500/20 hover:shadow-[0_15px_30px_rgba(0,0,0,0.5)] transition-all duration-300 group shrink-0 w-[82%] sm:w-[280px] md:w-auto snap-center">
+                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 text-2xl font-bold mb-4 sm:mb-6 group-hover:scale-110 transition-transform">
                     🏕️
                   </div>
                   <h4 className="text-base sm:text-lg font-extrabold text-white mb-2 uppercase tracking-wide">Camping & Outdoor</h4>
@@ -3337,8 +3612,8 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                 </div>
 
                 {/* CATEGORY 3 */}
-                <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 sm:p-8 hover:border-[#a3e635]/20 hover:shadow-[0_15px_30px_rgba(0,0,0,0.5)] transition-all duration-300 group shrink-0 w-[82%] sm:w-[280px] md:w-auto snap-center">
-                  <div className="w-12 h-12 rounded-xl bg-[#a3e635]/10 flex items-center justify-center text-[#a3e635] text-2xl font-bold mb-4 sm:mb-6 group-hover:scale-110 transition-transform">
+                <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 sm:p-8 hover:border-amber-500/20 hover:shadow-[0_15px_30px_rgba(0,0,0,0.5)] transition-all duration-300 group shrink-0 w-[82%] sm:w-[280px] md:w-auto snap-center">
+                  <div className="w-12 h-12 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 text-2xl font-bold mb-4 sm:mb-6 group-hover:scale-110 transition-transform">
                     🧭
                   </div>
                   <h4 className="text-base sm:text-lg font-extrabold text-white mb-2 uppercase tracking-wide">Aventura & Sobrevivência</h4>
@@ -3355,7 +3630,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                 <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight uppercase">
                   Sua jornada rumo ao prêmio
                 </h3>
-                <div className="w-12 h-1 bg-[#a3e635] mx-auto mt-3 mb-4 rounded-full" />
+                <div className="w-12 h-1 bg-amber-500 mx-auto mt-3 mb-4 rounded-full" />
                 <p className="text-zinc-400 text-xs sm:text-sm tracking-wide">
                   É extremamente simples e 100% transparente participar das nossas campanhas.
                 </p>
@@ -3364,7 +3639,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
               <div className="flex overflow-x-auto pb-4 gap-4 scrollbar-thin scrollbar-thumb-zinc-850 scrollbar-track-transparent snap-x snap-mandatory lg:grid lg:grid-cols-5 lg:gap-6 lg:overflow-visible lg:pb-0">
                 {/* STEP 1 */}
                 <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 relative overflow-hidden shrink-0 w-[78%] sm:w-[220px] lg:w-auto snap-center">
-                  <div className="text-[#a3e635]/10 font-black text-7xl absolute -right-3 -top-3">01</div>
+                  <div className="text-amber-500/10 font-black text-7xl absolute -right-3 -top-3">01</div>
                   <h5 className="text-sm font-black text-white uppercase tracking-wider mb-2 relative z-10 pt-4">Escolha seu prêmio</h5>
                   <p className="text-zinc-500 text-[11px] sm:text-xs leading-relaxed">
                     Navegue pelas campanhas e encontre o equipamento ideal para sua próxima aventura selvagem.
@@ -3373,7 +3648,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
                 {/* STEP 2 */}
                 <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 relative overflow-hidden shrink-0 w-[78%] sm:w-[220px] lg:w-auto snap-center">
-                  <div className="text-[#a3e635]/10 font-black text-7xl absolute -right-3 -top-3">02</div>
+                  <div className="text-amber-500/10 font-black text-7xl absolute -right-3 -top-3">02</div>
                   <h5 className="text-sm font-black text-white uppercase tracking-wider mb-2 relative z-10 pt-4">Escolha suas cotas</h5>
                   <p className="text-zinc-500 text-[11px] sm:text-xs leading-relaxed">
                     Selecione quantos números deseja comprar para potencializar suas chances de ganhar.
@@ -3382,7 +3657,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
                 {/* STEP 3 */}
                 <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 relative overflow-hidden shrink-0 w-[78%] sm:w-[220px] lg:w-auto snap-center">
-                  <div className="text-[#a3e635]/10 font-black text-7xl absolute -right-3 -top-3">03</div>
+                  <div className="text-amber-500/10 font-black text-7xl absolute -right-3 -top-3">03</div>
                   <h5 className="text-sm font-black text-white uppercase tracking-wider mb-2 relative z-10 pt-4">Faça o pagamento</h5>
                   <p className="text-zinc-500 text-[11px] sm:text-xs leading-relaxed">
                     Efetue o pagamento por Pix de forma rápida e segura, com compensação automática.
@@ -3391,7 +3666,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
                 {/* STEP 4 */}
                 <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 relative overflow-hidden shrink-0 w-[78%] sm:w-[220px] lg:w-auto snap-center">
-                  <div className="text-[#a3e635]/10 font-black text-7xl absolute -right-3 -top-3">04</div>
+                  <div className="text-amber-500/10 font-black text-7xl absolute -right-3 -top-3">04</div>
                   <h5 className="text-sm font-black text-white uppercase tracking-wider mb-2 relative z-10 pt-4">Acompanhe</h5>
                   <p className="text-zinc-500 text-[11px] sm:text-xs leading-relaxed">
                     Monitore a venda das cotas em tempo real e verifique os detalhes publicados na plataforma.
@@ -3400,7 +3675,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
                 {/* STEP 5 */}
                 <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 relative overflow-hidden shrink-0 w-[78%] sm:w-[220px] lg:w-auto snap-center">
-                  <div className="text-[#a3e635]/10 font-black text-7xl absolute -right-3 -top-3">05</div>
+                  <div className="text-amber-500/10 font-black text-7xl absolute -right-3 -top-3">05</div>
                   <h5 className="text-sm font-black text-white uppercase tracking-wider mb-2 relative z-10 pt-4">Confira o resultado</h5>
                   <p className="text-zinc-500 text-[11px] sm:text-xs leading-relaxed">
                     Após o sorteio, faça a conferência transparente no nosso painel de auditoria.
@@ -3412,10 +3687,10 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
             {/* 5. AUDITORIA PÚBLICA */}
             <section id="auditoria-home-section" className="py-20 sm:py-28 max-w-7xl mx-auto px-4 w-full">
               <div className="bg-gradient-to-br from-[#0A0A0A] to-[#0D0D0D] border border-zinc-900 rounded-3xl p-8 sm:p-14 shadow-2xl relative overflow-hidden flex flex-col lg:flex-row items-center gap-12">
-                <div className="absolute top-0 right-0 w-96 h-96 bg-[#a3e635]/5 rounded-full filter blur-3xl pointer-events-none" />
+                <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/5 rounded-full filter blur-3xl pointer-events-none" />
                 
                 <div className="space-y-6 lg:w-1/2">
-                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[#a3e635]/20 bg-[#a3e635]/5 text-[#a3e635] text-[9px] font-black uppercase tracking-wider">
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-amber-500/20 bg-amber-500/5 text-amber-400 text-[9px] font-black uppercase tracking-wider">
                     <ShieldCheck className="w-3.5 h-3.5" />
                     <span>Sorteio Criptográfico Seguro</span>
                   </div>
@@ -3430,43 +3705,53 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
                   <div className="space-y-3 pt-2 text-zinc-500 text-xs font-bold uppercase tracking-wider">
                     <div className="flex items-center gap-2.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#a3e635]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                       <span>Verificação SHA-256 do Seed Commitment</span>
                     </div>
                     <div className="flex items-center gap-2.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#a3e635]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                       <span>Transparência total na população participante</span>
                     </div>
                     <div className="flex items-center gap-2.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#a3e635]" />
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                       <span>Gerador de sorteio aberto e testável online</span>
                     </div>
                   </div>
 
-                  <div className="pt-4">
+                  <div className="pt-4 flex flex-wrap gap-3">
+                    <button
+                      onClick={() => setIsAuditModalOpen(true)}
+                      className="bg-amber-500 hover:bg-amber-400 text-black font-black uppercase text-xs tracking-wider py-4 px-7 rounded-xl shadow-lg shadow-amber-500/15 transition-all cursor-pointer inline-flex items-center gap-2 active:scale-95"
+                    >
+                      <ShieldCheck className="w-4 h-4" />
+                      <span>Sobre a Auditoria</span>
+                    </button>
                     <button
                       onClick={() => {
                         window.history.pushState({}, "", "/auditoria");
                         setCurrentPath("/auditoria");
                         window.scrollTo({ top: 0, behavior: "smooth" });
                       }}
-                      className="bg-[#a3e635] hover:bg-[#bef264] text-black font-black uppercase text-xs tracking-wider py-4 px-8 rounded-xl shadow-lg transition-all cursor-pointer inline-flex items-center gap-2"
+                      className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-amber-500/40 text-zinc-300 hover:text-white font-black uppercase text-xs tracking-wider py-4 px-7 rounded-xl transition-all cursor-pointer inline-flex items-center gap-2 active:scale-95"
                     >
-                      <span>Ir para Auditoria Pública</span>
-                      <ArrowRight className="w-4 h-4" />
+                      <span>Painel de Auditoria</span>
+                      <ArrowRight className="w-4 h-4 text-amber-400" />
                     </button>
                   </div>
                 </div>
 
-                <div className="lg:w-1/2 flex justify-center w-full">
-                  <div className="bg-[#050505] border border-zinc-850 rounded-2xl p-6 w-full max-w-md shadow-2xl relative">
+                <div 
+                  onClick={() => setIsAuditModalOpen(true)}
+                  className="lg:w-1/2 flex justify-center w-full cursor-pointer group/term"
+                >
+                  <div className="bg-[#050505] border border-zinc-850 group-hover/term:border-amber-500/50 rounded-2xl p-6 w-full max-w-md shadow-2xl relative transition-all duration-300 group-hover/term:shadow-[0_0_30px_rgba(245,158,11,0.1)]">
                     <div className="flex items-center justify-between border-b border-zinc-900 pb-4 mb-4">
                       <div className="flex items-center gap-2">
                         <div className="w-3 h-3 rounded-full bg-red-500/80" />
                         <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
                         <div className="w-3 h-3 rounded-full bg-green-500/80" />
                       </div>
-                      <span className="text-[10px] text-zinc-600 font-extrabold uppercase tracking-widest font-mono">PROVABLY_FAIR_VERIFIER</span>
+                      <span className="text-[10px] text-zinc-600 group-hover/term:text-amber-400 font-extrabold uppercase tracking-widest font-mono transition-colors">PROVABLY_FAIR_VERIFIER (Clique para Detalhes)</span>
                     </div>
                     <div className="space-y-4 font-mono text-[10px] text-zinc-400">
                       <div>
@@ -3477,7 +3762,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                       </div>
                       <div>
                         <div className="text-zinc-600 mb-1">// Revelação do Seed (Após encerramento)</div>
-                        <div className="bg-zinc-950 p-2.5 rounded border border-zinc-900 text-[#a3e635] select-all truncate">
+                        <div className="bg-zinc-950 p-2.5 rounded border border-zinc-900 text-amber-400 select-all truncate">
                           SEED: e9a2c3fb107d...
                         </div>
                       </div>
@@ -3510,9 +3795,9 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                     setSelectedNumbers([]);
                     window.scrollTo({ top: 0, behavior: "smooth" });
                   }}
-                  className="inline-flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-[#a3e635]/40 text-zinc-300 hover:text-[#a3e635] px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-lg active:scale-95"
+                  className="inline-flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-amber-500/40 text-zinc-300 hover:text-amber-400 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-lg active:scale-95"
                 >
-                  <ArrowLeft className="w-4 h-4 text-[#a3e635]" />
+                  <ArrowLeft className="w-4 h-4 text-amber-400" />
                   <span>Voltar para Rifas</span>
                 </button>
 
@@ -3523,7 +3808,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                     safeCopyToClipboard(shareUrl);
                     setGlobalToast({ message: "🔗 Link direto da rifa copiado!", type: "success" });
                   }}
-                  className="inline-flex items-center gap-1.5 bg-[#a3e635]/10 hover:bg-[#a3e635]/20 border border-[#a3e635]/30 text-[#a3e635] px-3.5 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer"
+                  className="inline-flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 px-3.5 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer"
                   title="Copiar link direto para compartilhar esta rifa"
                 >
                   <Copy className="w-3.5 h-3.5" />
@@ -3533,7 +3818,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
               <div className="text-right">
                 <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold block">Rifa Selecionada</span>
-                <span className="text-xs sm:text-sm font-extrabold text-[#a3e635]">{raffleConfig.title}</span>
+                <span className="text-xs sm:text-sm font-extrabold text-amber-400">{raffleConfig.title}</span>
               </div>
             </div>
 
@@ -3544,11 +3829,11 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                 transition={{ duration: 0.6, type: "spring" }}
                 className="max-w-7xl mx-auto px-4 py-16 sm:py-24"
               >
-                <div className="bg-gradient-to-br from-[#a3e635]/10 via-zinc-900 to-[#a3e635]/5 border-2 border-[#a3e635]/30 rounded-[2.5rem] p-5 sm:p-10 md:p-14 relative overflow-hidden shadow-[0_0_50px_-12px_rgba(163,230,53,0.25)] flex flex-col md:flex-row items-center justify-between gap-8 min-h-[400px]">
+                <div className="bg-gradient-to-br from-amber-500/10 via-zinc-900 to-amber-500/5 border-2 border-amber-500/30 rounded-[2.5rem] p-5 sm:p-10 md:p-14 relative overflow-hidden shadow-[0_0_50px_-12px_rgba(245,158,11,0.25)] flex flex-col md:flex-row items-center justify-between gap-8 min-h-[400px]">
                   <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none animate-pulse">
-                    <PartyPopper className="w-64 h-64 text-[#a3e635]" />
+                    <PartyPopper className="w-64 h-64 text-amber-400" />
                   </div>
-                  <div className="absolute -bottom-16 -left-16 w-80 h-80 bg-[#a3e635]/5 rounded-full blur-3xl pointer-events-none" />
+                  <div className="absolute -bottom-16 -left-16 w-80 h-80 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
 
                   <div className="flex items-center gap-8 flex-col sm:flex-row text-center sm:text-left relative z-10">
                     <motion.div
@@ -3561,12 +3846,12 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         duration: 4,
                         repeatDelay: 2,
                       }}
-                      className="bg-[#a3e635]/20 text-[#a3e635] w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center shrink-0 border border-[#a3e635]/30 shadow-[0_0_20px_rgba(163,230,53,0.1)]"
+                      className="bg-amber-500/20 text-amber-400 w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center shrink-0 border border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.1)]"
                     >
                       <Trophy className="w-10 h-10 sm:w-12 sm:h-12" />
                     </motion.div>
                     <div>
-                      <span className="bg-[#a3e635]/15 text-[#a3e635] text-xs font-black uppercase tracking-widest px-4 py-1.5 rounded-full border border-[#a3e635]/20">
+                      <span className="bg-amber-500/15 text-amber-400 text-xs font-black uppercase tracking-widest px-4 py-1.5 rounded-full border border-amber-500/20">
                         Sorteio Realizado 🏆
                       </span>
                       <h3 className="text-3xl sm:text-4xl md:text-5xl font-black text-white mt-4 tracking-tighter leading-none">
@@ -3577,7 +3862,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         deste sorteio especial! Entraremos em contato
                         diretamente com o proprietário(a) do bilhete premiado
                         para realizar a entrega oficial do prêmio:{" "}
-                        <strong className="text-[#a3e635]">
+                        <strong className="text-amber-400">
                           {raffleConfig.title}
                         </strong>
                         .
@@ -3590,7 +3875,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                       <p className="text-zinc-500 text-[10px] uppercase font-black tracking-widest mb-1">
                         Número Sorteado
                       </p>
-                      <span className="text-5xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-r from-[#a3e635] to-[#bef264]">
+                      <span className="text-5xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-amber-200">
                         {raffleConfig.winnerNumber}
                       </span>
                     </div>
@@ -3642,7 +3927,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         )}
 
                         {/* Price Badge on image */}
-                        <div className="absolute bottom-2.5 right-2.5 bg-zinc-950/90 border border-[#a3e635]/40 text-[#a3e635] font-black text-xs px-3 py-1 rounded-xl shadow-lg backdrop-blur-md z-20">
+                        <div className="absolute bottom-2.5 right-2.5 bg-zinc-950/90 border border-amber-500/40 text-amber-400 font-black text-xs px-3 py-1 rounded-xl shadow-lg backdrop-blur-md z-20">
                           R$ {Number(raffleConfig?.price || 10).toFixed(2).replace(".", ",")} <span className="text-[9px] text-zinc-400 font-bold">/ cota</span>
                         </div>
                       </div>
@@ -3653,21 +3938,21 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                           <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
                              <div className="flex flex-wrap items-center gap-2">
                               {(isRaffleFullyClosed ?? false) ? (
-                                <span className="bg-[#a3e635]/15 text-[#a3e635] text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-[#a3e635]/30 animate-pulse">
+                                <span className="bg-amber-500/15 text-amber-400 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-amber-500/30 animate-pulse">
                                   Rifa Fechada (Aguardar Sorteio)
                                 </span>
                               ) : (
-                                <span className="bg-[#a3e635]/10 text-[#a3e635] text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-[#a3e635]/20 flex items-center gap-1">
-                                  <Sparkles className="w-3 h-3 text-[#a3e635]" /> Rifa Ativa
+                                <span className="bg-amber-500/10 text-amber-400 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-amber-500/20 flex items-center gap-1">
+                                  <Sparkles className="w-3 h-3 text-amber-400" /> Rifa Ativa
                                 </span>
                               )}
 
                               {/* Blinking Draw Mode Indicator Badge */}
                               {raffleConfig?.drawMode === "federal" ? (
-                                <span className="bg-[#a3e635]/20 text-[#bef264] border border-[#a3e635]/50 text-[10px] sm:text-xs font-black px-3 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-lg animate-pulse">
+                                <span className="bg-amber-500/20 text-amber-300 border border-amber-500/50 text-[10px] sm:text-xs font-black px-3 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-lg animate-pulse">
                                   <span className="relative flex h-2 w-2">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#a3e635] opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#a3e635]"></span>
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
                                   </span>
                                   🎰 Sorteio: Loteria Federal
                                 </span>
@@ -3698,8 +3983,8 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                             <div className="shrink-0">
                               {raffleConfig?.drawMode === "federal" ? (
                                 <span className="relative flex h-3 w-3">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#a3e635] opacity-75"></span>
-                                  <span className="relative inline-flex rounded-full h-3 w-3 bg-[#a3e635]"></span>
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
                                 </span>
                               ) : (
                                 <span className="relative flex h-3 w-3">
@@ -3710,7 +3995,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                             </div>
                             <div className="text-xs">
                               <span className={`uppercase font-black animate-pulse tracking-wide ${
-                                raffleConfig?.drawMode === "federal" ? "text-[#a3e635]" : "text-purple-400"
+                                raffleConfig?.drawMode === "federal" ? "text-amber-400" : "text-purple-400"
                               }`}>
                                 {raffleConfig?.drawMode === "federal" ? "🎰 Sorteio pela Loteria Federal" : "⚡ Sorteio Automático pelo Sistema"}
                               </span>
@@ -3735,10 +4020,10 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         <div className="space-y-1.5 bg-zinc-950/60 border border-zinc-800/80 rounded-2xl p-3">
                           <div className="flex justify-between items-center text-[11px] font-bold">
                             <span className="text-zinc-400 flex items-center gap-1.5">
-                              <TrendingUp className="w-3.5 h-3.5 text-[#a3e635]" />
+                              <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
                               <span>Progresso das Vendas:</span>
                             </span>
-                            <span className="text-[#a3e635] font-black text-sm">
+                            <span className="text-amber-400 font-black text-sm">
                               {(((stats?.countPaid ?? 0) / (raffleConfig?.totalNumbers ?? 1)) * 100).toFixed(1)}%
                             </span>
                           </div>
@@ -3747,7 +4032,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               initial={{ width: 0 }}
                               animate={{ width: `${((stats?.countPaid ?? 0) / (raffleConfig?.totalNumbers ?? 1)) * 100}%` }}
                               transition={{ duration: 1, ease: "easeOut" }}
-                              className="h-full bg-gradient-to-r from-[#a3e635] via-[#bef264] to-emerald-400 rounded-full"
+                              className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-300 rounded-full"
                             />
                           </div>
                         </div>
@@ -3755,7 +4040,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         {/* Trust Security Badges Compact Row */}
                         <div className="flex items-center gap-2 pt-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden w-full">
                           {[
-                            { title: "PIX Automático", color: "text-[#a3e635] bg-[#a3e635]/5 border-[#a3e635]/20" },
+                            { title: "PIX Automático", color: "text-amber-400 bg-amber-500/5 border-amber-500/20" },
                             { title: "Mercado Pago Seguro", color: "text-emerald-400 bg-emerald-500/5 border-emerald-500/20" },
                             { title: "Suporte no WhatsApp", color: "text-green-400 bg-green-500/5 border-green-500/20" },
                             { title: "Atualização em Tempo Real", color: "text-blue-400 bg-blue-500/5 border-blue-500/20" },
@@ -3775,12 +4060,12 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                     initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.05 }}
-                    className={`bg-gradient-to-r from-[#a3e635]/10 via-[#a3e635]/5 to-[#a3e635]/10 border-2 border-[#a3e635]/40 rounded-3xl p-4 sm:p-5 shadow-[0_0_30px_rgba(163,230,53,0.15)] relative overflow-hidden ${(isRaffleFullyClosed || (raffleConfig?.isRaffleActive ?? false) === false) ? "opacity-40 select-none pointer-events-none" : ""}`}
+                    className={`bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-amber-500/10 border-2 border-amber-500/40 rounded-3xl p-4 sm:p-5 shadow-[0_0_30px_rgba(245,158,11,0.15)] relative overflow-hidden ${(isRaffleFullyClosed || (raffleConfig?.isRaffleActive ?? false) === false) ? "opacity-40 select-none pointer-events-none" : ""}`}
                   >
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <Zap className="w-4 h-4 text-[#a3e635] animate-bounce" />
+                          <Zap className="w-4 h-4 text-amber-400 animate-bounce" />
                           <h3 className="text-sm sm:text-base font-black uppercase tracking-wider text-white">
                             ⚡ Compra Rápida de Cotas
                           </h3>
@@ -3800,9 +4085,9 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               type="button"
                               onClick={() => selectRandomNumbers(num)}
                               disabled={isRaffleFullyClosed || (raffleConfig?.isRaffleActive ?? false) === false}
-                              className="bg-gradient-to-b from-zinc-800 to-zinc-900 border border-[#a3e635]/30 hover:border-[#a3e635] text-white hover:text-[#a3e635] px-3.5 py-2 rounded-2xl text-xs font-black transition-all active:scale-95 cursor-pointer flex flex-col items-center justify-center min-w-[58px] shadow-lg hover:shadow-[#a3e635]/20 group"
+                              className="bg-gradient-to-b from-zinc-800 to-zinc-900 border border-amber-500/30 hover:border-amber-400 text-white hover:text-amber-400 px-3.5 py-2 rounded-2xl text-xs font-black transition-all active:scale-95 cursor-pointer flex flex-col items-center justify-center min-w-[58px] shadow-lg hover:shadow-amber-500/20 group"
                             >
-                              <span className="text-sm font-black text-[#a3e635] group-hover:scale-110 transition-transform">+{num}</span>
+                              <span className="text-sm font-black text-amber-400 group-hover:scale-110 transition-transform">+{num}</span>
                               <span className="text-[8px] text-zinc-400 font-bold">R$ {estimatedPrice}</span>
                             </button>
                           );
@@ -3828,7 +4113,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               }
                             }}
                             disabled={isRaffleFullyClosed || (raffleConfig?.isRaffleActive ?? false) === false}
-                            className="bg-[#a3e635] hover:bg-[#bef264] text-zinc-950 text-xs font-black px-3 py-1.5 rounded-xl transition-all active:scale-95 cursor-pointer shadow-md"
+                            className="bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-black px-3 py-1.5 rounded-xl transition-all active:scale-95 cursor-pointer shadow-md"
                           >
                             Ok
                           </button>
@@ -3840,7 +4125,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
                 {/* NUMBER GRID SECTION */}
                 <section id="selection-grid-section" className="max-w-7xl mx-auto px-4 mt-4 scroll-mt-24">
-                  <div className="bg-zinc-900 border border-zinc-800/80 rounded-3xl sm:rounded-[2.5rem] p-5 sm:p-8 shadow-2xl border-b-[12px] border-b-[#a3e635]/10">
+                  <div className="bg-zinc-900 border border-zinc-800/80 rounded-3xl sm:rounded-[2.5rem] p-5 sm:p-8 shadow-2xl border-b-[12px] border-b-amber-500/10">
                     {raffleConfig.isRaffleActive === false && (
                       <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
@@ -3870,17 +4155,17 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                       <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="mb-8 p-6 rounded-3xl bg-[#a3e635]/15 border border-[#a3e635]/30 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left shadow-lg shadow-[#a3e635]/5 relative overflow-hidden"
+                        className="mb-8 p-6 rounded-3xl bg-amber-500/15 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left shadow-lg shadow-amber-500/5 relative overflow-hidden"
                       >
                         <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-                          <Clock className="w-24 h-24 text-[#a3e635]" />
+                          <Clock className="w-24 h-24 text-amber-400" />
                         </div>
                         <div className="flex items-center gap-4 flex-col sm:flex-row relative z-10">
-                          <div className="bg-[#a3e635]/20 w-12 h-12 rounded-full flex items-center justify-center animate-pulse text-[#a3e635] shrink-0">
+                          <div className="bg-amber-500/20 w-12 h-12 rounded-full flex items-center justify-center animate-pulse text-amber-400 shrink-0">
                             <Clock className="w-6 h-6" />
                           </div>
                           <div>
-                            <h4 className="text-[#a3e635] font-black text-lg uppercase tracking-wider">
+                            <h4 className="text-amber-400 font-black text-lg uppercase tracking-wider">
                               rifa fechada, aguardar sorteio
                             </h4>
                             <p className="text-zinc-400 text-sm mt-0.5 max-w-2xl">
@@ -3899,7 +4184,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         <div className="text-center space-y-2">
                           <h2 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight flex items-center justify-center gap-3">
                             Compra Rápida e Aleatória
-                            <span className="text-xs bg-[#a3e635]/20 text-[#a3e635] px-2.5 py-1 rounded-lg font-black font-mono">
+                            <span className="text-xs bg-amber-500/20 text-amber-400 px-2.5 py-1 rounded-lg font-black font-mono">
                               Bolsão de Cotas
                             </span>
                           </h2>
@@ -3922,7 +4207,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                 }}
                                 className={`p-6 rounded-3xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-2 active:scale-95 ${
                                   isSelectedPreset
-                                    ? "bg-[#a3e635]/15 border-[#a3e635] text-[#a3e635] font-black shadow-lg shadow-[#a3e635]/10"
+                                    ? "bg-amber-500/15 border-amber-500 text-amber-400 font-black shadow-lg shadow-amber-500/10"
                                     : "bg-zinc-900/50 hover:bg-zinc-900 border-zinc-850 hover:border-zinc-700 text-zinc-300"
                                 }`}
                               >
@@ -3948,7 +4233,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               placeholder="Ex: 15"
                               value={randomCount}
                               onChange={(e) => setRandomCount(e.target.value)}
-                              className="flex-1 bg-black border border-zinc-850 rounded-2xl px-4 py-3 text-sm font-black text-white font-mono outline-none focus:border-[#a3e635]"
+                              className="flex-1 bg-black border border-zinc-850 rounded-2xl px-4 py-3 text-sm font-black text-white font-mono outline-none focus:border-amber-500"
                             />
                             <button
                               type="button"
@@ -3961,7 +4246,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                 setSelectedNumbers([]);
                                 await selectRandomNumbers(parsed);
                               }}
-                              className="px-6 bg-[#a3e635] hover:bg-[#bef264] text-zinc-950 rounded-2xl text-xs font-black uppercase tracking-wider cursor-pointer active:scale-95 transition-all"
+                              className="px-6 bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded-2xl text-xs font-black uppercase tracking-wider cursor-pointer active:scale-95 transition-all"
                             >
                               Reservar Cotas
                             </button>
@@ -3980,16 +4265,16 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                             </h2>
                             <p className="text-zinc-400 text-xs mt-1">
                               Clique nos números desejados para reservar. Tempo de reserva:{" "}
-                              <span className="text-[#a3e635] font-black">3 minutos</span>.
+                              <span className="text-amber-400 font-black">3 minutos</span>.
                             </p>
 
                             {/* Status Legend Pills */}
                             <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
                               {[
                                 { label: "Disponível", style: "bg-zinc-950/80 border-zinc-800 text-zinc-400" },
-                                { label: "Reservado", style: "bg-[#a3e635]/10 border-[#a3e635]/25 text-[#a3e635] font-bold" },
+                                { label: "Reservado", style: "bg-amber-500/10 border-amber-500/25 text-amber-400 font-bold" },
                                 { label: "Pago", style: "bg-emerald-500/10 border-emerald-500/25 text-emerald-400 font-bold" },
-                                { label: "Selecionado", style: "bg-[#a3e635] border-[#bef264] text-zinc-950 font-bold" },
+                                { label: "Selecionado", style: "bg-amber-500 border-amber-400 text-zinc-950 font-bold" },
                               ].map((status) => (
                                 <div
                                   key={status.label}
@@ -4004,12 +4289,12 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
                           <div className="flex flex-col sm:flex-row gap-3">
                             <div className="relative group">
-                              <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-[#a3e635] transition-colors" />
+                              <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-amber-400 transition-colors" />
                               <input
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 placeholder="Buscar número..."
-                                className="bg-zinc-800/80 border border-zinc-700/80 rounded-xl pl-11 pr-4 py-2.5 w-full sm:w-48 outline-none focus:border-[#a3e635]/50 transition-all text-sm text-white"
+                                className="bg-zinc-800/80 border border-zinc-700/80 rounded-xl pl-11 pr-4 py-2.5 w-full sm:w-48 outline-none focus:border-amber-500/50 transition-all text-sm text-white"
                               />
                             </div>
 
@@ -4018,7 +4303,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               <select
                                 value={filter}
                                 onChange={(e) => setFilter(e.target.value)}
-                                className="bg-zinc-800/80 border border-zinc-700/80 rounded-xl pl-11 pr-8 py-2.5 outline-none focus:border-[#a3e635]/50 transition-all text-sm appearance-none cursor-pointer w-full sm:w-auto text-white"
+                                className="bg-zinc-800/80 border border-zinc-700/80 rounded-xl pl-11 pr-8 py-2.5 outline-none focus:border-amber-500/50 transition-all text-sm appearance-none cursor-pointer w-full sm:w-auto text-white"
                               >
                                 <option>Todos</option>
                                 <option>Disponíveis</option>
@@ -4149,7 +4434,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                   name: e.target.value,
                                 })
                               }
-                              className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-2xl pl-12 pr-4 py-4 outline-none focus:border-[#a3e635]/50 focus:bg-zinc-800 transition-all text-lg"
+                              className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-2xl pl-12 pr-4 py-4 outline-none focus:border-amber-500/50 focus:bg-zinc-800 transition-all text-lg"
                               placeholder="Ex: João da Silva"
                             />
                           </div>
@@ -4181,7 +4466,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                 setUserData({ ...userData, phone: v });
                               }}
                               maxLength={15}
-                              className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-2xl pl-12 pr-4 py-4 outline-none focus:border-[#a3e635]/50 focus:bg-zinc-800 transition-all text-lg"
+                              className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-2xl pl-12 pr-4 py-4 outline-none focus:border-amber-500/50 focus:bg-zinc-800 transition-all text-lg"
                               placeholder="(11) 99999-9999"
                             />
                           </div>
@@ -4201,7 +4486,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                           isGeneratingPayment
                         }
                         onClick={handleCreateMercadoPagoPayment}
-                        className="w-full bg-[#a3e635] hover:bg-[#bef264] disabled:opacity-50 disabled:cursor-not-allowed text-black font-black py-5 rounded-2xl text-xl transition-all shadow-xl shadow-[#a3e635]/20 active:scale-[0.98] mt-4 flex items-center justify-center gap-2 cursor-pointer"
+                        className="w-full bg-amber-500 hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed text-black font-black py-5 rounded-2xl text-xl transition-all shadow-xl shadow-amber-500/20 active:scale-[0.98] mt-4 flex items-center justify-center gap-2 cursor-pointer"
                       >
                         {isGeneratingPayment ? (
                           <>
@@ -4239,21 +4524,21 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                             <h2 className="text-2xl sm:text-3xl font-black text-white">
                               Pagamento Pix
                             </h2>
-                            <span className="text-[#a3e635] text-xs font-bold uppercase tracking-widest mt-1">
+                            <span className="text-amber-400 text-xs font-bold uppercase tracking-widest mt-1">
                               Mercado Pago Pix Automatizado
                             </span>
                           </div>
-                          <div className="flex items-center self-start sm:self-auto gap-2 bg-[#a3e635]/10 text-[#a3e635] text-[10px] px-3.5 py-2 rounded-full font-black border border-[#a3e635]/20 animate-pulse shrink-0">
+                          <div className="flex items-center self-start sm:self-auto gap-2 bg-amber-500/10 text-amber-400 text-[10px] px-3.5 py-2 rounded-full font-black border border-amber-500/20 animate-pulse shrink-0">
                             <Clock className="w-3.5 h-3.5" />
                             RESERVA ATIVA: {formatTime(timerInSeconds)}
                           </div>
                         </div>
 
                         {isSelectionChanged && !isGeneratingPayment && (
-                          <div className="bg-[#a3e635]/10 border border-[#a3e635]/20 text-[#a3e635] rounded-2xl p-4 mb-6 flex items-start gap-3 animate-pulse">
+                          <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-2xl p-4 mb-6 flex items-start gap-3 animate-pulse">
                             <RefreshCw className="w-5 h-5 animate-spin shrink-0 mt-0.5" />
                             <div className="space-y-1">
-                              <p className="font-extrabold text-xs sm:text-sm text-[#bef264]">
+                              <p className="font-extrabold text-xs sm:text-sm text-amber-300">
                                 Alteração detectada no carrinho!
                               </p>
                               <p className="text-zinc-400 text-[11px] sm:text-xs leading-relaxed font-semibold">
@@ -4266,7 +4551,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-3xl p-4 sm:p-8 mb-6 flex flex-col items-center justify-center relative group w-full max-w-full overflow-hidden">
                           {isGeneratingPayment && (
                             <div className="absolute inset-0 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 z-20 space-y-4">
-                              <RefreshCw className="w-10 h-10 text-[#a3e635] animate-spin" />
+                              <RefreshCw className="w-10 h-10 text-amber-400 animate-spin" />
                               <p className="text-white font-black text-base sm:text-lg">
                                 Atualizando seu Pix...
                               </p>
@@ -4309,7 +4594,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
                                 Status da Reserva
                               </span>
-                              <span className="self-start sm:self-auto bg-[#a3e635]/10 text-[#a3e635] border border-[#a3e635]/20 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider animate-pulse whitespace-nowrap">
+                              <span className="self-start sm:self-auto bg-amber-500/10 text-amber-400 border border-amber-500/20 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider animate-pulse whitespace-nowrap">
                                 Aguardando Pagamento Pix
                               </span>
                             </div>
@@ -4317,7 +4602,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               <span className="text-xs text-zinc-500 uppercase font-black tracking-wider shrink-0">
                                 Código Reserva
                               </span>
-                              <span className="text-xs font-mono font-black text-[#a3e635] truncate min-w-0 max-w-[120px] xs:max-w-[160px] sm:max-w-none text-right">
+                              <span className="text-xs font-mono font-black text-amber-400 truncate min-w-0 max-w-[120px] xs:max-w-[160px] sm:max-w-none text-right">
                                 {mpPaymentInfo?.orderId}
                               </span>
                             </div>
@@ -4497,7 +4782,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                 }}
                                 className={`
                                   w-full py-4 rounded-xl text-xs font-black transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg h-12 uppercase tracking-wider select-none shrink-0 cursor-pointer
-                                  ${isCopied ? "bg-emerald-500 text-black shadow-emerald-500/10" : "bg-[#a3e635] hover:bg-[#bef264] text-black shadow-lg shadow-[#a3e635]/20"}
+                                  ${isCopied ? "bg-emerald-500 text-black shadow-emerald-500/10" : "bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-500/20"}
                                 `}
                               >
                                 {isCopied ? (
@@ -5933,7 +6218,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
               <div className="space-y-4 max-w-sm">
                 <div className="flex items-center gap-2">
                   <h4 className="text-xl font-bold text-white tracking-tight">
-                    Rifa<span className="text-[#a3e635] font-black">Master</span>
+                    Rifa<span className="text-amber-400 font-black">Master</span>
                   </h4>
                 </div>
                 <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider">
@@ -5946,7 +6231,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
               <div className="flex flex-wrap gap-x-12 gap-y-6">
                 <div className="space-y-3.5">
-                  <h5 className="text-[10px] font-black text-[#a3e635] uppercase tracking-widest">Navegação</h5>
+                  <h5 className="text-[10px] font-black text-amber-400 uppercase tracking-widest">Navegação</h5>
                   <ul className="space-y-2 text-xs font-bold text-zinc-400">
                     <li>
                       <button
@@ -5992,7 +6277,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                 </div>
 
                 <div className="space-y-3.5">
-                  <h5 className="text-[10px] font-black text-[#a3e635] uppercase tracking-widest">Legal & Suporte</h5>
+                  <h5 className="text-[10px] font-black text-amber-400 uppercase tracking-widest">Legal & Suporte</h5>
                   <ul className="space-y-2 text-xs font-bold text-zinc-400">
                     <li>
                       <button
@@ -6027,7 +6312,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                           const waLink = `https://wa.me/55${cleanPhone}?text=Ol%C3%A1%2C%20tenho%20d%C3%BAvidas%20sobre%20as%20rifas!`;
                           window.open(waLink, "_blank");
                         }}
-                        className="hover:text-[#a3e635] transition-colors cursor-pointer text-left flex items-center gap-1"
+                        className="hover:text-amber-400 transition-colors cursor-pointer text-left flex items-center gap-1"
                       >
                         <MessageCircle className="w-3.5 h-3.5" />
                         <span>Suporte WhatsApp</span>
@@ -6040,13 +6325,13 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
             <div className="max-w-7xl mx-auto pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-zinc-500 text-[10px] sm:text-xs font-semibold tracking-wider uppercase">
               <span className="tracking-[0.15em]">&copy; 2026 RIFA MASTER • TODOS OS DIREITOS RESERVADOS</span>
-              <span className="tracking-widest text-[#a3e635]/50">
+              <span className="tracking-widest text-amber-500/50">
                 Desenvolvido por{" "}
                 <a
                   href="https://www.instagram.com/lucaspescadoresportivo?igsh=MWhrcGo4c2tnbjBwZA%3D%3D&utm_source=qr"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[#a3e635] hover:text-[#bef264] font-black transition-colors duration-300 cursor-pointer pb-0.5 normal-case tracking-normal hover:underline"
+                  className="text-amber-400 hover:text-amber-300 font-black transition-colors duration-300 cursor-pointer pb-0.5 normal-case tracking-normal hover:underline"
                 >
                   Lucas Gomes
                 </a>
@@ -6077,7 +6362,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                 >
                   {/* Header */}
                   <div className="p-6 border-b border-zinc-900 flex justify-between items-center bg-zinc-950/40">
-                    <h3 className="text-sm font-black text-[#a3e635] uppercase tracking-wider">
+                    <h3 className="text-sm font-black text-amber-400 uppercase tracking-wider">
                       {infoModalContent.title}
                     </h3>
                     <button
@@ -6100,7 +6385,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                   <div className="p-4 border-t border-zinc-900 bg-zinc-950/40 flex justify-end">
                     <button
                       onClick={() => setInfoModalContent(null)}
-                      className="bg-[#a3e635] hover:bg-[#bef264] text-black font-extrabold uppercase text-xs px-5 py-2.5 rounded-xl transition-all cursor-pointer"
+                      className="bg-amber-500 hover:bg-amber-400 text-black font-extrabold uppercase text-xs px-5 py-2.5 rounded-xl transition-all cursor-pointer"
                     >
                       Entendi
                     </button>
@@ -6405,6 +6690,287 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                   className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-400 font-bold py-3 rounded-xl transition-all active:scale-95 text-sm hover:text-white"
                 >
                   Desistir da compra
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* AUDIT INFORMATION MODAL */}
+      <AnimatePresence>
+        {isAuditModalOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/85 backdrop-blur-md z-[230] flex items-center justify-center p-4 overflow-y-auto"
+            onClick={() => setIsAuditModalOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#0D0D0D] border border-zinc-800 rounded-3xl p-6 sm:p-8 max-w-2xl w-full shadow-2xl space-y-6 relative max-h-[90vh] overflow-y-auto custom-scrollbar"
+            >
+              {/* Close Button */}
+              <button
+                onClick={() => setIsAuditModalOpen(false)}
+                className="absolute top-5 right-5 w-9 h-9 rounded-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-white flex items-center justify-center transition-all cursor-pointer z-10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {/* Header */}
+              <div className="flex items-start gap-4 pr-8">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0 shadow-[0_0_20px_rgba(245,158,11,0.15)]">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-black uppercase tracking-wider mb-1">
+                    <Lock className="w-3 h-3" />
+                    <span>Provably Fair & Transparência Criptográfica</span>
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight">
+                    Como Funciona Nossa Auditoria
+                  </h3>
+                </div>
+              </div>
+
+              {/* Intro Banner */}
+              <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-2xl space-y-2">
+                <p className="text-zinc-300 text-xs sm:text-sm leading-relaxed">
+                  No <strong>RifaMaster</strong>, os sorteios não dependem de sorteios manuais ou de sistemas ocultos. Cada resultado é gerado por um algoritmo <strong>100% determinístico e auditável</strong> por qualquer pessoa.
+                </p>
+              </div>
+
+              {/* Steps Breakdown */}
+              <div className="space-y-4">
+                <h4 className="text-xs font-black text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                  <span>Os 4 Pilares da Auditoria</span>
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Pillar 1 */}
+                  <div className="bg-zinc-900/60 border border-zinc-850 p-4 rounded-2xl space-y-1.5">
+                    <div className="text-amber-400 font-black text-xs uppercase flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center text-[10px]">1</span>
+                      <span>Commitment Pré-Vendas</span>
+                    </div>
+                    <p className="text-zinc-400 text-[11px] leading-relaxed">
+                      Antes de abrir as vendas, publicamos o HASH (SHA-256) da semente secreta. Isso impede que o resultado seja alterado posteriormente.
+                    </p>
+                  </div>
+
+                  {/* Pillar 2 */}
+                  <div className="bg-zinc-900/60 border border-zinc-850 p-4 rounded-2xl space-y-1.5">
+                    <div className="text-amber-400 font-black text-xs uppercase flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center text-[10px]">2</span>
+                      <span>Fisher-Yates Shuffle</span>
+                    </div>
+                    <p className="text-zinc-400 text-[11px] leading-relaxed">
+                      Utilizamos a semente para inicializar o consagrado algoritmo de embaralhamento criptográfico Fisher-Yates, garantindo chances idênticas a todos os bilhetes.
+                    </p>
+                  </div>
+
+                  {/* Pillar 3 */}
+                  <div className="bg-zinc-900/60 border border-zinc-850 p-4 rounded-2xl space-y-1.5">
+                    <div className="text-amber-400 font-black text-xs uppercase flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center text-[10px]">3</span>
+                      <span>Verificação Aberta</span>
+                    </div>
+                    <p className="text-zinc-400 text-[11px] leading-relaxed">
+                      Após o encerramento, o Seed é revelado. Qualquer participante pode copiar os dados e re-executar a auditoria na nossa página ou localmente no seu computador.
+                    </p>
+                  </div>
+
+                  {/* Pillar 4 */}
+                  <div className="bg-zinc-900/60 border border-zinc-850 p-4 rounded-2xl space-y-1.5">
+                    <div className="text-amber-400 font-black text-xs uppercase flex items-center gap-1.5">
+                      <span className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center text-[10px]">4</span>
+                      <span>Loteria Federal</span>
+                    </div>
+                    <p className="text-zinc-400 text-[11px] leading-relaxed">
+                      Para campanhas vinculadas à Loteria Federal, os números são extraídos diretamente do resultado oficial divulgado pela Caixa Econômica Federal.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Terminal Code Example */}
+              <div className="bg-zinc-950 border border-zinc-850 p-3.5 rounded-2xl font-mono text-[10px] text-zinc-400 space-y-1">
+                <div className="text-zinc-500">// Fórmula de Validação Pública (Hash Determinístico)</div>
+                <div className="text-amber-400 font-bold">result = FisherYates(seed, totalTickets)</div>
+                <div className="text-zinc-500">SHA256(seed) == HashPublicadoAntesDoSorteio</div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    setIsAuditModalOpen(false);
+                    window.history.pushState({}, "", "/auditoria");
+                    setCurrentPath("/auditoria");
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                  className="w-full sm:w-auto flex-1 bg-amber-500 hover:bg-amber-400 text-black font-black uppercase text-xs tracking-wider py-3.5 px-6 rounded-xl transition-all shadow-lg shadow-amber-500/15 flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Acessar Painel Completo de Auditoria</span>
+                </button>
+                <button
+                  onClick={() => setIsAuditModalOpen(false)}
+                  className="w-full sm:w-auto bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white font-bold text-xs uppercase py-3.5 px-6 rounded-xl transition-all border border-zinc-800 cursor-pointer active:scale-95"
+                >
+                  Fechar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* WINNER DETAILS MODAL */}
+      <AnimatePresence>
+        {selectedWinnerModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/85 backdrop-blur-md z-[230] flex items-center justify-center p-4 overflow-y-auto"
+            onClick={() => setSelectedWinnerModal(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#0D0D0D] border border-zinc-800 rounded-3xl overflow-hidden max-w-lg w-full shadow-2xl relative max-h-[90vh] flex flex-col"
+            >
+              {/* Header Image Banner */}
+              <div className="relative h-56 w-full bg-zinc-950 shrink-0">
+                {selectedWinnerModal.prizeImageUrl ? (
+                  <img
+                    src={selectedWinnerModal.prizeImageUrl}
+                    alt={selectedWinnerModal.prizeTitle}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-zinc-900 text-zinc-700">
+                    <Trophy className="w-16 h-16 text-amber-500/40" />
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-[#0D0D0D] via-black/30 to-transparent" />
+
+                {/* Close Button */}
+                <button
+                  onClick={() => setSelectedWinnerModal(null)}
+                  className="absolute top-4 right-4 w-9 h-9 rounded-full bg-black/70 hover:bg-black border border-white/20 text-white flex items-center justify-center transition-all cursor-pointer z-10"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+
+                {/* Winning Badge */}
+                <div className="absolute top-4 left-4 z-10 bg-amber-500 text-black text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full shadow-xl flex items-center gap-1.5">
+                  <Trophy className="w-3.5 h-3.5 fill-black" />
+                  <span>Contemplado Oficial</span>
+                </div>
+
+                <div className="absolute bottom-4 left-4 right-4 z-10">
+                  <span className="text-zinc-400 text-[10px] uppercase font-bold tracking-widest block mb-0.5">
+                    Prêmio Sorteado
+                  </span>
+                  <h3 className="text-xl font-black text-white leading-tight uppercase truncate">
+                    {selectedWinnerModal.prizeTitle}
+                  </h3>
+                </div>
+              </div>
+
+              {/* Modal Content Body */}
+              <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar flex-1">
+                {/* Winner Info Box */}
+                <div className="bg-zinc-950 border border-zinc-850 p-4 rounded-2xl flex items-center gap-4">
+                  {selectedWinnerModal.winnerImageUrl ? (
+                    <img
+                      src={selectedWinnerModal.winnerImageUrl}
+                      alt={selectedWinnerModal.winnerName}
+                      referrerPolicy="no-referrer"
+                      className="w-14 h-14 rounded-full object-cover border-2 border-amber-500 shrink-0 shadow-lg"
+                    />
+                  ) : (
+                    <div className="w-14 h-14 rounded-full bg-amber-500/10 border-2 border-amber-500 text-amber-400 flex items-center justify-center font-black text-xl shrink-0">
+                      🏆
+                    </div>
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[10px] text-amber-400 font-extrabold uppercase tracking-widest block mb-0.5">
+                      Ganhador(a) do Sorteio
+                    </span>
+                    <h4 className="text-lg font-black text-white uppercase truncate">
+                      {selectedWinnerModal.winnerName || "Ganhador Anônimo"}
+                    </h4>
+                    <p className="text-xs text-zinc-400 font-bold uppercase truncate">
+                      📍 {selectedWinnerModal.city ? `${selectedWinnerModal.city}${selectedWinnerModal.state ? ` - ${selectedWinnerModal.state}` : ''}` : "Brasil"}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Draw Metrics Grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-zinc-900/70 border border-zinc-850 p-3.5 rounded-2xl text-center">
+                    <span className="text-zinc-500 text-[10px] font-extrabold uppercase tracking-widest block mb-1">
+                      Cota Sorteada
+                    </span>
+                    <span className="text-2xl font-mono font-black text-amber-400">
+                      Nº {selectedWinnerModal.winnerNumber || "---"}
+                    </span>
+                  </div>
+
+                  <div className="bg-zinc-900/70 border border-zinc-850 p-3.5 rounded-2xl text-center">
+                    <span className="text-zinc-500 text-[10px] font-extrabold uppercase tracking-widest block mb-1">
+                      Data da Apuração
+                    </span>
+                    <span className="text-xs font-black text-white uppercase block mt-1">
+                      📅 {selectedWinnerModal.drawDate || "Recentemente"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Description if available */}
+                {selectedWinnerModal.prizeDescription && (
+                  <div className="space-y-1">
+                    <span className="text-zinc-500 text-[10px] font-extrabold uppercase tracking-widest">
+                      Sobre o Prêmio
+                    </span>
+                    <p className="text-zinc-300 text-xs leading-relaxed bg-zinc-950 p-3 rounded-xl border border-zinc-900">
+                      {selectedWinnerModal.prizeDescription}
+                    </p>
+                  </div>
+                )}
+
+                {/* Share Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (navigator.share) {
+                      navigator.share({
+                        title: `Ganhador: ${selectedWinnerModal.winnerName}`,
+                        text: `Confira o ganhador do prêmio ${selectedWinnerModal.prizeTitle} na cota nº ${selectedWinnerModal.winnerNumber}!`,
+                        url: window.location.href,
+                      }).catch(() => {});
+                    } else {
+                      navigator.clipboard.writeText(window.location.href);
+                      alert("Link copiado para a área de transferência!");
+                    }
+                  }}
+                  className="w-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white font-black text-xs uppercase tracking-wider py-3 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Share2 className="w-4 h-4 text-amber-400" />
+                  <span>Compartilhar Resultado</span>
                 </button>
               </div>
             </motion.div>

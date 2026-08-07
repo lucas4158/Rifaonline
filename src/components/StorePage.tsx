@@ -157,7 +157,7 @@ export const StorePage: React.FC<StorePageProps> = ({ currentPath = "/loja", set
   };
 
   return (
-    <div className="min-h-screen bg-[#0B0F0C] text-white pb-32 pt-8 font-inter">
+    <div className="min-h-screen bg-zinc-950 text-white pb-32 pt-8 font-inter">
       
       <main className="max-w-7xl mx-auto px-4 py-8 space-y-10">
         
@@ -172,7 +172,7 @@ export const StorePage: React.FC<StorePageProps> = ({ currentPath = "/loja", set
                 placeholder="Buscar equipamentos, marcas, varas, iscas..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-[#111513] border border-[#1A1F1B] rounded-xl pl-10 pr-4 py-3 text-xs text-white placeholder-zinc-500 outline-none focus:border-[#A3E635] transition-all shadow-inner"
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl pl-10 pr-4 py-3 text-xs text-white placeholder-zinc-500 outline-none focus:border-amber-500 transition-all shadow-inner"
               />
               {searchTerm && (
                 <button
@@ -186,7 +186,7 @@ export const StorePage: React.FC<StorePageProps> = ({ currentPath = "/loja", set
 
             {/* Total Results Count */}
             <div className="text-xs text-zinc-400 font-bold flex items-center gap-2">
-              <Package className="w-4 h-4 text-[#A3E635]" />
+              <Package className="w-4 h-4 text-amber-400" />
               <span>
                 Mostrando <strong className="text-white font-bebas tracking-wide">{filteredProducts.length}</strong> produtos
               </span>
@@ -199,8 +199,8 @@ export const StorePage: React.FC<StorePageProps> = ({ currentPath = "/loja", set
               onClick={() => setSelectedCategory("Todos")}
               className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                 selectedCategory === "Todos"
-                  ? "bg-[#A3E635] text-black shadow-md shadow-[#A3E635]/20 font-bebas"
-                  : "bg-[#111513] text-zinc-400 hover:text-white border border-[#1A1F1B]"
+                  ? "bg-amber-500 text-black shadow-md shadow-amber-500/20 font-bebas"
+                  : "bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800"
               }`}
             >
               🔥 Todos
@@ -212,8 +212,8 @@ export const StorePage: React.FC<StorePageProps> = ({ currentPath = "/loja", set
                 onClick={() => setSelectedCategory(cat)}
                 className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                   selectedCategory === cat
-                    ? "bg-[#A3E635] text-black shadow-md shadow-[#A3E635]/20 font-bebas"
-                    : "bg-[#111513] text-zinc-400 hover:text-white border border-[#1A1F1B]"
+                    ? "bg-amber-500 text-black shadow-md shadow-amber-500/20 font-bebas"
+                    : "bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800"
                 }`}
               >
                 {cat}
@@ -225,9 +225,9 @@ export const StorePage: React.FC<StorePageProps> = ({ currentPath = "/loja", set
         {/* HIGHLIGHTED SECTION IF ON "TODOS" CATEGORY AND NO SEARCH */}
         {selectedCategory === "Todos" && !searchTerm && highlightProducts.length > 0 && (
           <section className="space-y-4">
-            <div className="flex items-center justify-between border-b border-[#1A1F1B] pb-3">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-[#F5C542]" />
+                <Sparkles className="w-5 h-5 text-amber-400" />
                 <h2 className="text-lg font-black uppercase tracking-tight font-bebas text-white">
                   Destaques da Semana
                 </h2>
@@ -249,24 +249,24 @@ export const StorePage: React.FC<StorePageProps> = ({ currentPath = "/loja", set
 
         {/* MAIN PRODUCT GRID */}
         <section className="space-y-4">
-          <div className="flex items-center justify-between border-b border-[#1A1F1B] pb-3">
+          <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
             <h2 className="text-lg font-black uppercase tracking-tight font-bebas text-white flex items-center gap-2">
               <span>Vitrine de Equipamentos</span>
               {selectedCategory !== "Todos" && (
-                <span className="text-[#A3E635] text-sm">({selectedCategory})</span>
+                <span className="text-amber-400 text-sm">({selectedCategory})</span>
               )}
             </h2>
           </div>
 
           {loading ? (
             <div className="py-20 flex flex-col items-center justify-center text-center space-y-4">
-              <RefreshCw className="w-8 h-8 text-[#A3E635] animate-spin" />
+              <RefreshCw className="w-8 h-8 text-amber-400 animate-spin" />
               <p className="text-xs text-zinc-500 font-black uppercase tracking-widest animate-pulse font-bebas">
                 Carregando catálogo da Loja Premium...
               </p>
             </div>
           ) : filteredProducts.length === 0 ? (
-            <div className="py-16 bg-[#111513] border border-[#1A1F1B] rounded-3xl text-center p-8 space-y-3">
+            <div className="py-16 bg-zinc-900 border border-zinc-800 rounded-3xl text-center p-8 space-y-3">
               <Compass className="w-10 h-10 text-zinc-600 mx-auto" />
               <h3 className="text-base font-black uppercase text-white font-bebas">
                 Nenhum produto encontrado
@@ -279,7 +279,7 @@ export const StorePage: React.FC<StorePageProps> = ({ currentPath = "/loja", set
                   setSelectedCategory("Todos");
                   setSearchTerm("");
                 }}
-                className="px-5 py-2.5 bg-[#A3E635] text-black font-black text-xs uppercase rounded-xl cursor-pointer font-bebas"
+                className="px-5 py-2.5 bg-amber-500 text-black font-black text-xs uppercase rounded-xl cursor-pointer font-bebas"
               >
                 Ver Todos os Produtos
               </button>
@@ -300,9 +300,9 @@ export const StorePage: React.FC<StorePageProps> = ({ currentPath = "/loja", set
 
         {/* PROMOTIONS BANNER CALLOUT */}
         {promoProducts.length > 0 && (
-          <section className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-[#111513] via-[#1A1F1B] to-[#111513] border border-[#A3E635]/30 p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-2xl">
+          <section className="relative rounded-3xl overflow-hidden bg-gradient-to-r from-zinc-900 via-zinc-900/80 to-zinc-900 border border-amber-500/30 p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-2xl">
             <div className="space-y-2 text-center sm:text-left">
-              <span className="px-3 py-1 bg-[#A3E635]/15 border border-[#A3E635]/30 text-[#F5C542] text-[10px] font-black uppercase tracking-widest rounded-full inline-block font-bebas">
+              <span className="px-3 py-1 bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px] font-black uppercase tracking-widest rounded-full inline-block font-bebas">
                 🔥 Ofertas Especiais
               </span>
               <h3 className="text-2xl sm:text-3xl font-black uppercase text-white font-bebas">
@@ -318,7 +318,7 @@ export const StorePage: React.FC<StorePageProps> = ({ currentPath = "/loja", set
                 setSelectedCategory("Promoções");
                 setSearchTerm("");
               }}
-              className="px-6 py-3.5 bg-[#A3E635] hover:bg-[#bef264] text-black font-black text-xs uppercase tracking-widest rounded-2xl shadow-xl shadow-[#A3E635]/15 transition-all active:scale-95 cursor-pointer shrink-0 font-bebas flex items-center gap-2"
+              className="px-6 py-3.5 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase tracking-widest rounded-2xl shadow-xl shadow-amber-500/15 transition-all active:scale-95 cursor-pointer shrink-0 font-bebas flex items-center gap-2"
             >
               <span>Ver Promoções</span>
               <ChevronRight className="w-4 h-4" />

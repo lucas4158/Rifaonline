@@ -4302,7 +4302,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex flex-col justify-between">
                 <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Total de Clientes</span>
-                <span className="text-xl font-black text-lime-400 font-mono mt-1">{aggregatedCustomers.length}</span>
+                <span className="text-xl font-black text-amber-400 font-mono mt-1">{aggregatedCustomers.length}</span>
               </div>
               <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex flex-col justify-between">
                 <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Maior Comprador</span>
@@ -4337,7 +4337,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   placeholder="Buscar cliente por nome ou WhatsApp..."
                   value={customerSearch}
                   onChange={(e) => setCustomerSearch(e.target.value)}
-                  className="w-full bg-black border border-zinc-800 rounded-xl pl-10 pr-3 py-2 text-xs text-white outline-none focus:border-lime-400"
+                  className="w-full bg-black border border-zinc-800 rounded-xl pl-10 pr-3 py-2 text-xs text-white outline-none focus:border-amber-400"
                 />
               </div>
 
@@ -4346,7 +4346,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 <select
                   value={customerSort}
                   onChange={(e) => setCustomerSort(e.target.value as any)}
-                  className="bg-black border border-zinc-800 text-lime-400 text-xs font-bold rounded-xl px-3 py-2 outline-none cursor-pointer"
+                  className="bg-black border border-zinc-800 text-amber-400 text-xs font-bold rounded-xl px-3 py-2 outline-none cursor-pointer"
                 >
                   <option value="spent">Maior Valor Gasto (R$)</option>
                   <option value="cotas">Maior Qtd. de Cotas</option>
@@ -4414,7 +4414,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                             <td className="p-3.5 text-center font-mono font-bold text-amber-400">
                               {cust.totalCotas} cotas
                             </td>
-                            <td className="p-3.5 text-right font-mono font-black text-lime-400">
+                            <td className="p-3.5 text-right font-mono font-black text-amber-400">
                               R$ {cust.totalSpent.toFixed(2).replace(".", ",")}
                             </td>
                             <td className="p-3.5 text-right font-mono font-bold text-zinc-400">
@@ -4423,7 +4423,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                             <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
                               <button
                                 onClick={() => setSelectedCustomerDetail(cust)}
-                                className="px-3 py-1 bg-zinc-900 hover:bg-lime-400 hover:text-black border border-zinc-800 text-zinc-300 rounded-lg text-[10px] font-black uppercase transition-all cursor-pointer"
+                                className="px-3 py-1 bg-zinc-900 hover:bg-amber-500 hover:text-black border border-zinc-800 text-zinc-300 rounded-lg text-[10px] font-black uppercase transition-all cursor-pointer"
                               >
                                 Detalhes
                               </button>
@@ -4443,7 +4443,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 <div className="bg-zinc-950 border border-zinc-800 w-full max-w-2xl rounded-[2.5rem] p-6 sm:p-8 space-y-6 shadow-2xl relative">
                   <div className="flex justify-between items-start border-b border-zinc-900 pb-4">
                     <div>
-                      <span className="text-[10px] font-black uppercase text-lime-400 tracking-widest">Relatório de Cliente</span>
+                      <span className="text-[10px] font-black uppercase text-amber-400 tracking-widest">Relatório de Cliente</span>
                       <h3 className="text-xl font-black text-white uppercase mt-0.5">{selectedCustomerDetail.name}</h3>
                       <p className="text-xs text-zinc-400 font-mono mt-1 flex items-center gap-2">
                         <span>📱 WhatsApp: {selectedCustomerDetail.phone}</span>
@@ -4468,7 +4468,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-black p-4 rounded-2xl border border-zinc-900">
                     <div>
                       <span className="text-[9px] font-black uppercase text-zinc-500 block">Total Gasto</span>
-                      <span className="text-sm font-black text-lime-400 font-mono">R$ {selectedCustomerDetail.totalSpent.toFixed(2).replace(".", ",")}</span>
+                      <span className="text-sm font-black text-amber-400 font-mono">R$ {selectedCustomerDetail.totalSpent.toFixed(2).replace(".", ",")}</span>
                     </div>
                     <div>
                       <span className="text-[9px] font-black uppercase text-zinc-500 block">Total Cotas</span>
@@ -4502,7 +4502,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                               </div>
                             </div>
                             <div className="text-right shrink-0">
-                              <div className="font-mono font-black text-lime-400">R$ {Number(ord.val || 0).toFixed(2)}</div>
+                              <div className="font-mono font-black text-amber-400">R$ {Number(ord.val || 0).toFixed(2)}</div>
                               <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md inline-block mt-1 ${
                                 isPaid ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : isPending ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" : "bg-red-500/10 text-red-400 border border-red-500/20"
                               }`}>

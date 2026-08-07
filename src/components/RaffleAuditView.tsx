@@ -335,7 +335,7 @@ export default function RaffleAuditView({
           Auditoria Pública Criptográfica
         </div>
         <h2 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white leading-tight">
-          Transparência <span className="text-[#a3e635]">Matemática</span>
+          Transparência <span className="text-amber-400">Matemática</span>
         </h2>
         <p className="text-zinc-400 text-xs sm:text-sm max-w-xl mx-auto leading-relaxed">
           Nesta área você pode auditar e reproduzir qualquer sorteio da RifaMaster. Verifique se o seed não foi alterado, garanta que os participantes são imutáveis e confirme o vencedor.
@@ -344,7 +344,7 @@ export default function RaffleAuditView({
 
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 bg-zinc-950 border border-zinc-900 rounded-3xl">
-          <RefreshCw className="w-8 h-8 text-[#a3e635] animate-spin mb-4" />
+          <RefreshCw className="w-8 h-8 text-amber-400 animate-spin mb-4" />
           <p className="text-zinc-400 text-xs font-bold uppercase tracking-wider">Carregando dados de sorteio...</p>
         </div>
       ) : (
@@ -370,12 +370,12 @@ export default function RaffleAuditView({
                       }}
                       className={`w-full text-left p-4 rounded-2xl border transition-all relative overflow-hidden group ${
                         isSelected 
-                          ? "bg-zinc-900/60 border-[#a3e635]/50 shadow-md shadow-[#a3e635]/5" 
+                          ? "bg-zinc-900/60 border-amber-500/50 shadow-md shadow-amber-500/5" 
                           : "bg-zinc-950 border-zinc-900 hover:border-zinc-800"
                       }`}
                     >
                       <div className="flex justify-between items-start gap-2 mb-1.5">
-                        <span className="text-xs font-bold text-white line-clamp-1 group-hover:text-[#a3e635] transition-colors">
+                        <span className="text-xs font-bold text-white line-clamp-1 group-hover:text-amber-400 transition-colors">
                           {r.title}
                         </span>
                         <ChevronRight className="w-4 h-4 text-zinc-600 shrink-0 group-hover:translate-x-0.5 transition-transform" />
@@ -442,7 +442,7 @@ export default function RaffleAuditView({
 
                   {/* Vencedor Publicado */}
                   <div className="bg-zinc-900/30 border border-zinc-900/50 p-4 rounded-2xl text-left space-y-1">
-                    <span className="text-[9px] uppercase tracking-wider font-extrabold text-[#a3e635] block">Vencedor Publicado</span>
+                    <span className="text-[9px] uppercase tracking-wider font-extrabold text-amber-400 block">Vencedor Publicado</span>
                     <span className="text-xs font-black text-white">
                       {selectedRaffle.winnerNumber 
                         ? `Cota #${selectedRaffle.winnerNumber} (${selectedRaffle.winnerName || "N/A"})` 
@@ -499,7 +499,7 @@ export default function RaffleAuditView({
                   <button
                     onClick={handleVerify}
                     disabled={verifying}
-                    className="w-full py-4 bg-gradient-to-r from-[#a3e635] to-[#bef264] hover:from-[#bef264] hover:to-[#d9f99d] text-black font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg shadow-[#a3e635]/15 transition-all flex items-center justify-center gap-2 active:scale-98 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full py-4 bg-[#D97706] hover:bg-[#B45309] text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg shadow-amber-500/15 transition-all flex items-center justify-center gap-2 active:scale-98 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {verifying ? (
                       <>

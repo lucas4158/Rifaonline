@@ -235,10 +235,10 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
   }, 0);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white relative flex flex-col items-center justify-start py-12 px-4 selection:bg-orange-500 selection:text-white">
+    <div className="min-h-screen bg-zinc-950 text-white relative flex flex-col items-center justify-start py-12 px-4 selection:bg-amber-500 selection:text-black">
       {/* Background premium performance glow effects */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_60%_at_50%_-10%,rgba(163,230,53,0.05),rgba(0,0,0,0))]" />
-      <div className="absolute top-1/3 left-1/4 w-96 h-96 bg-[#a3e635]/3 rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_60%_at_50%_-10%,rgba(245,158,11,0.05),rgba(0,0,0,0))]" />
+      <div className="absolute top-1/3 left-1/4 w-96 h-96 bg-amber-500/3 rounded-full blur-[140px] pointer-events-none" />
 
       <div className="w-full max-w-2xl space-y-8 relative z-10">
         
@@ -248,7 +248,7 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
             window.history.pushState({}, "", "/");
             setCurrentPath("/");
           }}
-          className="group flex items-center gap-2 text-zinc-500 hover:text-[#a3e635] transition-all text-xs font-black uppercase tracking-widest cursor-pointer outline-none"
+          className="group flex items-center gap-2 text-zinc-500 hover:text-amber-400 transition-all text-xs font-black uppercase tracking-widest cursor-pointer outline-none"
         >
           <ChevronLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
           Voltar para Home
@@ -257,14 +257,14 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
         {/* Title Presentation Block */}
         <div className="space-y-3 mt-2">
           <div className="flex items-center gap-3">
-            <div className="bg-gradient-to-tr from-[#84cc16] via-[#a3e635] to-[#bef264] p-2.5 rounded-2xl shadow-lg shadow-[#a3e635]/10">
+            <div className="bg-gradient-to-tr from-amber-600 via-amber-500 to-amber-400 p-2.5 rounded-2xl shadow-lg shadow-amber-500/10">
               <Compass className="w-6 h-6 text-black" />
             </div>
             <div>
-              <h1 className="text-3xl font-black uppercase tracking-tight bg-gradient-to-r from-zinc-100 via-zinc-300 to-[#a3e635] bg-clip-text text-transparent">
+              <h1 className="text-3xl font-black uppercase tracking-tight bg-gradient-to-r from-zinc-100 via-zinc-300 to-amber-400 bg-clip-text text-transparent">
                 {activeTab === "conta" ? "Minha Conta" : activeTab === "numeros" ? "Meus Números" : "Minhas Compras"}
               </h1>
-              <span className="text-[9px] bg-[#a3e635]/10 text-[#a3e635] border border-[#a3e635]/20 px-2.5 py-1 rounded-full font-black uppercase tracking-widest leading-none mt-1 inline-block">
+              <span className="text-[9px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-full font-black uppercase tracking-widest leading-none mt-1 inline-block">
                 Portal do Cliente
               </span>
             </div>
@@ -277,11 +277,11 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
         {/* 1. Phone search screen (If not identified or searched yet) */}
         {!searched && (
           <div className="bg-zinc-900/90 border border-zinc-800/80 rounded-[2rem] p-8 shadow-2xl relative overflow-hidden backdrop-blur-xl">
-            <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-[#a3e635]/40 to-transparent" />
+            <div className="absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r from-transparent via-amber-500/40 to-transparent" />
             
             <form onSubmit={handleSearchSubmit} className="space-y-6">
               <div className="space-y-2 text-center max-w-sm mx-auto">
-                <div className="w-12 h-12 rounded-2xl bg-zinc-950/80 border border-zinc-800 flex items-center justify-center mx-auto text-[#a3e635] mb-2">
+                <div className="w-12 h-12 rounded-2xl bg-zinc-950/80 border border-zinc-800 flex items-center justify-center mx-auto text-amber-400 mb-2">
                   <User className="w-5 h-5" />
                 </div>
                 <h2 className="text-base font-black uppercase tracking-wider text-zinc-100">Acessar com WhatsApp</h2>
@@ -299,12 +299,12 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
                     placeholder="(11) 99999-9999"
                     value={phone}
                     onChange={handlePhoneChange}
-                    className="w-full bg-black/60 border border-zinc-800/80 focus:border-[#a3e635]/60 rounded-2xl pl-5 pr-14 py-4 text-sm sm:text-base font-bold text-white placeholder-zinc-700 outline-none transition-all font-mono"
+                    className="w-full bg-black/60 border border-zinc-800/80 focus:border-amber-500/60 rounded-2xl pl-5 pr-14 py-4 text-sm sm:text-base font-bold text-white placeholder-zinc-700 outline-none transition-all font-mono"
                   />
                   <button
                     type="submit"
                     disabled={loading || !phone}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-3 bg-gradient-to-r from-[#84cc16] to-[#a3e635] hover:from-[#a3e635] hover:to-[#bef264] text-black rounded-xl cursor-pointer transition-all flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none active:scale-95 shadow-md shadow-[#a3e635]/10 font-bold"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-3 bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-black rounded-xl cursor-pointer transition-all flex items-center justify-center disabled:opacity-50 disabled:pointer-events-none active:scale-95 shadow-md shadow-amber-500/10 font-bold"
                     title="Buscar compras"
                   >
                     <Search className="w-5 h-5" />
@@ -318,7 +318,7 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
         {/* Loading and Results Area */}
         {loading && (
           <div className="flex flex-col items-center justify-center py-20 space-y-4 bg-zinc-900/40 border border-zinc-850 rounded-[2.5rem]">
-            <div className="w-10 h-10 rounded-full border-2 border-zinc-850 border-t-[#a3e635] animate-spin" />
+            <div className="w-10 h-10 rounded-full border-2 border-zinc-850 border-t-amber-500 animate-spin" />
             <span className="text-[10px] font-extrabold uppercase tracking-widest text-zinc-500 animate-pulse">
               Consultando banco de dados seguro...
             </span>
@@ -331,9 +331,9 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
             {/* User Session Bar */}
             <div className="bg-zinc-900/60 border border-zinc-850/80 rounded-2xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2.5">
-                <div className="w-2.5 h-2.5 rounded-full bg-[#a3e635] animate-pulse shrink-0" />
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
                 <span className="text-zinc-400 font-bold">Identificado como:</span>
-                <span className="font-bold font-mono text-[#a3e635] bg-[#a3e635]/5 border border-[#a3e635]/10 px-2 py-0.5 rounded-lg">{phone}</span>
+                <span className="font-bold font-mono text-amber-400 bg-amber-500/5 border border-amber-500/10 px-2 py-0.5 rounded-lg">{phone}</span>
               </div>
               <button
                 onClick={handleSignOut}
@@ -350,7 +350,7 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
                 onClick={() => handleTabChange("conta")}
                 className={`flex-1 flex items-center justify-center gap-2.5 py-3.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
                   activeTab === "conta" 
-                    ? "bg-zinc-900 text-[#a3e635] shadow-inner" 
+                    ? "bg-zinc-900 text-amber-400 shadow-inner" 
                     : "text-zinc-400 hover:bg-zinc-900/30 hover:text-white"
                 }`}
               >
@@ -362,7 +362,7 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
                 onClick={() => handleTabChange("compras")}
                 className={`flex-1 flex items-center justify-center gap-2.5 py-3.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
                   activeTab === "compras" 
-                    ? "bg-zinc-900 text-[#a3e635] shadow-inner" 
+                    ? "bg-zinc-900 text-amber-400 shadow-inner" 
                     : "text-zinc-400 hover:bg-zinc-900/30 hover:text-white"
                 }`}
               >
@@ -374,7 +374,7 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
                 onClick={() => handleTabChange("numeros")}
                 className={`flex-1 flex items-center justify-center gap-2.5 py-3.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
                   activeTab === "numeros" 
-                    ? "bg-zinc-900 text-[#a3e635] shadow-inner" 
+                    ? "bg-zinc-900 text-amber-400 shadow-inner" 
                     : "text-zinc-400 hover:bg-zinc-900/30 hover:text-white"
                 }`}
               >
@@ -397,16 +397,16 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
                 >
                   {/* Account Profile Details Card */}
                   <div className="bg-zinc-900 border border-zinc-800/80 rounded-[2rem] p-6 shadow-xl relative overflow-hidden">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#a3e635]/2 rounded-full blur-[40px] pointer-events-none" />
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/2 rounded-full blur-[40px] pointer-events-none" />
                     
                     <div className="flex items-center gap-4 border-b border-zinc-850 pb-5">
-                      <div className="w-14 h-14 rounded-2xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-center text-[#a3e635] font-black text-xl shadow-inner">
+                      <div className="w-14 h-14 rounded-2xl bg-zinc-950 border border-zinc-800/80 flex items-center justify-center text-amber-400 font-black text-xl shadow-inner">
                         {clientProfile.name.slice(0, 1).toUpperCase()}
                       </div>
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h2 className="text-base font-black uppercase tracking-wide text-zinc-100 truncate">{clientProfile.name}</h2>
-                          <span className="bg-[#a3e635]/10 text-[#a3e635] border border-[#a3e635]/20 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider">
+                          <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider">
                             {clientProfile.status}
                           </span>
                         </div>
@@ -448,7 +448,7 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
                     <div className="bg-zinc-900 border border-zinc-850/80 p-5 rounded-[1.5rem] shadow-lg flex flex-col justify-between">
                       <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">Cotas Adquiridas</span>
                       <div className="flex items-baseline gap-1 mt-3">
-                        <span className="text-2xl font-black text-[#a3e635]">{totalQuotasBought}</span>
+                        <span className="text-2xl font-black text-amber-400">{totalQuotasBought}</span>
                         <span className="text-[10px] text-zinc-500 font-bold">cotas</span>
                       </div>
                     </div>
@@ -467,7 +467,7 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
 
                   {/* Security Notice */}
                   <div className="bg-zinc-900/30 border border-zinc-850 p-4 rounded-xl flex items-start gap-3">
-                    <Activity className="w-4 h-4 text-[#a3e635] shrink-0 mt-0.5" />
+                    <Activity className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                     <p className="text-[11px] text-zinc-500 leading-relaxed font-semibold">
                       Seu portal do cliente é atualizado em tempo real. Qualquer transação Pix aprovada reflete instantaneamente neste painel sem a necessidade de atualizar a página.
                     </p>
@@ -515,10 +515,10 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
                           <div className="flex items-start justify-between gap-2 border-b border-zinc-850 pb-4">
                             <div className="space-y-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xs font-black text-orange-200 tracking-tight flex items-center gap-1.5 cursor-pointer hover:text-white" onClick={() => copyToClipboard(item.id, item.id)}>
+                                <span className="text-xs font-black text-amber-200 tracking-tight flex items-center gap-1.5 cursor-pointer hover:text-white" onClick={() => copyToClipboard(item.id, item.id)}>
                                   Pedido #{item.id.substring(0, 10).toUpperCase()}
                                   {copyState[item.id] ? (
-                                    <Check className="w-3 h-3 text-[#a3e635]" />
+                                    <Check className="w-3 h-3 text-amber-400" />
                                   ) : (
                                     <Copy className="w-3 h-3 text-zinc-500 hover:text-zinc-300" />
                                   )}
@@ -527,7 +527,7 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
                                   {formatDate(item?.createdAt)}
                                 </span>
                               </div>
-                              <h3 className="text-xs font-black text-[#a3e635] uppercase tracking-wide truncate mt-1">
+                              <h3 className="text-xs font-black text-amber-400 uppercase tracking-wide truncate mt-1">
                                 {raffleTitle}
                               </h3>
                             </div>
@@ -537,7 +537,7 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
                           {/* Highlights */}
                           <div className="flex items-center justify-between text-xs sm:text-sm bg-zinc-950/40 p-4 rounded-xl border border-zinc-850/60">
                             <div className="flex items-center gap-1.5 text-zinc-400 font-semibold">
-                              <Ticket className="w-4 h-4 text-orange-400 shrink-0" />
+                              <Ticket className="w-4 h-4 text-amber-400 shrink-0" />
                               <span>Quantidade de Cotas:</span>
                             </div>
                             <span className="font-extrabold text-zinc-200 font-mono">
@@ -549,7 +549,7 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
                           <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
                             <div className="flex items-baseline gap-1.5">
                               <span className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">Valor:</span>
-                              <span className="text-base font-black text-white font-mono bg-gradient-to-r from-zinc-100 via-zinc-200 to-[#a3e635] bg-clip-text text-transparent">
+                              <span className="text-base font-black text-white font-mono bg-gradient-to-r from-zinc-100 via-zinc-200 to-amber-400 bg-clip-text text-transparent">
                                 R$ {Number(item?.val ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                               </span>
                             </div>
@@ -587,14 +587,14 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
                                 {boughtList.length > 0 && (
                                   <div className="space-y-1.5">
                                     <span className="text-[9px] text-zinc-500 font-black uppercase tracking-widest block pl-0.5 flex items-center gap-1">
-                                      <Ticket className="w-3 h-3 text-[#a3e635]" />
+                                      <Ticket className="w-3 h-3 text-amber-400" />
                                       Cotas Adquiridas ({boughtList.length})
                                     </span>
                                     <div className="flex flex-wrap gap-1.5 font-mono">
                                       {boughtList.map((num: string) => (
                                         <span
                                           key={num}
-                                          className="bg-[#a3e635]/5 border border-[#a3e635]/20 text-[#a3e635] font-bold text-xs px-2.5 py-1 rounded-lg block min-w-[34px] text-center"
+                                          className="bg-amber-500/5 border border-amber-500/20 text-amber-400 font-bold text-xs px-2.5 py-1 rounded-lg block min-w-[34px] text-center"
                                         >
                                           {num}
                                         </span>
@@ -629,9 +629,9 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
 
                               {/* Pending checkout reminder */}
                               {String(item?.status).toLowerCase() === "pending_payment" && (
-                                <div className="bg-orange-500/5 border border-orange-500/20 p-3.5 rounded-xl flex items-start gap-2.5">
-                                  <Clock className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
-                                  <p className="text-[10px] text-orange-300 leading-relaxed font-semibold">
+                                <div className="bg-amber-500/5 border border-amber-500/20 p-3.5 rounded-xl flex items-start gap-2.5">
+                                  <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                                  <p className="text-[10px] text-amber-300 leading-relaxed font-semibold">
                                     Aguardando aprovação de pagamento via Pix. Se você já escaneou o QR Code, sua reserva será confirmada automaticamente em até 1 minuto.
                                   </p>
                                 </div>
@@ -719,7 +719,7 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
                         return (
                           <div key={raffleId} className="bg-zinc-900 border border-zinc-850 rounded-[2rem] p-6 space-y-5 shadow-xl">
                             <div className="flex items-center justify-between border-b border-zinc-850 pb-3">
-                              <h3 className="text-sm font-black text-[#a3e635] uppercase tracking-wide truncate max-w-[70%]">
+                              <h3 className="text-sm font-black text-amber-400 uppercase tracking-wide truncate max-w-[70%]">
                                 {group.title}
                               </h3>
                               <span className="text-[9px] font-black uppercase tracking-widest bg-zinc-950 text-zinc-400 border border-zinc-800 px-2 py-0.5 rounded-md">
@@ -741,7 +741,7 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
                                         Pedido: <strong className="text-zinc-300">#{ordDetail.orderId.substring(0, 8).toUpperCase()}</strong>
                                       </span>
                                       <span>{formatDate(ordDetail.createdAt)}</span>
-                                      <span className={isPaid ? "text-emerald-400 font-extrabold uppercase" : "text-orange-400 font-extrabold uppercase animate-pulse"}>
+                                      <span className={isPaid ? "text-emerald-400 font-extrabold uppercase" : "text-amber-400 font-extrabold uppercase animate-pulse"}>
                                         {isPaid ? "• Ativos / Confirmados" : "• Reservados (Pendente)"}
                                       </span>
                                     </div>
@@ -758,8 +758,8 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
                                               key={num}
                                               className={`font-black text-xs px-2.5 py-1.5 rounded-lg block text-center min-w-[34px] ${
                                                 isPaid 
-                                                  ? "bg-[#a3e635]/10 border border-[#a3e635]/20 text-[#a3e635]" 
-                                                  : "bg-orange-500/5 border border-orange-500/20 text-orange-400"
+                                                  ? "bg-amber-500/10 border border-amber-500/20 text-amber-400" 
+                                                  : "bg-amber-500/5 border border-amber-500/20 text-amber-400"
                                               }`}
                                             >
                                               {num}

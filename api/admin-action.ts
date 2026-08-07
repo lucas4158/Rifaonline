@@ -1492,7 +1492,10 @@ export default async function handler(req: any, res: any) {
         }, { merge: true });
 
         const bonusNumsSet = new Set<string>(orderData.bonusNums || []);
+        let mainPaidCount = 0;
         orderNums.forEach((num: string) => {
+          const isBonus = bonusNumsSet.has(num);
+          if (!isBonus) mainPaidCount++;
           const numDocRef = adminDb.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
           batch.set(numDocRef, {
             id: num,
@@ -1500,10 +1503,17 @@ export default async function handler(req: any, res: any) {
             orderId: orderId,
             name: orderData.name || "Cliente",
             phone: orderData.phone || "",
-            isBonus: bonusNumsSet.has(num),
+            isBonus: isBonus,
             updatedAt: nowIso
           }, { merge: true });
         });
+
+        if (mainPaidCount > 0) {
+          const raffleRef = adminDb.collection("raffles").doc(targetRaffleId);
+          batch.update(raffleRef, {
+            soldCount: admin.firestore.FieldValue.increment(mainPaidCount)
+          });
+        }
 
         await allocatePromotionalBonus(adminDb, orderId, orderData, batch, targetRaffleId);
 

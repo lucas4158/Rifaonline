@@ -22,11 +22,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({
       : "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800&q=80";
 
   return (
-    <div className="group relative bg-[#111513] border border-[#1A1F1B] hover:border-[#A3E635]/50 rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-[0_12px_35px_rgba(163,230,53,0.12)] flex flex-col justify-between">
+    <div className="group relative bg-zinc-900/90 border border-zinc-800 hover:border-amber-500/50 rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-[0_12px_35px_rgba(245,158,11,0.12)] flex flex-col justify-between">
       
       {/* CARD TOP MEDIA */}
       <div 
-        className="relative aspect-square w-full bg-[#0B0F0C] overflow-hidden flex items-center justify-center cursor-pointer"
+        className="relative aspect-square w-full bg-zinc-950 overflow-hidden flex items-center justify-center cursor-pointer"
         onClick={() => onBuyClick(product)}
       >
         <img
@@ -38,14 +38,14 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         />
 
         {/* GRADIENT OVERLAY */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#111513] via-transparent to-transparent opacity-80" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-transparent to-transparent opacity-80" />
 
         {/* BADGES CONTAINER */}
         <div className="absolute top-2.5 left-2.5 right-2.5 flex flex-wrap gap-1.5 justify-between items-start pointer-events-none">
           <div className="flex flex-col gap-1 items-start">
             {product.isPromotion && (
-              <span className="bg-gradient-to-r from-[#A3E635] to-[#F5C542] text-[#0B0F0C] text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded shadow-md flex items-center gap-1 font-bebas">
-                <Flame className="w-3 h-3 fill-[#0B0F0C]" /> PROMOÇÃO
+              <span className="bg-gradient-to-r from-amber-500 to-amber-400 text-black text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded shadow-md flex items-center gap-1 font-bebas">
+                <Flame className="w-3 h-3 fill-black" /> PROMOÇÃO
               </span>
             )}
 
@@ -62,7 +62,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             )}
 
             {product.isBestSeller && (
-              <span className="bg-[#F5C542] text-black text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded shadow-md flex items-center gap-1 font-bebas">
+              <span className="bg-amber-500 text-black text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded shadow-md flex items-center gap-1 font-bebas">
                 <Trophy className="w-3 h-3 fill-black" /> MAIS VENDIDO
               </span>
             )}
@@ -70,7 +70,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
 
           {/* LINKED RAFFLE BADGE */}
           {product.linkedRaffleId && (
-            <span className="bg-[#A3E635]/90 backdrop-blur-md text-black text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-[#F5C542]/60 font-bebas">
+            <span className="bg-amber-500 text-black text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-md flex items-center gap-1 border border-amber-400/60 font-bebas">
               <Ticket className="w-3 h-3" /> EM RIFA 🎟
             </span>
           )}
@@ -96,7 +96,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
           </div>
 
           {/* TITLE */}
-          <h3 className="text-sm font-black text-white group-hover:text-[#A3E635] transition-colors line-clamp-2 leading-snug">
+          <h3 className="text-sm font-black text-white group-hover:text-amber-400 transition-colors line-clamp-2 leading-snug">
             {product.name}
           </h3>
 
@@ -125,7 +125,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <div>
               <span className="text-[9px] text-zinc-500 font-bold uppercase block">Preço</span>
               <div className="flex items-baseline gap-1.5">
-                <span className="text-lg font-black text-[#F5C542] font-bebas tracking-wide">
+                <span className="text-lg font-black text-amber-400 font-bebas tracking-wide">
                   {activePrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                 </span>
                 {product.promoPrice && product.promoPrice > 0 && (
@@ -140,7 +140,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
             <button
               onClick={() => onBuyClick(product)}
               disabled={isOutOfStock}
-              className="px-4 py-2.5 bg-[#A3E635] hover:bg-[#bef264] text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-[#A3E635]/20 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed font-bebas"
+              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-amber-500/20 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed font-bebas"
             >
               <ShoppingBag className="w-4 h-4" />
               <span>Comprar</span>
@@ -159,7 +159,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
                   window.dispatchEvent(new PopStateEvent("popstate"));
                 }
               }}
-              className="w-full py-1.5 bg-[#A3E635]/10 hover:bg-[#A3E635]/20 border border-[#A3E635]/30 text-[#A3E635] hover:text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer font-bebas"
+              className="w-full py-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer font-bebas"
             >
               <Ticket className="w-3.5 h-3.5" />
               <span>Comprar Rifa</span>
