@@ -40,11 +40,14 @@ export function PurchasesView({
   const [approvalSuccess, setApprovalSuccess] = useState<string | null>(null);
 
   const getAdminToken = () => {
-    return (
-      localStorage.getItem("admin_token") ||
-      localStorage.getItem("rifamaster_admin_token") ||
-      "admin-token-authenticated"
-    );
+    if (typeof window !== "undefined") {
+      return (
+        localStorage.getItem("admin_token") ||
+        localStorage.getItem("raffle_admin_token") ||
+        ""
+      );
+    }
+    return "";
   };
 
   // Realtime subscription to Firestore orders
