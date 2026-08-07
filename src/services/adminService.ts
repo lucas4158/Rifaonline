@@ -108,6 +108,36 @@ export const adminService = {
     }
   },
 
+  async manualApprovePayment(
+    token: string,
+    orderId: string,
+    raffleId?: string
+  ): Promise<any> {
+    console.log(`[ADMIN_ACTION_START] Action: manual-approve-payment orderId: ${orderId} raffleId: ${raffleId || "current"}`);
+    try {
+      const res = await fetch("/api/admin-action", {
+        method: "POST",
+        headers: await getActiveHeaders(token),
+        body: JSON.stringify({
+          action: "manual-approve-payment",
+          orderId,
+          raffleId: raffleId || "current",
+        }),
+        credentials: "include",
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao aprovar pagamento manualmente.");
+      }
+      console.log(`[ADMIN_ACTION_SUCCESS] Action: manual-approve-payment completed for orderId: ${orderId}`);
+      return data;
+    } catch (err: any) {
+      console.error(`[ADMIN_ACTION_ERROR] Action: manual-approve-payment failed:`, err);
+      throw err;
+    }
+  },
+
   async deleteOrder(
     token: string,
     orderId: string

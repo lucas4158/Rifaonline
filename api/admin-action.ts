@@ -1412,6 +1412,143 @@ export default async function handler(req: any, res: any) {
         }
       }
 
+      case "manual-approve-payment": {
+        const { orderId } = req.body;
+        if (!orderId) {
+          return res.status(400).json({ error: "orderId is required" });
+        }
+
+        const adminDb = getAdminFirestore();
+        const orderRef = adminDb.collection("orders").doc(orderId);
+        const orderSnap = await orderRef.get();
+        if (!orderSnap.exists) {
+          return res.status(404).json({ error: "Pedido correspondente não encontrado." });
+        }
+
+        const orderData = orderSnap.data() || {};
+        const targetRaffleId = req.body.raffleId || orderData.raffleId || "current";
+        const orderNums: string[] = Array.isArray(orderData.nums) ? orderData.nums : [];
+        const currentStatus = String(orderData.status || "").toLowerCase();
+
+        // 1. Idempotency Check
+        const isAlreadyPaid = currentStatus === "pago" || currentStatus === "paid" || currentStatus === "approved" || currentStatus === "confirmed";
+        if (isAlreadyPaid) {
+          console.log(`ℹ️ [Manual Approve] Order ${orderId} is already paid. Returning idempotent response.`);
+          return res.status(200).json({
+            success: true,
+            alreadyPaid: true,
+            message: "Este pedido já consta como Pago.",
+            orderId
+          });
+        }
+
+        // 2. Cotas Conflict Verification
+        for (const cotaNum of orderNums) {
+          const cotaSnap = await adminDb.collection("raffles").doc(targetRaffleId).collection("numbers").doc(cotaNum).get();
+          if (cotaSnap.exists) {
+            const cotaData = cotaSnap.data() || {};
+            const cotaStatus = String(cotaData.status || "").toLowerCase();
+            if (cotaStatus === "paid" && cotaData.orderId && cotaData.orderId !== orderId) {
+              console.warn(`⚠️ [Manual Approve Conflict] Cota ${cotaNum} is already paid by order ${cotaData.orderId}. Blocking approval of order ${orderId}.`);
+              return res.status(400).json({
+                error: `Conflito de cotas: A cota ${cotaNum} já foi paga e atribuída a outro pedido (${cotaData.orderId}). Não é possível aprovar este pedido.`
+              });
+            }
+          }
+        }
+
+        // 3. Perform atomic batch update
+        const batch = adminDb.batch();
+        const nowIso = new Date().toISOString();
+
+        const adminUid = req.body.adminUid || "administrador";
+
+        batch.update(orderRef, {
+          status: "Pago",
+          approvedAt: nowIso,
+          approvedBy: adminUid,
+          manuallyApproved: true,
+          updatedAt: nowIso
+        });
+
+        const resRef = adminDb.collection("reservations").doc(orderId);
+        batch.set(resRef, {
+          status: "Pago",
+          approvedAt: nowIso,
+          manuallyApproved: true,
+          updatedAt: nowIso
+        }, { merge: true });
+
+        const paymentId = orderData.paymentId || ("MANUAL_" + orderId);
+        const payRef = adminDb.collection("payments").doc(String(paymentId));
+        batch.set(payRef, {
+          id: String(paymentId),
+          orderId: orderId,
+          status: "approved",
+          amount: Number(orderData.val || orderData.amount || 0),
+          method: "manual_approval",
+          createdAt: orderData.createdAt || nowIso,
+          updatedAt: nowIso
+        }, { merge: true });
+
+        const bonusNumsSet = new Set<string>(orderData.bonusNums || []);
+        orderNums.forEach((num: string) => {
+          const numDocRef = adminDb.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
+          batch.set(numDocRef, {
+            id: num,
+            status: "paid",
+            orderId: orderId,
+            name: orderData.name || "Cliente",
+            phone: orderData.phone || "",
+            isBonus: bonusNumsSet.has(num),
+            updatedAt: nowIso
+          }, { merge: true });
+        });
+
+        await allocatePromotionalBonus(adminDb, orderId, orderData, batch, targetRaffleId);
+
+        await batch.commit();
+        console.log(`✅ [Manual Approve Success] Order ${orderId} manually approved successfully.`);
+
+        // 4. Audit Log
+        await logAuditEvent(targetRaffleId, "MANUAL_PAYMENT_APPROVED", adminUid, {
+          participantCount: orderNums.length,
+          metadata: {
+            orderId,
+            customerName: orderData.name || "N/A",
+            customerPhone: orderData.phone || "N/A",
+            amount: Number(orderData.val || orderData.amount || 0),
+            nums: orderNums,
+            previousStatus: orderData.status || "Aguardando",
+            nextStatus: "Pago",
+            paymentId: orderData.paymentId || null,
+            approvedBy: adminUid,
+            approvedAt: nowIso,
+            manuallyApproved: true
+          }
+        });
+
+        // 5. Supabase Sync
+        serverSupabaseSync.syncManualApproval({
+          orderId,
+          raffleId: targetRaffleId,
+          customerName: orderData.name,
+          customerPhone: orderData.phone,
+          amount: Number(orderData.val || orderData.amount || 0),
+          paymentId: String(paymentId),
+          numsCount: orderNums.length,
+          adminUid: adminUid,
+          previousStatus: orderData.status || "Aguardando"
+        }).catch((syncErr) => console.error("Non-critical error syncing manual approval to Supabase:", syncErr));
+
+        return res.status(200).json({
+          success: true,
+          message: "Pagamento aprovado manualmente com sucesso!",
+          orderId,
+          approvedAt: nowIso
+        });
+      }
+
       case "order-action": {
         const { orderId, statusAction } = req.body;
         if (!orderId || !statusAction) {

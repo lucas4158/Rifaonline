@@ -98,6 +98,84 @@ export const serverSupabaseSync = {
   },
 
   /**
+   * Syncs a manual payment approval to purchase_history, audit_logs, admin_notifications, and activity_logs.
+   */
+  async syncManualApproval(order: {
+    orderId: string;
+    raffleId?: string;
+    customerName?: string;
+    customerPhone?: string;
+    amount?: number;
+    paymentId?: string;
+    numsCount?: number;
+    adminUid?: string;
+    previousStatus?: string;
+  }) {
+    const raffleId = order.raffleId || "current";
+    const orderId = order.orderId;
+
+    // 1. purchase_history
+    runWithRetry(`purchase_history (${orderId})`, () =>
+      purchaseHistoryService.recordPurchase({
+        firestore_order_id: orderId,
+        raffle_id: raffleId,
+        customer_name: order.customerName,
+        customer_phone: order.customerPhone,
+        amount: order.amount,
+        payment_id: order.paymentId || "MANUAL_APPROVAL",
+        payment_status: "approved",
+        purchase_status: "completed",
+      })
+    ).catch(() => {});
+
+    // 2. audit_logs
+    runWithRetry(`audit_logs MANUAL_PAYMENT_APPROVED (${orderId})`, () =>
+      auditService.logEvent({
+        raffle_id: raffleId,
+        event_type: "MANUAL_PAYMENT_APPROVED",
+        entity_type: "order",
+        entity_id: orderId,
+        actor_id: order.adminUid || "admin",
+        actor_name: "Administrador (Manual)",
+        metadata: {
+          orderId,
+          customerName: order.customerName,
+          customerPhone: order.customerPhone,
+          amount: order.amount,
+          paymentId: order.paymentId,
+          numsCount: order.numsCount || 0,
+          previousStatus: order.previousStatus || "Aguardando",
+          nextStatus: "Pago",
+          approvedAt: new Date().toISOString(),
+        },
+      })
+    ).catch(() => {});
+
+    // 3. admin_notifications
+    runWithRetry(`admin_notifications (${orderId})`, () =>
+      notificationService.recordNotification({
+        firestore_event_id: `manual_appr_${orderId}_${Date.now()}`,
+        type: "manual_payment_approved",
+        title: "Pagamento aprovado manualmente pelo administrador",
+        customer_name: order.customerName,
+        customer_phone: order.customerPhone,
+        amount: order.amount,
+        raffle_id: raffleId,
+      })
+    ).catch(() => {});
+
+    // 4. activity_logs
+    runWithRetry(`activity_logs (${orderId})`, () =>
+      activityService.logActivity({
+        raffle_id: raffleId,
+        activity_type: "manual_payment_approved",
+        description: `Aprovação manual de pagamento no valor de R$ ${(order.amount || 0).toFixed(2)} para o cliente ${order.customerName || "Cliente"}.`,
+        metadata: { orderId, approvedBy: order.adminUid || "admin" },
+      })
+    ).catch(() => {});
+  },
+
+  /**
    * Syncs an expired reservation to audit_logs ONLY.
    */
   async syncExpiredReservation(reservation: {
