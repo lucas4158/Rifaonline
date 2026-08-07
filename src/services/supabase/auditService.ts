@@ -1,4 +1,4 @@
-import { getSupabaseAdmin, getSupabaseClient } from "./supabaseClient";
+import { getSupabaseAdmin, getSupabaseClient } from "./supabaseClient.js";
 
 export interface AuditLogItem {
   raffle_id: string;

@@ -1,4 +1,4 @@
-import { getSupabaseAdmin, getSupabaseClient } from "./supabaseClient";
+import { getSupabaseAdmin, getSupabaseClient } from "./supabaseClient.js";
 
 export interface AdminNotificationItem {
   firestore_event_id: string;

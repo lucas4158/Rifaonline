@@ -1,8 +1,8 @@
-import { purchaseHistoryService } from "../src/services/supabase/purchaseHistoryService";
-import { auditService } from "../src/services/supabase/auditService";
-import { drawService } from "../src/services/supabase/drawService";
-import { notificationService } from "../src/services/supabase/notificationService";
-import { activityService } from "../src/services/supabase/activityService";
+import { purchaseHistoryService } from "../src/services/supabase/purchaseHistoryService.js";
+import { auditService } from "../src/services/supabase/auditService.js";
+import { drawService } from "../src/services/supabase/drawService.js";
+import { notificationService } from "../src/services/supabase/notificationService.js";
+import { activityService } from "../src/services/supabase/activityService.js";
 
 /**
  * Executes a sync action with up to maxRetries attempts.

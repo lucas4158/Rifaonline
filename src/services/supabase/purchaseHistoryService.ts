@@ -1,4 +1,4 @@
-import { getSupabaseAdmin, getSupabaseClient } from "./supabaseClient";
+import { getSupabaseAdmin, getSupabaseClient } from "./supabaseClient.js";
 
 export interface PurchaseHistoryItem {
   firestore_order_id: string;
