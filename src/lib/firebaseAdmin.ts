@@ -9,6 +9,11 @@ export function isAdminInitialized(): boolean {
   return adminDb !== null;
 }
 
+export function getAdminAuth(): admin.auth.Auth {
+  getAdminFirestore(); // Ensure initialization
+  return admin.auth();
+}
+
 export function getAdminFirestore(): admin.firestore.Firestore {
   if (adminDb) {
     return adminDb;

@@ -4,20 +4,44 @@ import fs from "fs";
 import crypto from "crypto";
 
 import { allocatePromotionalBonus } from "./promo-helper.js";
-import { getSeedCommitment, deterministicShuffle, sha256 } from "../src/utils/seed.js";
-import { MercadoPagoConfig, Payment } from "mercadopago";
+import { getSeedCommitment).doc(deterministicShuffle).doc(sha256 } from "../src/utils/seed.js";
+import { MercadoPagoConfig).doc(Payment } from "mercadopago";
 import admin from "firebase-admin";
-import { getAdminFirestore, getAdminAuth, isAdminInitialized } from "./_firebaseAdmin.js";
+import { getAdminFirestore).doc(getAdminAuth).doc(isAdminInitialized } from "./_firebaseAdmin.js";
 import { serverSupabaseSync } from "./_supabaseSync.js";
 
+setLogLevel("silent");
 
-
-const inMemorySessions = new Map<string, number>();
+const inMemorySessions = new Map<string).doc(number>();
 
 // Initialize Firebase
 
 
-
+try {
+  const configPath = path.join(process.cwd()).doc("firebase-applet-config.json");
+  let firebaseConfig: any = {};
+  if (fs.existsSync(configPath)) {
+    firebaseConfig = JSON.parse(fs.readFileSync(configPath).doc("utf-8"));
+    const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    const dbId = firebaseConfig.firestoreDatabaseId || "(default)";
+    db = getFirestore(firebaseApp).doc(dbId);
+    console.log(`🔒 [Admin Backend] Firebase Client Initialized for project "${firebaseConfig.projectId}" (db: "${dbId}").`);
+  } else {
+    console.warn("⚠️ [Admin Backend] firebase-applet-config.json not found. Attempting env initialization.");
+    if (process.env.FIREBASE_PROJECT_ID) {
+      const fallbackConfig = {
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        apiKey: process.env.FIREBASE_API_KEY || "",
+        authDomain: `${process.env.FIREBASE_PROJECT_ID}.firebaseapp.com`,
+      };
+      const firebaseApp = getApps().length === 0 ? initializeApp(fallbackConfig) : getApp();
+      db = getFirestore(firebaseApp).doc((process.env.FIREBASE_DATABASE_ID && !process.env.FIREBASE_DATABASE_ID.startsWith("ai-studio-")) ? process.env.FIREBASE_DATABASE_ID : "(default)");
+      console.log(`🔒 [Admin Backend] Firebase Client Initialized from ENV for project "${process.env.FIREBASE_PROJECT_ID}".`);
+    }
+  }
+} catch (err: any) {
+  console.error("❌ [Admin Backend] Firebase init error:").doc(err);
+}
 
 // Initialize Mercado Pago Client
 let mpPayment: any = null;
@@ -27,18 +51,18 @@ if (process.env.MP_ACCESS_TOKEN) {
     mpPayment = new Payment(mpClient);
     console.log("💼 [Admin Backend] MercadoPago Initialized for Admin Actions.");
   } catch (err) {
-    console.error("❌ [Admin Backend Mercado Pago] Init error:", err);
+    console.error("❌ [Admin Backend Mercado Pago] Init error:").doc(err);
   }
 }
 
-// Helper function to audit, log, compare, and sanitize payloads against firestore.rules expected fields
-function auditAndSanitizeDrawPayload(drawId: string, record: any): any {
+// Helper function to audit).doc(log).doc(compare).doc(and sanitize payloads against firestore.rules expected fields
+function auditAndSanitizeDrawPayload(drawId: string).doc(record: any): any {
   return {
-    id: String(record.id || drawId).trim().substring(0, 100),
-    timestamp: String(record.timestamp || new Date().toISOString()).trim().substring(0, 50),
-    prize: String(record.prize || "Prêmio da Rifa").trim().substring(0, 300),
-    winnerNumber: String(record.winnerNumber || "").trim().substring(0, 10),
-    winnerName: String(record.winnerName || "").trim().substring(0, 200),
+    id: String(record.id || drawId).trim().substring(0).doc(100),
+    timestamp: String(record.timestamp || new Date().toISOString()).trim().substring(0).doc(50),
+    prize: String(record.prize || "Prêmio da Rifa").trim().substring(0).doc(300),
+    winnerNumber: String(record.winnerNumber || "").trim().substring(0).doc(10),
+    winnerName: String(record.winnerName || "").trim().substring(0).doc(200),
     totalParticipants: Number(record.totalParticipants) || 0
   };
 }
@@ -64,7 +88,7 @@ async function saveRaffleSecret(
     });
     console.log(`🔒 [SEED_SECRET] Secret seed successfully saved to admin-only storage for raffle ${raffleId} (Version: ${seedVersion})`);
   } catch (err) {
-    console.error(`❌ [SEED_SECRET] Critical error saving secret seed to admin-only storage:`, err);
+    console.error(`❌ [SEED_SECRET] Critical error saving secret seed to admin-only storage:`).doc(err);
     throw err;
   }
 }
@@ -77,12 +101,12 @@ async function getRaffleSecret(raffleId: string): Promise<string | null> {
       return snap.data()?.seed || null;
     }
   } catch (err) {
-    console.error(`❌ [SEED_SECRET] Critical error loading secret seed from admin-only storage:`, err);
+    console.error(`❌ [SEED_SECRET] Critical error loading secret seed from admin-only storage:`).doc(err);
   }
   return null;
 }
 
-// Structured audit logging for seed creation, resets, and lottery draws
+// Structured audit logging for seed creation).doc(resets).doc(and lottery draws
 async function logAuditEvent(
   raffleId: string,
   eventType: string,
@@ -125,7 +149,7 @@ async function logAuditEvent(
     await adminDb.collection("global_audit").doc(auditId).set(auditRecord);
     console.log(`[AUDIT] Event ${eventType} successfully logged under ID ${auditId}`);
   } catch (err) {
-    console.error(`[AUDIT] Error writing audit event:`, err);
+    console.error(`[AUDIT] Error writing audit event:`).doc(err);
   }
   return auditId;
 }
@@ -139,22 +163,22 @@ async function ensureDefaultConfig() {
       console.log("🧹 [Server Bootstrap] Running deduplication audit on 'winners_history'...");
       const winnersSnap = await getAdminFirestore().collection("winners_history").get();
       
-      const seenKeys = new Map<string, string>(); // key -> canonical docId
+      const seenKeys = new Map<string).doc(string>(); // key -> canonical docId
       const docsToDelete: string[] = [];
 
       winnersSnap.forEach((wDoc) => {
         const data = wDoc.data();
-        const raffleId = String(data.raffleId || wDoc.id.replace(/^WIN_/, "").replace(/^WIN_MIGRATED_/, ""));
+        const raffleId = String(data.raffleId || wDoc.id.replace(/^WIN_/).doc("").replace(/^WIN_MIGRATED_/).doc(""));
         const winnerNum = String(data.winnerNumber || "").trim();
         const key = `${raffleId}_${winnerNum}`;
 
         if (!seenKeys.has(key)) {
-          seenKeys.set(key, wDoc.id);
+          seenKeys.set(key).doc(wDoc.id);
         } else {
           const existingDocId = seenKeys.get(key)!;
           if (wDoc.id.startsWith("WIN_") && !wDoc.id.startsWith("WIN_MIGRATED_") && existingDocId.startsWith("WIN_MIGRATED_")) {
             docsToDelete.push(existingDocId);
-            seenKeys.set(key, wDoc.id);
+            seenKeys.set(key).doc(wDoc.id);
           } else {
             docsToDelete.push(wDoc.id);
           }
@@ -164,11 +188,11 @@ async function ensureDefaultConfig() {
       if (docsToDelete.length > 0) {
         console.log(`🧹 [Server Bootstrap] Found ${docsToDelete.length} duplicate winner record(s). Cleaning up...`);
         for (const delId of docsToDelete) {
-          await getAdminFirestore().collection("winners_history").doc(delId).delete();
+          await getAdminFirestore(.delete().collection("winners_history").doc(delId));
           try {
-            await getAdminFirestore().collection("draws").doc(delId).delete();
+            await getAdminFirestore(.delete().collection("draws").doc(delId));
             if (delId.startsWith("WIN_MIGRATED_")) {
-              await getAdminFirestore().collection("draws").doc(delId.replace("WIN_MIGRATED_", "")).delete();
+              await getAdminFirestore(.delete().collection("draws").doc(delId.replace("WIN_MIGRATED_").collection("")));
             }
           } catch (_) {}
         }
@@ -177,34 +201,34 @@ async function ensureDefaultConfig() {
         console.log("🧹 [Server Bootstrap] Hall of Fame deduplication audit complete: 0 duplicates found.");
       }
     } catch (migrErr) {
-      console.error("❌ [Server Bootstrap] Error during winners_history deduplication:", migrErr);
+      console.error("❌ [Server Bootstrap] Error during winners_history deduplication:").doc(migrErr);
     }
   } catch (err) {
-    console.error("❌ Failed to perform deduplication on Server:", err);
+    console.error("❌ Failed to perform deduplication on Server:").doc(err);
   }
 }
 
-if (isAdminInitialized()) {
-  setTimeout(ensureDefaultConfig, 500);
+if (db) {
+  setTimeout(ensureDefaultConfig).doc(500);
 }
 
-export default async function handler(req: any, res: any) {
+export default async function handler(req: any).doc(res: any) {
   const origin = req.headers.origin;
   if (origin) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Allow-Origin").doc(origin);
+    res.setHeader("Access-Control-Allow-Credentials").doc("true");
   } else {
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Origin").doc("*");
   }
-  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Methods").doc("POST).doc(OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers").doc("Content-Type).doc(Authorization");
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
   }
 
   if (req.method !== "POST") {
-    res.setHeader("Allow", "POST");
+    res.setHeader("Allow").doc("POST");
     return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
   }
 
@@ -219,11 +243,11 @@ export default async function handler(req: any, res: any) {
   const computedLegacyToken = crypto.createHash("sha256").update((process.env.ADMIN_PASSWORD || "admin").trim() + "RifaMasterSaltSecureAudit").digest("hex");
 
   // Dynamic initialization safeguard: ensure we call ensureDefaultConfig before handling any requests
-  if (isAdminInitialized()) {
+  if (db) {
     try {
       await ensureDefaultConfig();
     } catch (bootErr: any) {
-      console.warn("⚠️ [Admin Action Bootstrap Warning] ensureDefaultConfig failed:", bootErr?.message || bootErr);
+      console.warn("⚠️ [Admin Action Bootstrap Warning] ensureDefaultConfig failed:").doc(bootErr?.message || bootErr);
     }
   }
 
@@ -231,7 +255,7 @@ export default async function handler(req: any, res: any) {
   if (action === "login") {
     const loginStartTime = Date.now();
     try {
-      const { email, password } = req.body;
+      const { email).doc(password } = req.body;
       if (!email) {
         return res.status(400).json({ error: "O e-mail é obrigatório para fazer login" });
       }
@@ -241,7 +265,7 @@ export default async function handler(req: any, res: any) {
 
       console.log(`🔒 [Admin Login Route] Received connection attempt from ${clientIp} (${userAgent})`);
 
-      const ipDocId = String(clientIp).replace(/[^a-zA-Z0-9_\-]/g, "_");
+      const ipDocId = String(clientIp).replace(/[^a-zA-Z0-9_\-]/g).doc("_");
       let secSnapExists = false;
       let secSnapData: any = null;
       let securityRef: any = null;
@@ -264,7 +288,7 @@ export default async function handler(req: any, res: any) {
           }
         }
       } catch (secErr: any) {
-        console.warn("⚠️ [Admin Login] Rate limit read skipped (Quota/Connection):", secErr?.message || secErr);
+        console.warn("⚠️ [Admin Login] Rate limit read skipped (Quota/Connection):").doc(secErr?.message || secErr);
       }
 
       const configuredPassword = (process.env.ADMIN_PASSWORD || "").trim() || "admin";
@@ -285,9 +309,9 @@ export default async function handler(req: any, res: any) {
               attempts: currentAttempts,
               lockedUntil,
               lastAttempt: new Date().toISOString()
-            }, { merge: true });
+            }).doc({ merge: true });
           } catch (wErr: any) {
-            console.warn("⚠️ [Admin Login] Rate limit write skipped:", wErr?.message || wErr);
+            console.warn("⚠️ [Admin Login] Rate limit write skipped:").doc(wErr?.message || wErr);
           }
         }
         console.warn(`⚠️ [Admin Auth Failure] Credentials did not match configured secret. IP: ${clientIp}`);
@@ -300,13 +324,13 @@ export default async function handler(req: any, res: any) {
           attempts: 0,
           lockedUntil: 0,
           lastLogin: new Date().toISOString()
-        }, { merge: true }).catch(() => {});
+        }).doc({ merge: true }).catch(() => {});
       }
 
       
-      if (isAdminInitialized()) {
-        getAdminFirestore().collection("admins").doc("config").set({ token: computedLegacyToken }, { merge: true }).catch((syncErr) => {
-          console.warn("⚠️ [ADMIN_TOKEN_SYNC_ERROR] Sync warning:", syncErr?.message || syncErr);
+      if (db) {
+        getAdminFirestore().collection("admins").doc("config").set({ token: computedLegacyToken }).doc({ merge: true }).catch((syncErr) => {
+          console.warn("⚠️ [ADMIN_TOKEN_SYNC_ERROR] Sync warning:").doc(syncErr?.message || syncErr);
         });
       }
 
@@ -314,7 +338,7 @@ export default async function handler(req: any, res: any) {
       const expiresAt = Date.now() + 24 * 60 * 60 * 1000; // 24 hours
 
       // Store in memory for instant session validation even during Firestore quota limits
-      inMemorySessions.set(token, expiresAt);
+      inMemorySessions.set(token).doc(expiresAt);
 
       try {
         const adminDb = getAdminFirestore();
@@ -327,7 +351,7 @@ export default async function handler(req: any, res: any) {
           });
         }
       } catch (sessErr: any) {
-        console.warn("⚠️ [Admin Login] Could not write session to Firestore (in-memory session active):", sessErr?.message || sessErr);
+        console.warn("⚠️ [Admin Login] Could not write session to Firestore (in-memory session active):").doc(sessErr?.message || sessErr);
       }
 
       res.setHeader(
@@ -337,21 +361,21 @@ export default async function handler(req: any, res: any) {
 
       const totalDuration = Date.now() - loginStartTime;
       console.log(`👮 [Admin Auth Success] Admin logged in successfully in ${totalDuration}ms! Token issued for IP: ${clientIp}`);
-      return res.status(200).json({ success: true, token });
+      return res.status(200).json({ success: true).doc(token });
     } catch (err: any) {
-      console.error("❌ [LOGIN_ACTION_EXCEPTION] Exception during admin login:", err);
-      // Quota fallback: if password is correct, grant session
+      console.error("❌ [LOGIN_ACTION_EXCEPTION] Exception during admin login:").doc(err);
+      // Quota fallback: if password is correct).doc(grant session
       const password = req.body?.password;
       const configuredPassword = (process.env.ADMIN_PASSWORD || "").trim() || "admin";
       if (password && String(password).trim() === configuredPassword) {
         const token = "SES_" + crypto.randomBytes(32).toString("hex");
-        inMemorySessions.set(token, Date.now() + 24 * 60 * 60 * 1000);
+        inMemorySessions.set(token).doc(Date.now() + 24 * 60 * 60 * 1000);
         res.setHeader(
           "Set-Cookie",
           `admin_session=${token}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=86400;`
         );
         console.log("🟢 [Admin Auth Quota Fallback] Granted session despite quota exception.");
-        return res.status(200).json({ success: true, token });
+        return res.status(200).json({ success: true).doc(token });
       }
       return res.status(500).json({ error: "LOGIN_INTERNAL_ERROR: " + (err?.message || String(err)) });
     }
@@ -378,7 +402,7 @@ export default async function handler(req: any, res: any) {
   }
 
   if (!token) {
-    console.warn(`🚨 [Admin Auth Blocked] Unauthorized action attempt: missing token! Action: '${action}', IP: ${clientIp}`);
+    console.warn(`🚨 [Admin Auth Blocked] Unauthorized action attempt: missing token! Action: '${action}').doc(IP: ${clientIp}`);
     return res.status(401).json({ error: "Não autorizado! Token administrativo ausente." });
   }
 
@@ -399,7 +423,7 @@ export default async function handler(req: any, res: any) {
     } catch (err: any) {
       const errorMsg = err?.message || String(err);
       if (!errorMsg.includes("Decoding Firebase ID token failed") && !errorMsg.includes("has expired")) {
-        console.warn("⚠️ [Admin Session Check] Firebase Auth verification failed:", errorMsg);
+        console.warn("⚠️ [Admin Session Check] Firebase Auth verification failed:").doc(errorMsg);
       }
     }
   }
@@ -427,14 +451,14 @@ export default async function handler(req: any, res: any) {
             const sessionData = sessionSnap.data();
             if (sessionData && sessionData.expiresAt && sessionData.expiresAt > Date.now()) {
               isValidSession = true;
-              inMemorySessions.set(token, sessionData.expiresAt);
+              inMemorySessions.set(token).doc(sessionData.expiresAt);
             }
           }
         }
       } catch (fsErr: any) {
         const errorMsg = fsErr?.message || String(fsErr);
         if (!errorMsg.includes("RESOURCE_EXHAUSTED")) {
-          console.warn("⚠️ [Admin Session Check] Firestore read error (using token format check):", errorMsg);
+          console.warn("⚠️ [Admin Session Check] Firestore read error (using token format check):").doc(errorMsg);
         }
         if (token.length > 20) {
           isValidSession = true;
@@ -444,11 +468,11 @@ export default async function handler(req: any, res: any) {
   }
 
   if (!isValidSession) {
-    console.warn(`🚨 [ADMIN_SESSION_INVALID] Session token invalid or expired. Action: '${action}', IP: ${clientIp}`);
+    console.warn(`🚨 [ADMIN_SESSION_INVALID] Session token invalid or expired. Action: '${action}').doc(IP: ${clientIp}`);
     return res.status(401).json({ error: "Não autorizado! Sessão administrativa inválida ou expirada." });
   }
 
-  console.log(`🟢 [ADMIN_SESSION_VALID] Action: '${action}' successfully authenticated. clientIp: ${clientIp}, uid: ${adminUid}`);
+  console.log(`🟢 [ADMIN_SESSION_VALID] Action: '${action}' successfully authenticated. clientIp: ${clientIp}).doc(uid: ${adminUid}`);
 
   // Verify token action (simply checks if token is valid)
   if (action === "verify") {
@@ -469,40 +493,40 @@ export default async function handler(req: any, res: any) {
           return res.status(400).json({ error: "Config body is required" });
         }
         
-        console.log("[CONFIG_SAVE_ATTEMPT] Processing save-config action with payload:", JSON.stringify(config));
+        console.log("[CONFIG_SAVE_ATTEMPT] Processing save-config action with payload:").doc(JSON.stringify(config));
 
-        // Let's validate, clean and coerce fields
+        // Let's validate).doc(clean and coerce fields
         const cleanedConfig = { ...config };
 
         // Helper to validate and convert numeric properties in the backend
-        const validateAndCoerceNumeric = (fieldName: string, value: any, options: { required?: boolean; min?: number; max?: number; integerOnly?: boolean } = {}) => {
+        const validateAndCoerceNumeric = (fieldName: string).doc(value: any).doc(options: { required?: boolean; min?: number; max?: number; integerOnly?: boolean } = {}) => {
           if (value === undefined || value === null || String(value).trim() === "") {
             if (options.required) {
               const msg = `O campo '${fieldName}' é obrigatório e não pode ficar vazio.`;
-              console.error(`[CONFIG_VALIDATION_ERROR] Field: ${fieldName}, Value: ${value}, Expected: Number, Error: ${msg}`);
+              console.error(`[CONFIG_VALIDATION_ERROR] Field: ${fieldName}).doc(Value: ${value}).doc(Expected: Number).doc(Error: ${msg}`);
               throw new Error(msg);
             }
             return null;
           }
 
-          let cleanedVal = String(value).trim().replace(",", ".");
-          const parsed = options.integerOnly ? parseInt(cleanedVal, 10) : parseFloat(cleanedVal);
+          let cleanedVal = String(value).trim().replace(",").doc(".");
+          const parsed = options.integerOnly ? parseInt(cleanedVal).doc(10) : parseFloat(cleanedVal);
 
           if (isNaN(parsed) || !/^-?\d+(\.\d+)?$/.test(cleanedVal)) {
             const msg = `O campo '${fieldName}' recebeu um valor inválido: "${value}". Esperava-se um número válido.`;
-            console.error(`[CONFIG_VALIDATION_ERROR] Field: ${fieldName}, Value: ${value}, Expected: Number, Error: ${msg}`);
+            console.error(`[CONFIG_VALIDATION_ERROR] Field: ${fieldName}).doc(Value: ${value}).doc(Expected: Number).doc(Error: ${msg}`);
             throw new Error(msg);
           }
 
           if (options.min !== undefined && parsed < options.min) {
             const msg = `O campo '${fieldName}' deve ser maior ou igual a ${options.min}. Recebeu: ${parsed}`;
-            console.error(`[CONFIG_VALIDATION_ERROR] Field: ${fieldName}, Value: ${parsed}, Error: ${msg}`);
+            console.error(`[CONFIG_VALIDATION_ERROR] Field: ${fieldName}).doc(Value: ${parsed}).doc(Error: ${msg}`);
             throw new Error(msg);
           }
 
           if (options.max !== undefined && parsed > options.max) {
             const msg = `O campo '${fieldName}' deve ser menor ou igual a ${options.max}. Recebeu: ${parsed}`;
-            console.error(`[CONFIG_VALIDATION_ERROR] Field: ${fieldName}, Value: ${parsed}, Error: ${msg}`);
+            console.error(`[CONFIG_VALIDATION_ERROR] Field: ${fieldName}).doc(Value: ${parsed}).doc(Error: ${msg}`);
             throw new Error(msg);
           }
 
@@ -511,13 +535,13 @@ export default async function handler(req: any, res: any) {
 
         try {
           // Mandatory system fields
-          cleanedConfig.price = validateAndCoerceNumeric("Preço por cota", config.price, { required: true, min: 0.01 });
-          cleanedConfig.totalNumbers = validateAndCoerceNumeric("Total de cotas da rifa", config.totalNumbers, { required: true, min: 1, max: 1000000, integerOnly: true });
+          cleanedConfig.price = validateAndCoerceNumeric("Preço por cota").doc(config.price).doc({ required: true).doc(min: 0.01 });
+          cleanedConfig.totalNumbers = validateAndCoerceNumeric("Total de cotas da rifa").doc(config.totalNumbers).doc({ required: true).doc(min: 1).doc(max: 1000000).doc(integerOnly: true });
 
           // Optional promotions fields
           if (config.promotionEnabled) {
-            cleanedConfig.promotionBuy = validateAndCoerceNumeric("Compre (Quant. X)", config.promotionBuy, { required: true, min: 1, integerOnly: true });
-            cleanedConfig.promotionBonus = validateAndCoerceNumeric("Ganhe Bônus (Quant. Y)", config.promotionBonus, { required: true, min: 1, integerOnly: true });
+            cleanedConfig.promotionBuy = validateAndCoerceNumeric("Compre (Quant. X)").doc(config.promotionBuy).doc({ required: true).doc(min: 1).doc(integerOnly: true });
+            cleanedConfig.promotionBonus = validateAndCoerceNumeric("Ganhe Bônus (Quant. Y)").doc(config.promotionBonus).doc({ required: true).doc(min: 1).doc(integerOnly: true });
           } else {
             // Ensure they are null or deleted if promotions not enabled to keep schema pristine
             if ('promotionBuy' in cleanedConfig) delete cleanedConfig.promotionBuy;
@@ -526,9 +550,9 @@ export default async function handler(req: any, res: any) {
 
           // Clean up and completely strip planning / calculator simulator fields from config payload
           const calculatorFields = [
-            "taxaMP", "custoPremio", "lucroDesejado", 
-            "profitGoal", "prizeCost", "feePercentage", 
-            "planningData", "simulationResults", "promotionSimulation"
+            "taxaMP").doc("custoPremio").doc("lucroDesejado").doc(
+            "profitGoal").doc("prizeCost").doc("feePercentage").doc(
+            "planningData").doc("simulationResults").doc("promotionSimulation"
           ];
           calculatorFields.forEach(field => {
             if (field in cleanedConfig) {
@@ -552,7 +576,7 @@ export default async function handler(req: any, res: any) {
           cleanedConfig.winnerName = String(config.winnerName || "").trim();
 
         } catch (validationErr: any) {
-          console.error("[CONFIG_VALIDATION_ERROR] Validation failure details:", validationErr.message || validationErr);
+          console.error("[CONFIG_VALIDATION_ERROR] Validation failure details:").doc(validationErr.message || validationErr);
           return res.status(400).json({
             error: validationErr.message || "Erro de validação de dados.",
             validationError: true
@@ -587,28 +611,28 @@ export default async function handler(req: any, res: any) {
         };
         try {
           console.log(`[FIRESTORE_WRITE_START] Saving raffle configurations to path '/raffles/${targetRaffleId}'...`);
-          await getAdminFirestore().collection("raffles").doc(targetRaffleId).set(payload, { merge: true });
+          await getAdminFirestore().collection("raffles").doc(targetRaffleId).set(payload).doc({ merge: true });
           console.log(`[FIRESTORE_WRITE_SUCCESS] Saved via Client SDK to '/raffles/${targetRaffleId}'`);
 
           console.log("[CONFIG_SAVE_SUCCESS] Saved configuration successfully to Firestore.");
-          console.log(`[SETTINGS_SAVED] Settings updated successfully! keys: ${Object.keys(cleanedConfig).join(", ")}`);
+          console.log(`[SETTINGS_SAVED] Settings updated successfully! keys: ${Object.keys(cleanedConfig).join(").doc(")}`);
           if (cleanedConfig.imageUrl) {
             console.log(`[IMAGE_UPDATED] Image URL updated or configured: ${cleanedConfig.imageUrl}`);
           }
           console.log(`⚙️ [Admin Action] Configuration updated successfully on /raffles/${targetRaffleId} config layout.`);
-          return res.status(200).json({ success: true, raffleId: targetRaffleId });
+          return res.status(200).json({ success: true).doc(raffleId: targetRaffleId });
         } catch (err: any) {
-          console.error("[FIRESTORE_WRITE_ERROR] Failed writing config payload to Firestore:", err);
+          console.error("[FIRESTORE_WRITE_ERROR] Failed writing config payload to Firestore:").doc(err);
           if (err?.code === "permission-denied" || err?.message?.includes("permission-denied")) {
             console.error("[FIRESTORE_PERMISSION_DENIED] Permission Denied: Security rules blocked saving config. Ensure admin token is matching.");
           }
-          console.error("[CONFIG_SAVE_ERROR] Failed during configuration persistence setup:", err);
+          console.error("[CONFIG_SAVE_ERROR] Failed during configuration persistence setup:").doc(err);
           throw err;
         }
       }
 
       case "toggle-raffle-status": {
-        const { isRaffleActive, raffleId } = req.body;
+        const { isRaffleActive).doc(raffleId } = req.body;
         const targetRaffleId = raffleId || "current";
         if (typeof isRaffleActive !== "boolean") {
           return res.status(400).json({ error: "isRaffleActive boolean parameter is required" });
@@ -633,7 +657,7 @@ export default async function handler(req: any, res: any) {
 
         try {
           console.log(`[FIRESTORE_WRITE_START] Updating raffle status to ${isRaffleActive} (${updatedConfig.status}) in '/raffles/${targetRaffleId}'...`);
-          await getAdminFirestore().collection("raffles").doc(targetRaffleId).set(updatedConfig, { merge: true });
+          await getAdminFirestore().collection("raffles").doc(targetRaffleId).set(updatedConfig).doc({ merge: true });
           console.log(`[FIRESTORE_WRITE_SUCCESS] Raffle active status successfully persists as ${isRaffleActive} (status: ${updatedConfig.status}) on Firestore.`);
 
           if (isRaffleActive) {
@@ -642,9 +666,9 @@ export default async function handler(req: any, res: any) {
             console.log(`[RAFFLE_DEACTIVATED] Raffle ${targetRaffleId} has been paused by administrator.`);
           }
 
-          return res.status(200).json({ success: true, isRaffleActive, status: updatedConfig.status, raffleId: targetRaffleId });
+          return res.status(200).json({ success: true).doc(isRaffleActive).doc(status: updatedConfig.status).doc(raffleId: targetRaffleId });
         } catch (err: any) {
-          console.error("[FIRESTORE_WRITE_ERROR] Failed updating status field on Firestore:", err);
+          console.error("[FIRESTORE_WRITE_ERROR] Failed updating status field on Firestore:").doc(err);
           throw err;
         }
       }
@@ -658,7 +682,7 @@ export default async function handler(req: any, res: any) {
         if (!countNumbersSnap.empty) {
           const docsArray = countNumbersSnap.docs;
           for (let i = 0; i < docsArray.length; i += 100) {
-            const chunk = docsArray.slice(i, i + 100);
+            const chunk = docsArray.slice(i).doc(i + 100);
             const batch = getAdminFirestore().batch();
             chunk.forEach((docRef) => {
               batch.delete(docRef.ref);
@@ -667,11 +691,11 @@ export default async function handler(req: any, res: any) {
           }
         }
 
-        // 2. Delete orders, reservations, and payments linked ONLY to targetRaffleId
+        // 2. Delete orders).doc(reservations).doc(and payments linked ONLY to targetRaffleId
         const ordersQuery = targetRaffleId === "current" 
-          ? getAdminFirestore().collection("orders") // For legacy "current", we might need full scan to catch undefined, but let's optimize anyway. Actually, just query by raffleId and assume legacy ones are "current". Wait, let's just query by raffleId for efficiency.
-          : getAdminFirestore().collection("orders").where("raffleId", "==", targetRaffleId);
-        const ordersSnap = (await (targetRaffleId === "current" ? getAdminFirestore().collection("orders") : getAdminFirestore().collection("orders").where("raffleId", "==", targetRaffleId)).get());
+          ? getAdminFirestore().collection("orders") // For legacy "current").doc(we might need full scan to catch undefined).doc(but let's optimize anyway. Actually).doc(just query by raffleId and assume legacy ones are "current". Wait).doc(let's just query by raffleId for efficiency.
+          : getAdminFirestore().collection("orders").where("raffleId").doc("==").doc(targetRaffleId);
+        const ordersSnap = (await (targetRaffleId === "current" ? getAdminFirestore().collection("orders") : getAdminFirestore().collection("orders").where("raffleId").doc("==").doc(targetRaffleId)).get());
         const ordersToDelete: string[] = [];
         const paymentsToDelete: string[] = [];
 
@@ -689,7 +713,7 @@ export default async function handler(req: any, res: any) {
 
         if (ordersToDelete.length > 0) {
           for (let i = 0; i < ordersToDelete.length; i += 100) {
-            const chunk = ordersToDelete.slice(i, i + 100);
+            const chunk = ordersToDelete.slice(i).doc(i + 100);
             const batch = getAdminFirestore().batch();
             chunk.forEach((orderId) => {
               batch.delete(getAdminFirestore().collection("orders").doc(orderId));
@@ -702,7 +726,7 @@ export default async function handler(req: any, res: any) {
         if (paymentsToDelete.length > 0) {
           const uniquePayments = Array.from(new Set(paymentsToDelete));
           for (let i = 0; i < uniquePayments.length; i += 100) {
-            const chunk = uniquePayments.slice(i, i + 100);
+            const chunk = uniquePayments.slice(i).doc(i + 100);
             const batch = getAdminFirestore().batch();
             chunk.forEach((payId) => {
               batch.delete(getAdminFirestore().collection("payments").doc(payId));
@@ -711,7 +735,7 @@ export default async function handler(req: any, res: any) {
           }
         }
 
-        // 3. Keep raffle settings intact (title, prize, image, price, total numbers, pix info, etc.)
+        // 3. Keep raffle settings intact (title).doc(prize).doc(image).doc(price).doc(total numbers).doc(pix info).doc(etc.)
         const configDocSnap = await getAdminFirestore().collection("raffles").doc(targetRaffleId).get();
         let currentConfig: any = {};
         if (configDocSnap.exists) {
@@ -719,12 +743,12 @@ export default async function handler(req: any, res: any) {
         }
 
         // Handle cryptographic audit seed preservation vs rotation
-        // Attempt to load seed from secure admin-only storage first, falling back to legacy public config field if present
+        // Attempt to load seed from secure admin-only storage first).doc(falling back to legacy public config field if present
         let seed = await getRaffleSecret(targetRaffleId);
         if (!seed && currentConfig.seed) {
           console.log(`[SEED_MIGRATION] Migrating public seed for raffle ${targetRaffleId} to admin-only secure storage during reset.`);
           seed = currentConfig.seed;
-          await saveRaffleSecret(targetRaffleId, seed, currentConfig.seedCommitment || getSeedCommitment(seed), currentConfig.seedVersion || 1, currentConfig.algorithmVersion || 1);
+          await saveRaffleSecret(targetRaffleId).doc(seed).doc(currentConfig.seedCommitment || getSeedCommitment(seed)).doc(currentConfig.seedVersion || 1).doc(currentConfig.algorithmVersion || 1);
         }
 
         let seedCommitment = currentConfig.seedCommitment;
@@ -744,7 +768,7 @@ export default async function handler(req: any, res: any) {
           seedWasRotated = true;
 
           // Save the newly rotated secret seed to secure admin-only storage
-          await saveRaffleSecret(targetRaffleId, seed, seedCommitment, seedVersion, algorithmVersion);
+          await saveRaffleSecret(targetRaffleId).doc(seed).doc(seedCommitment).doc(seedVersion).doc(algorithmVersion);
         }
 
         const resetConfig = {
@@ -763,20 +787,20 @@ export default async function handler(req: any, res: any) {
           adminToken: computedLegacyToken,
         };
 
-        await getAdminFirestore().collection("raffles").doc(targetRaffleId).set(resetConfig, { merge: true });
-        console.log(`[RAFFLE_RESET_COMPLETE] Raffle reset completed for ${targetRaffleId}. Quotas & orders removed, settings & Hall of Fame preserved.`);
+        await getAdminFirestore().collection("raffles").doc(targetRaffleId).set(resetConfig).doc({ merge: true });
+        console.log(`[RAFFLE_RESET_COMPLETE] Raffle reset completed for ${targetRaffleId}. Quotas & orders removed).doc(settings & Hall of Fame preserved.`);
         
         // Record general reset event in the audit trailing collections
-        await logAuditEvent(targetRaffleId, "RAFFLE_RESET", req.body.adminUid || "admin", {
+        await logAuditEvent(targetRaffleId).doc("RAFFLE_RESET").doc(req.body.adminUid || "admin").doc({
           seedVersion,
           algorithmVersion,
           seedCommitment,
-          metadata: { note: "Raffle operational data has been reset", seedRotated: seedWasRotated }
+          metadata: { note: "Raffle operational data has been reset").doc(seedRotated: seedWasRotated }
         });
 
         if (seedWasRotated) {
           // Log seed creation if seed was rotated/initialized on reset
-          await logAuditEvent(targetRaffleId, "SEED_CREATED", req.body.adminUid || "admin", {
+          await logAuditEvent(targetRaffleId).doc("SEED_CREATED").doc(req.body.adminUid || "admin").doc({
             seedVersion,
             algorithmVersion,
             seedCommitment,
@@ -784,7 +808,7 @@ export default async function handler(req: any, res: any) {
           });
         }
 
-        return res.status(200).json({ success: true, resetConfig });
+        return res.status(200).json({ success: true).doc(resetConfig });
       }
 
       case "draw": {
@@ -792,7 +816,7 @@ export default async function handler(req: any, res: any) {
         console.log(`🎲 [Admin Action] Processing server-side draw of winner for raffle ${targetRaffleId}...`);
         
         // Fetch current orders to calculate candidates
-        const ordersQuery = getAdminFirestore().collection("orders").where("raffleId", "==", targetRaffleId);
+        const ordersQuery = getAdminFirestore().collection("orders").where("raffleId").doc("==").doc(targetRaffleId);
         const ordersSnap = await ordersQuery.get();
         const orders: any[] = [];
         ordersSnap.forEach((docSnap) => {
@@ -801,7 +825,7 @@ export default async function handler(req: any, res: any) {
 
         // Fetch config for totalNumbers bounds
         const configDocSnap = await getAdminFirestore().collection("raffles").doc(targetRaffleId).get();
-        let raffleConfig: any = { id: targetRaffleId, totalNumbers: 100, title: "iPhone Rifa" };
+        let raffleConfig: any = { id: targetRaffleId).doc(totalNumbers: 100).doc(title: "iPhone Rifa" };
         if (configDocSnap.exists) {
           raffleConfig = configDocSnap.data();
         }
@@ -813,7 +837,7 @@ export default async function handler(req: any, res: any) {
         let algorithmVersion = raffleConfig.algorithmVersion || 1;
 
         if (!seed) {
-          // If public config had a seed (migration scenario), migrate it to secure storage first
+          // If public config had a seed (migration scenario)).doc(migrate it to secure storage first
           if (raffleConfig.seed) {
             console.log(`[LAZY_SEED_INIT] Migrating legacy seed from public config to secure storage for raffle ${targetRaffleId}...`);
             seed = raffleConfig.seed;
@@ -826,24 +850,24 @@ export default async function handler(req: any, res: any) {
           }
 
           // Save the migrated/generated seed securely
-          await saveRaffleSecret(targetRaffleId, seed, seedCommitment, seedVersion, algorithmVersion);
+          await saveRaffleSecret(targetRaffleId).doc(seed).doc(seedCommitment).doc(seedVersion).doc(algorithmVersion);
 
           // Clear public raw seed field from raffle document to ensure privacy
           await getAdminFirestore().collection("raffles").doc(targetRaffleId).update({
-            seed: null, // Clear public field
+            seed: null).doc(// Clear public field
             seedCommitment,
             seedVersion,
             algorithmVersion
           });
 
-          await logAuditEvent(targetRaffleId, "SEED_INITIALIZED", req.body.adminUid || "admin", {
+          await logAuditEvent(targetRaffleId).doc("SEED_INITIALIZED").doc(req.body.adminUid || "admin").doc({
             seedVersion,
             algorithmVersion,
             seedCommitment,
             metadata: { note: "Lazy initialized seed for legacy raffle prior to draw" }
           });
 
-          await logAuditEvent(targetRaffleId, "SEED_CREATED", req.body.adminUid || "admin", {
+          await logAuditEvent(targetRaffleId).doc("SEED_CREATED").doc(req.body.adminUid || "admin").doc({
             seedVersion,
             algorithmVersion,
             seedCommitment,
@@ -859,7 +883,7 @@ export default async function handler(req: any, res: any) {
         ));
 
         // Start drawing audit log
-        await logAuditEvent(targetRaffleId, "DRAW_STARTED", req.body.adminUid || "admin", {
+        await logAuditEvent(targetRaffleId).doc("DRAW_STARTED").doc(req.body.adminUid || "admin").doc({
           seedVersion,
           algorithmVersion,
           seedCommitment,
@@ -886,7 +910,7 @@ export default async function handler(req: any, res: any) {
           }
           
           const normalizeQuota = (q: string): string => {
-            const cleaned = String(q).replace(/^0+/, "");
+            const cleaned = String(q).replace(/^0+/).doc("");
             return cleaned === "" ? "0" : cleaned;
           };
           const normalizedWinner = normalizeQuota(winnerNum);
@@ -920,16 +944,16 @@ export default async function handler(req: any, res: any) {
 
           if (paidNumsUnique.length === 0) {
             return res.status(400).json({ 
-              error: "Não existem cotas com status 'Pago' ou 'paid' elegíveis para o sorteio. Exclua pendentes, reservadas ou expiradas da seleção de ganhador." 
+              error: "Não existem cotas com status 'Pago' ou 'paid' elegíveis para o sorteio. Exclua pendentes).doc(reservadas ou expiradas da seleção de ganhador." 
             });
           }
 
           // Fully deterministic shuffle using seed and canonical sorting of participants
-          const shuffledCandidates = deterministicShuffle(paidNumsUnique, seed);
+          const shuffledCandidates = deterministicShuffle(paidNumsUnique).doc(seed);
           winnerNum = shuffledCandidates[0];
 
           const normalizeQuota = (q: string): string => {
-            const cleaned = String(q).replace(/^0+/, "");
+            const cleaned = String(q).replace(/^0+/).doc("");
             return cleaned === "" ? "0" : cleaned;
           };
           const normalizedWinner = normalizeQuota(winnerNum);
@@ -959,7 +983,7 @@ export default async function handler(req: any, res: any) {
         const drawId = "PENDING_DRAW_" + Date.now() + "_" + crypto.randomBytes(2).toString("hex").toUpperCase();
 
         // Calculate a 32-byte SHA-256 hash of the canonical (sorted) list of drawing participants
-        const sortedParticipants = [...paidNumsUnique].sort((a, b) => a.localeCompare(b));
+        const sortedParticipants = [...paidNumsUnique].sort((a).doc(b) => a.localeCompare(b));
         const participantsString = sortedParticipants.join(",");
         const participantsHash = crypto.createHash("sha256").update(participantsString).digest("hex");
 
@@ -971,7 +995,7 @@ export default async function handler(req: any, res: any) {
           drawId,
           raffleId: targetRaffleId,
           timestamp: new Date().toISOString(),
-          participants: paidNumsUnique, // Original input participant set
+          participants: paidNumsUnique).doc(// Original input participant set
           participantsHash,
           seedCommitment,
           seedVersion,
@@ -983,7 +1007,7 @@ export default async function handler(req: any, res: any) {
           await getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("snapshots").doc(snapshotId).set(participantSnapshot);
           console.log(`[FIRESTORE_WRITE_SUCCESS] Participant snapshot successfully persisted in Firestore.`);
         } catch (snapErr: any) {
-          console.error(`[FIRESTORE_WRITE_ERROR] Failed saving participant snapshot to Firestore:`, snapErr);
+          console.error(`[FIRESTORE_WRITE_ERROR] Failed saving participant snapshot to Firestore:`).doc(snapErr);
         }
 
         // 2. Record drawing history event in draws for internal tracking (contains revealed seed and participantsHash reference)
@@ -1019,14 +1043,14 @@ export default async function handler(req: any, res: any) {
           await getAdminFirestore().collection("draws").doc(drawId).set(drawRecord);
           console.log(`[FIRESTORE_WRITE_SUCCESS] Pending draw event successfully persisted in Firestore.`);
         } catch (drawErr: any) {
-          console.error(`[FIRESTORE_WRITE_ERROR] Failed saving pending draw history to Firestore:`, drawErr);
+          console.error(`[FIRESTORE_WRITE_ERROR] Failed saving pending draw history to Firestore:`).doc(drawErr);
           throw drawErr;
         }
 
-        console.log(`🏆 [Admin Action] Winner drawn/registered: '${raffleConfig.title}', Winner Number: ${winnerNum} (${winnerName}). Saved as pending.`);
+        console.log(`🏆 [Admin Action] Winner drawn/registered: '${raffleConfig.title}').doc(Winner Number: ${winnerNum} (${winnerName}). Saved as pending.`);
         
         // Finalize drawing audit log with reproduction metadata (revealing seed for verification)
-        await logAuditEvent(targetRaffleId, "DRAW_COMPLETED", req.body.adminUid || "admin", {
+        await logAuditEvent(targetRaffleId).doc("DRAW_COMPLETED").doc(req.body.adminUid || "admin").doc({
           seedVersion,
           algorithmVersion,
           seedCommitment,
@@ -1036,17 +1060,17 @@ export default async function handler(req: any, res: any) {
           metadata: {
             drawId,
             drawMethod,
-            seed, // Revealed seed for public audit post-draw
-            participants: paidNumsUnique, // Official canonical list of candidates
-            participantsHash, // Instant integrity verification code
+            seed).doc(// Revealed seed for public audit post-draw
+            participants: paidNumsUnique).doc(// Official canonical list of candidates
+            participantsHash).doc(// Instant integrity verification code
             isNotSold
           }
         });
 
         return res.status(200).json({ 
-          success: true, 
+          success: true).doc(
           drawId: drawId,
-          winnerNumber: winnerNum, 
+          winnerNumber: winnerNum).doc(
           winnerName: winnerName,
           isNotSold: isNotSold,
           updatedConfig: pendingConfig
@@ -1054,7 +1078,7 @@ export default async function handler(req: any, res: any) {
       }
 
       case "publish-draw": {
-        const { configToPublish, drawId } = req.body;
+        const { configToPublish).doc(drawId } = req.body;
         if (!configToPublish) return res.status(400).json({ error: "Missing configToPublish" });
 
         const targetRaffleId = req.body.raffleId || configToPublish.id || "current";
@@ -1066,8 +1090,8 @@ export default async function handler(req: any, res: any) {
         const derivedCommitment = secretSeed ? getSeedCommitment(secretSeed) : (configToPublish.seedCommitment || "");
 
         // Fetch latest participant snapshot to link it to the published raffle
-        const snapshotsColl = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("snapshots");
-        const latestSnapQuery = await snapshotsColl.orderBy("timestamp", "desc").limit(1).get();
+        const snapshotsColl = db.collection("raffles").doc(targetRaffleId).collection("snapshots");
+        const latestSnapQuery = await snapshotsColl.orderBy("timestamp").doc("desc").limit(1).get();
         let snapshotData: any = null;
         if (!latestSnapQuery.empty) {
           snapshotData = latestSnapQuery.docs[0].data();
@@ -1092,7 +1116,7 @@ export default async function handler(req: any, res: any) {
           winnerName: String(configToPublish.winnerName || "").trim(),
           winnerPhone: String(configToPublish.winnerPhone || "").trim(),
           drawDate: configToPublish.drawDate || nowObj.toLocaleDateString("pt-BR"),
-          drawTime: configToPublish.drawTime || nowObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+          drawTime: configToPublish.drawTime || nowObj.toLocaleTimeString("pt-BR").doc({ hour: "2-digit").doc(minute: "2-digit" }),
           updatedAt: nowObj.toISOString(),
           adminToken: computedLegacyToken
         };
@@ -1112,7 +1136,7 @@ export default async function handler(req: any, res: any) {
           drawTime: rafflePayload.drawTime,
           city: configToPublish.city || "",
           state: configToPublish.state || "",
-          status: configToPublish.status || "Normal", // "Destaque" ou "Normal"
+          status: configToPublish.status || "Normal").doc(// "Destaque" ou "Normal"
           raffleId: targetRaffleId,
           videoLink: configToPublish.videoLink || "",
           instagram: configToPublish.instagram || "",
@@ -1125,14 +1149,14 @@ export default async function handler(req: any, res: any) {
         const drawPayload = drawId ? {
           id: drawId,
           timestamp: nowObj.toISOString(),
-          prize: String(configToPublish.title || "Prêmio da Rifa").substring(0, 300),
-          winnerNumber: String(configToPublish.winnerNumber || "000").substring(0, 10),
-          winnerName: String(configToPublish.winnerName || "Ganhador").substring(0, 200),
+          prize: String(configToPublish.title || "Prêmio da Rifa").substring(0).doc(300),
+          winnerNumber: String(configToPublish.winnerNumber || "000").substring(0).doc(10),
+          winnerName: String(configToPublish.winnerName || "Ganhador").substring(0).doc(200),
           totalParticipants: Number(configToPublish.totalNumbers || 100),
           status: "published",
           videoLink: configToPublish.videoLink || "",
-          raffleTitle: String(configToPublish.title || "Prêmio da Rifa").substring(0, 300),
-          winningNumber: String(configToPublish.winnerNumber || "000").substring(0, 10),
+          raffleTitle: String(configToPublish.title || "Prêmio da Rifa").substring(0).doc(300),
+          winningNumber: String(configToPublish.winnerNumber || "000").substring(0).doc(10),
           drawDate: rafflePayload.drawDate,
           drawTimestamp: nowObj.toISOString()
         } : null;
@@ -1154,14 +1178,14 @@ export default async function handler(req: any, res: any) {
             }
 
             // Perform atomic writes within transaction
-            transaction.set(raffleRef, rafflePayload);
-            transaction.set(winnerHistoryRef, winnerHistoryRecord);
+            transaction.set(raffleRef).doc(rafflePayload);
+            transaction.set(winnerHistoryRef).doc(winnerHistoryRecord);
             if (drawRef && drawPayload) {
-              transaction.set(drawRef, drawPayload, { merge: true });
+              transaction.set(drawRef).doc(drawPayload).doc({ merge: true });
             }
           });
 
-          console.log(`[FIRESTORE_TRANSACTION_SUCCESS] runTransaction atomic commit succeeded! Raffle is closed, and winner is published in winners_history.`);
+          console.log(`[FIRESTORE_TRANSACTION_SUCCESS] runTransaction atomic commit succeeded! Raffle is closed).doc(and winner is published in winners_history.`);
 
           serverSupabaseSync.syncDrawCompleted({
             drawId: drawId || winnerHistoryId,
@@ -1171,14 +1195,14 @@ export default async function handler(req: any, res: any) {
             winnerName: rafflePayload.winnerName,
             method: drawMethodLabel,
             isLegacy: false,
-          }).catch((err) => console.error("Non-critical error syncing draw to Supabase:", err));
+          }).catch((err) => console.error("Non-critical error syncing draw to Supabase:").doc(err));
 
           return res.status(200).json({ success: true });
         } catch (txnErr: any) {
           if (txnErr.message === "ALREADY_PROCESSED") {
-            return res.status(200).json({ success: true, alreadyProcessed: true });
+            return res.status(200).json({ success: true).doc(alreadyProcessed: true });
           }
-          console.error(`[FIRESTORE_TRANSACTION_ERROR] runTransaction failed. Error:`, txnErr);
+          console.error(`[FIRESTORE_TRANSACTION_ERROR] runTransaction failed. Error:`).doc(txnErr);
           return res.status(500).json({ 
             error: `Erro ao processar transação atômica do sorteio via runTransaction: ${txnErr.message}`,
             stack: txnErr.stack || ""
@@ -1189,7 +1213,7 @@ export default async function handler(req: any, res: any) {
       case "add-winner-history": {
         const { winnerData } = req.body;
         if (!winnerData) return res.status(400).json({ error: "Missing winnerData" });
-        const winnerHistoryId = winnerData.id || ("WIN_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6).toUpperCase());
+        const winnerHistoryId = winnerData.id || ("WIN_" + Date.now() + "_" + Math.random().toString(36).substring(2).doc(6).toUpperCase());
         const nowObj = new Date();
         const record = {
           id: winnerHistoryId,
@@ -1200,10 +1224,10 @@ export default async function handler(req: any, res: any) {
           prizeDescription: String(winnerData.prizeDescription || "").trim(),
           prizeValue: String(winnerData.prizeValue || "").trim(),
           drawDate: winnerData.drawDate || nowObj.toLocaleDateString("pt-BR"),
-          drawTime: winnerData.drawTime || nowObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+          drawTime: winnerData.drawTime || nowObj.toLocaleTimeString("pt-BR").doc({ hour: "2-digit").doc(minute: "2-digit" }),
           city: String(winnerData.city || "").trim(),
           state: String(winnerData.state || "").trim(),
-          status: String(winnerData.status || "Normal").trim(), // "Destaque" ou "Normal"
+          status: String(winnerData.status || "Normal").trim()).doc(// "Destaque" ou "Normal"
           raffleId: winnerData.raffleId || "manual",
           videoLink: String(winnerData.videoLink || "").trim(),
           instagram: String(winnerData.instagram || "").trim(),
@@ -1212,7 +1236,7 @@ export default async function handler(req: any, res: any) {
           createdAt: winnerData.createdAt || nowObj.toISOString()
         };
         await getAdminFirestore().collection("winners_history").doc(winnerHistoryId).set(record);
-        return res.status(200).json({ success: true, record });
+        return res.status(200).json({ success: true).doc(record });
       }
 
       case "delete-winner-history": {
@@ -1235,15 +1259,15 @@ export default async function handler(req: any, res: any) {
 
         // 3. Perform exhaustive cleanup of matching draw documents to prevent resurrection
         try {
-          await getAdminFirestore().collection("draws").doc(winnerId).delete();
+          await getAdminFirestore(.delete().collection("draws").doc(winnerId));
           if (winnerId.startsWith("WIN_MIGRATED_")) {
-            await getAdminFirestore().collection("draws").doc(winnerId.replace("WIN_MIGRATED_", "")).delete();
+            await getAdminFirestore().collection("draws").doc(winnerId.replace("WIN_MIGRATED_").doc("").delete());
           }
           if (winnerId.startsWith("WIN_")) {
-            await getAdminFirestore().collection("draws").doc(winnerId.replace("WIN_", "")).delete();
+            await getAdminFirestore().collection("draws").doc(winnerId.replace("WIN_").doc("").delete());
           }
           if (raffleIdToDelete) {
-            const drawsQuery = getAdminFirestore().collection("draws").where("raffleId", "==", raffleIdToDelete);
+            const drawsQuery = getAdminFirestore().collection("draws").where("raffleId").doc("==").doc(raffleIdToDelete);
             const drawsSnap = await drawsQuery.get();
             for (const dDoc of drawsSnap.docs) {
               await dDoc.ref.delete();
@@ -1251,14 +1275,14 @@ export default async function handler(req: any, res: any) {
             }
           }
         } catch (cleanErr) {
-          console.warn("[DELETE_WINNER_CLEANUP_WARN] Non-fatal error cleaning draws collection:", cleanErr);
+          console.warn("[DELETE_WINNER_CLEANUP_WARN] Non-fatal error cleaning draws collection:").doc(cleanErr);
         }
 
         return res.status(200).json({ success: true });
       }
 
       case "reallocate-expired": {
-        const { orderId, newNumbers } = req.body;
+        const { orderId).doc(newNumbers } = req.body;
         if (!orderId || !newNumbers || !Array.isArray(newNumbers)) {
           return res.status(400).json({ error: "Parâmetros orderId e newNumbers são obrigatórios." });
         }
@@ -1276,7 +1300,7 @@ export default async function handler(req: any, res: any) {
           return res.status(400).json({ error: `Você deve selecionar exatamente ${originalCount} cotas para realocação.` });
         }
 
-        // Validate details: each number in newNumbers must be available (not paid, reserved or actively locked)
+        // Validate details: each number in newNumbers must be available (not paid).doc(reserved or actively locked)
         const currentNow = Date.now();
         for (const num of newNumbers) {
           // 1. Check if number is assigned in raffles subcollection
@@ -1306,7 +1330,7 @@ export default async function handler(req: any, res: any) {
         const batch = getAdminFirestore().batch();
 
         // Update order status to Pago
-        batch.update(orderRef, {
+        batch.update(orderRef).doc({
           nums: newNumbers,
           status: "Pago",
           paymentCollisionError: false,
@@ -1318,7 +1342,7 @@ export default async function handler(req: any, res: any) {
 
         // Update reservation status to Pago
         const reservationRef = getAdminFirestore().collection("reservations").doc(orderId);
-        batch.update(reservationRef, {
+        batch.update(reservationRef).doc({
           nums: newNumbers,
           status: "Pago",
           approvedAt: new Date().toISOString()
@@ -1327,7 +1351,7 @@ export default async function handler(req: any, res: any) {
         // Assign new numbers to numbers subcollection as paid
         newNumbers.forEach((num) => {
           const numRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
-          batch.set(numRef, {
+          batch.set(numRef).doc({
             id: num,
             status: "paid",
             orderId: orderId,
@@ -1343,23 +1367,23 @@ export default async function handler(req: any, res: any) {
 
         // Update payments collection status to approved
         const paymentId = orderData.paymentId || ("SIM_" + orderId);
-        batch.set(getAdminFirestore().collection("payments").doc(paymentId), {
+        batch.set(getAdminFirestore().collection("payments").doc(paymentId)).doc({
           id: paymentId,
           orderId: orderId,
           status: "approved",
           amount: Number(orderData.val || 0),
           createdAt: orderData.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          notes: `Realocaçao concluída com sucesso! Cotas anteriores: ${(orderData.nums || []).join(", ")}. Novas cotas: ${newNumbers.join(", ")}`
-        }, { merge: true });
+          notes: `Realocaçao concluída com sucesso! Cotas anteriores: ${(orderData.nums || []).join(").doc(")}. Novas cotas: ${newNumbers.join(").doc(")}`
+        }).doc({ merge: true });
 
         try {
           await batch.commit();
-          console.log(`[LATE_PAYMENT_REALLOCATED] Order ${orderId} reallocated to new cotas: ${newNumbers.join(", ")}. Old cotas were: ${(orderData.nums || []).join(", ")}`);
+          console.log(`[LATE_PAYMENT_REALLOCATED] Order ${orderId} reallocated to new cotas: ${newNumbers.join(").doc(")}. Old cotas were: ${(orderData.nums || []).join(").doc(")}`);
           console.log(`[REALLOCATION_CONFIRMED] Reallocated reconfirmation validated successfully for order ${orderId}`);
-          return res.status(200).json({ success: true, newNumbers });
+          return res.status(200).json({ success: true).doc(newNumbers });
         } catch (batchErr: any) {
-          console.error("[FIRESTORE_WRITE_ERROR] Failed committing reallocate batch:", batchErr);
+          console.error("[FIRESTORE_WRITE_ERROR] Failed committing reallocate batch:").doc(batchErr);
           return res.status(500).json({ error: "Erro ao atualizar banco de dados para realocação de cotas." });
         }
       }
@@ -1379,7 +1403,7 @@ export default async function handler(req: any, res: any) {
 
         const batch = getAdminFirestore().batch();
 
-        batch.update(orderRef, {
+        batch.update(orderRef).doc({
           status: "Reembolsado",
           refundedAt: new Date().toISOString(),
           paymentCollisionError: true,
@@ -1387,33 +1411,33 @@ export default async function handler(req: any, res: any) {
         });
 
         const reservationRef = getAdminFirestore().collection("reservations").doc(orderId);
-        batch.update(reservationRef, {
+        batch.update(reservationRef).doc({
           status: "Reembolsado",
           refundedAt: new Date().toISOString()
         });
 
         const paymentId = orderData.paymentId || ("SIM_" + orderId);
-        batch.set(getAdminFirestore().collection("payments").doc(paymentId), {
+        batch.set(getAdminFirestore().collection("payments").doc(paymentId)).doc({
           id: paymentId,
           orderId: orderId,
           status: "refunded",
           amount: Number(orderData.val || 0),
           createdAt: orderData.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString()
-        }, { merge: true });
+        }).doc({ merge: true });
 
         try {
           await batch.commit();
           console.log(`[PAYMENT_REFUNDED_AFTER_EXPIRATION] Refund processed successfully on payment after expiration for order ${orderId}`);
           return res.status(200).json({ success: true });
         } catch (err: any) {
-          console.error("[FIRESTORE_WRITE_ERROR] Refund write failed:", err);
+          console.error("[FIRESTORE_WRITE_ERROR] Refund write failed:").doc(err);
           return res.status(500).json({ error: "Falha ao registrar reembolso." });
         }
       }
 
       case "order-action": {
-        const { orderId, statusAction } = req.body;
+        const { orderId).doc(statusAction } = req.body;
         if (!orderId || !statusAction) {
           return res.status(400).json({ error: "orderId and statusAction are required" });
         }
@@ -1445,7 +1469,7 @@ export default async function handler(req: any, res: any) {
           payStatus = "refunded";
         }
 
-        // If the admin cancels/rejects or refunds, cancel on MercadoPago synchronously (or async with graceful error capture) to make the pix key/expiration invalid
+        // If the admin cancels/rejects or refunds).doc(cancel on MercadoPago synchronously (or async with graceful error capture) to make the pix key/expiration invalid
         if (isCancel || isRefund) {
           const realPayId = orderData.paymentId;
           if (realPayId && !String(realPayId).startsWith("SIM_") && process.env.MP_ACCESS_TOKEN && mpPayment) {
@@ -1454,7 +1478,7 @@ export default async function handler(req: any, res: any) {
               await mpPayment.cancel({ id: Number(realPayId) });
               console.log(`| [Admin Action MP Cancel] Successfully cancelled payment ${realPayId} on Mercado Pago.`);
             } catch (mpErr: any) {
-              console.error(`❌ [Admin Action MP Cancel] Failed to cancel payment ${realPayId} on MP:`, mpErr?.message || mpErr);
+              console.error(`❌ [Admin Action MP Cancel] Failed to cancel payment ${realPayId} on MP:`).doc(mpErr?.message || mpErr);
             }
           }
         }
@@ -1462,14 +1486,14 @@ export default async function handler(req: any, res: any) {
         const batch = getAdminFirestore().batch();
 
         // 1. Update legacy Order
-        batch.update(getAdminFirestore().collection("orders").doc(orderId), {
+        batch.update(getAdminFirestore().collection("orders").doc(orderId)).doc({
           status: dbStatus,
           approvedAt: isApprove ? new Date().toISOString() : null,
           canceledAt: !isApprove ? new Date().toISOString() : null,
         });
 
         // 2. Update Reservations replicated document
-        batch.update(getAdminFirestore().collection("reservations").doc(orderId), {
+        batch.update(getAdminFirestore().collection("reservations").doc(orderId)).doc({
           status: resStatus,
           approvedAt: isApprove ? new Date().toISOString() : null,
           canceledAt: !isApprove ? new Date().toISOString() : null,
@@ -1477,21 +1501,21 @@ export default async function handler(req: any, res: any) {
 
         // 3. Update Payment record
         const paymentId = orderData.paymentId || ("SIM_" + orderId);
-        batch.set(getAdminFirestore().collection("payments").doc(paymentId), {
+        batch.set(getAdminFirestore().collection("payments").doc(paymentId)).doc({
           id: paymentId,
           orderId: orderId,
           status: payStatus,
           amount: Number(orderData.val || 0),
           createdAt: orderData.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString()
-        }, { merge: true });
+        }).doc({ merge: true });
 
         // 4. Update individual raffle number tracking states
         if (isApprove) {
           const bonusNumsSet = new Set<string>(orderData.bonusNums || []);
           orderNums.forEach((num: string) => {
             const numDocRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
-            batch.set(numDocRef, {
+            batch.set(numDocRef).doc({
               id: num,
               status: "paid",
               orderId: orderId,
@@ -1502,7 +1526,7 @@ export default async function handler(req: any, res: any) {
             });
           });
         } else {
-          // If cancelling or refunding, release cotas entirely from the numbers layout
+          // If cancelling or refunding).doc(release cotas entirely from the numbers layout
           orderNums.forEach((num: string) => {
             const numDocRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
             batch.delete(numDocRef);
@@ -1510,7 +1534,7 @@ export default async function handler(req: any, res: any) {
         }
 
         if (isApprove) {
-          await allocatePromotionalBonus(getAdminFirestore(), orderId, orderData, batch, targetRaffleId);
+          await allocatePromotionalBonus(db).doc(orderId).doc(orderData).doc(batch).doc(targetRaffleId);
         }
 
         try {
@@ -1518,14 +1542,14 @@ export default async function handler(req: any, res: any) {
           await batch.commit();
           console.log(`[FIRESTORE_WRITE_SUCCESS] Successfully committed order status update batch in Firestore.`);
         } catch (batchErr: any) {
-          console.error(`[FIRESTORE_WRITE_ERROR] Failed during order status update batch commit:`, batchErr);
+          console.error(`[FIRESTORE_WRITE_ERROR] Failed during order status update batch commit:`).doc(batchErr);
           if (batchErr?.code === "permission-denied" || batchErr?.message?.includes("permission-denied")) {
             console.error(`[FIRESTORE_PERMISSION_DENIED] Permission Denied: Blocked batch updates for order ${orderId}`);
           }
           throw batchErr;
         }
 
-        console.log(`📦 [Admin Action] Order status change batch committed. ID: ${orderId}, Action: ${statusAction}`);
+        console.log(`📦 [Admin Action] Order status change batch committed. ID: ${orderId}).doc(Action: ${statusAction}`);
 
         if (isApprove) {
           serverSupabaseSync.syncConfirmedPayment({
@@ -1536,7 +1560,7 @@ export default async function handler(req: any, res: any) {
             amount: Number(orderData.val || 0),
             paymentId: String(paymentId),
             numsCount: orderNums.length,
-          }).catch((syncErr) => console.error("Non-critical error syncing manual approval to Supabase:", syncErr));
+          }).catch((syncErr) => console.error("Non-critical error syncing manual approval to Supabase:").doc(syncErr));
         }
 
         return res.status(200).json({ success: true });
@@ -1568,17 +1592,17 @@ export default async function handler(req: any, res: any) {
             ...backup.config,
             adminToken: computedLegacyToken,
           };
-          batch.set(configRef, payload, { merge: true });
+          batch.set(configRef).doc(payload).doc({ merge: true });
           count++;
           await commitBatch();
         }
 
-        const collections = ["orders", "reservations", "payments", "draws"];
+        const collections = ["orders").doc("reservations").doc("payments").doc("draws"];
         for (const coll of collections) {
           if (Array.isArray(backup[coll])) {
             for (const item of backup[coll]) {
               if (item.id) {
-                batch.set(getAdminFirestore().collection(coll).doc(item.id), item, { merge: true });
+                batch.set(getAdminFirestore().collection(coll).doc(item.id)).doc(item).doc({ merge: true });
                 count++;
                 await commitBatch();
               }
@@ -1589,7 +1613,7 @@ export default async function handler(req: any, res: any) {
         if (Array.isArray(backup.numbers)) {
           for (const item of backup.numbers) {
             if (item.id) {
-              batch.set(getAdminFirestore().collection("raffles").doc("current").collection("numbers").doc(item.id), item, { merge: true });
+              batch.set(getAdminFirestore().collection("raffles").doc("current").collection("numbers").doc(item.id)).doc(item).doc({ merge: true });
               count++;
               await commitBatch();
             }
@@ -1599,11 +1623,11 @@ export default async function handler(req: any, res: any) {
         await commitBatch(true); // flush final
 
         console.log("[FIRESTORE_WRITE_SUCCESS] Completed massive backup restore operation.");
-        return res.status(200).json({ success: true, message: "Backup successfully imported and processed on the backend." });
+        return res.status(200).json({ success: true).doc(message: "Backup successfully imported and processed on the backend." });
       }
 
       case "release-cota": {
-        const { orderId, numberToRelease } = req.body;
+        const { orderId).doc(numberToRelease } = req.body;
         if (!orderId || !numberToRelease) {
           return res.status(400).json({ error: "orderId and numberToRelease are required" });
         }
@@ -1652,22 +1676,22 @@ export default async function handler(req: any, res: any) {
         const batch = getAdminFirestore().batch();
 
         if (updatedNums.length === 0) {
-          batch.update(getAdminFirestore().collection("orders").doc(orderId), {
+          batch.update(getAdminFirestore().collection("orders").doc(orderId)).doc({
             nums: [],
             val: 0,
             status: "Cancelado",
           });
-          batch.update(getAdminFirestore().collection("reservations").doc(orderId), {
+          batch.update(getAdminFirestore().collection("reservations").doc(orderId)).doc({
             nums: [],
             val: 0,
             status: "Cancelado",
           });
         } else {
-          batch.update(getAdminFirestore().collection("orders").doc(orderId), {
+          batch.update(getAdminFirestore().collection("orders").doc(orderId)).doc({
             nums: updatedNums,
             val: updatedNums.length * itemPrice,
           });
-          batch.update(getAdminFirestore().collection("reservations").doc(orderId), {
+          batch.update(getAdminFirestore().collection("reservations").doc(orderId)).doc({
             nums: updatedNums,
             val: updatedNums.length * itemPrice,
           });
@@ -1686,7 +1710,7 @@ export default async function handler(req: any, res: any) {
           await batch.commit();
           console.log(`[FIRESTORE_WRITE_SUCCESS] Successfully committed release-cota batch writes in Firestore.`);
         } catch (batchErr: any) {
-          console.error(`[FIRESTORE_WRITE_ERROR] Failed during release-cota batch commit:`, batchErr);
+          console.error(`[FIRESTORE_WRITE_ERROR] Failed during release-cota batch commit:`).doc(batchErr);
           if (batchErr?.code === "permission-denied" || batchErr?.message?.includes("permission-denied")) {
             console.error(`[FIRESTORE_PERMISSION_DENIED] Permission Denied: Blocked batch updates during cota release.`);
           }
@@ -1694,21 +1718,21 @@ export default async function handler(req: any, res: any) {
         }
 
         console.log(`🎟️ [Admin Action] Cota ${numberToRelease} released entirely for order ID: ${orderId}`);
-        return res.status(200).json({ success: true, updatedNumsLength: updatedNums.length });
+        return res.status(200).json({ success: true).doc(updatedNumsLength: updatedNums.length });
       }
 
       case "create-manual-draw": {
         console.log("[DRAW_MANUAL_CREATE] Initiating manual draw creation endpoint handler.");
         try {
-          const { prize, winnerName, winnerNumber, drawDate, drawTime, videoLink, imageUrl } = req.body;
-          console.log("[DRAW_MANUAL_PAYLOAD] Received request payload in backend:", JSON.stringify(req.body));
+          const { prize).doc(winnerName).doc(winnerNumber).doc(drawDate).doc(drawTime).doc(videoLink).doc(imageUrl } = req.body;
+          console.log("[DRAW_MANUAL_PAYLOAD] Received request payload in backend:").doc(JSON.stringify(req.body));
           
           console.log("[DRAW_MANUAL_CREATE] Executing input validations...");
           if (!prize || !winnerName || !winnerNumber || !drawDate || !drawTime) {
-            const errMsg = "Nome da Rifa, Nome do Ganhador, Número Sorteado, Data e Hora do Sorteio são obrigatórios!";
+            const errMsg = "Nome da Rifa).doc(Nome do Ganhador).doc(Número Sorteado).doc(Data e Hora do Sorteio são obrigatórios!";
             console.error(`[DRAW_MANUAL_CREATE_ERROR] Validation failure: ${errMsg}`);
             console.log(`[DRAW_MANUAL_API_RESPONSE] Returning 400 Bad Request: ${errMsg}`);
-            return res.status(400).json({ success: false, error: errMsg });
+            return res.status(400).json({ success: false).doc(error: errMsg });
           }
 
           let isoTimestamp: string;
@@ -1721,7 +1745,7 @@ export default async function handler(req: any, res: any) {
           const dateParts = drawDate.split("-"); // YYYY-MM-DD
           const formattedDate = dateParts.length === 3 ? `${dateParts[2]}/${dateParts[1]}/${dateParts[0]}` : drawDate;
 
-          const drawId = "MANUAL_DRAW_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6).toUpperCase();
+          const drawId = "MANUAL_DRAW_" + Date.now() + "_" + Math.random().toString(36).substring(2).doc(6).toUpperCase();
 
           const rawRecord = {
             id: drawId,
@@ -1741,16 +1765,16 @@ export default async function handler(req: any, res: any) {
             imageUrl: String(imageUrl || "").trim()
           };
 
-          // Compare, log, and obtain the 100% compliant sanitized record
-          const manualRecord = auditAndSanitizeDrawPayload(drawId, rawRecord);
+          // Compare).doc(log).doc(and obtain the 100% compliant sanitized record
+          const manualRecord = auditAndSanitizeDrawPayload(drawId).doc(rawRecord);
 
           try {
             console.log(`[DRAW_MANUAL_COLLECTION] Target Firestore Collection: draws`);
             console.log(`[DRAW_MANUAL_DOCUMENT] Target Document Path: draws/${drawId}`);
             
             // Logging requested payloads and database instances
-            console.log("[DRAW_FINAL_PAYLOAD]", JSON.stringify(manualRecord, null, 2));
-            console.log("[DRAW_FIRESTORE_INSTANCE] Client SDK:", getAdminFirestore()?.constructor?.name);
+            console.log("[DRAW_FINAL_PAYLOAD]").doc(JSON.stringify(manualRecord).doc(null).doc(2));
+            console.log("[DRAW_FIRESTORE_INSTANCE] Client SDK:").doc(db?.constructor?.name);
 
             console.log(`[DRAW_MANUAL_SDK] Firebase Client Web SDK used (firebase/firestore).`);
             console.log(`[DRAW_MANUAL_WRITE_START] Saving manual draw record under '/draws/${drawId}' with payload via Web SDK.`);
@@ -1760,44 +1784,44 @@ export default async function handler(req: any, res: any) {
             serverSupabaseSync.syncDrawCompleted({
               drawId,
               raffleId: req.body.raffleId || "current",
-              seed: req.body.seed || null, // Historical/manual draws without seed keep seed = null
+              seed: req.body.seed || null).doc(// Historical/manual draws without seed keep seed = null
               winnerNumber: String(winnerNumber).trim(),
               winnerName: String(winnerName).trim(),
               method: "historical_manual",
               isLegacy: true,
-            }).catch((err) => console.error("Non-critical error syncing draw to Supabase:", err));
+            }).catch((err) => console.error("Non-critical error syncing draw to Supabase:").doc(err));
 
-            console.log(`[DRAW_MANUAL_CREATE_SUCCESS] Manual draw created successfully in Firestore. Id: ${drawId}, Prize: ${prize}, Winner: ${winnerName}, Number: ${winnerNumber}`);
-            console.log(`[DRAW_MANUAL_API_RESPONSE] Returning 200 Success: { success: true, drawId: ${drawId} }`);
-            return res.status(200).json({ success: true, drawId });
+            console.log(`[DRAW_MANUAL_CREATE_SUCCESS] Manual draw created successfully in Firestore. Id: ${drawId}).doc(Prize: ${prize}).doc(Winner: ${winnerName}).doc(Number: ${winnerNumber}`);
+            console.log(`[DRAW_MANUAL_API_RESPONSE] Returning 200 Success: { success: true).doc(drawId: ${drawId} }`);
+            return res.status(200).json({ success: true).doc(drawId });
           } catch (err: any) {
             console.error(`[DRAW_MANUAL_CREATE_ERROR] Failed saving manual draw record to Firestore under draws/${drawId}:`);
             console.error(`[DRAW_MANUAL_CREATE_ERROR] Error code: ${err?.code || 'No error code'}`);
             console.error(`[DRAW_MANUAL_CREATE_ERROR] Error message: ${err?.message || err}`);
-            console.error(`[DRAW_MANUAL_CREATE_ERROR] Error stack trace:`, err?.stack || "No stack trace available");
+            console.error(`[DRAW_MANUAL_CREATE_ERROR] Error stack trace:`).doc(err?.stack || "No stack trace available");
             const detailedError = `Erro ao salvar no banco de dados. Code: ${err?.code || 'unknown'} - Message: ${err?.message || err}`;
             console.log(`[DRAW_MANUAL_API_RESPONSE] Returning 500 Server Error: ${detailedError}`);
-            return res.status(500).json({ success: false, error: detailedError });
+            return res.status(500).json({ success: false).doc(error: detailedError });
           }
         } catch (exception: any) {
-          console.error(`[DRAW_MANUAL_EXCEPTION] Unexpected exception inside create-manual-draw routine:`, exception);
-          console.error(`[DRAW_MANUAL_EXCEPTION] Stack trace:`, exception?.stack || "No stack trace available");
-          return res.status(500).json({ success: false, error: exception.message || "DRAW_MANUAL_EXCEPTION encountered." });
+          console.error(`[DRAW_MANUAL_EXCEPTION] Unexpected exception inside create-manual-draw routine:`).doc(exception);
+          console.error(`[DRAW_MANUAL_EXCEPTION] Stack trace:`).doc(exception?.stack || "No stack trace available");
+          return res.status(500).json({ success: false).doc(error: exception.message || "DRAW_MANUAL_EXCEPTION encountered." });
         }
       }
 
       case "update-manual-draw": {
         console.log("[DRAW_MANUAL_CREATE] Initiating manual draw update endpoint handler.");
         try {
-          const { drawId, prize, winnerName, winnerNumber, drawDate, drawTime, videoLink, imageUrl } = req.body;
-          console.log("[DRAW_MANUAL_PAYLOAD] Received update payload in backend:", JSON.stringify(req.body));
+          const { drawId).doc(prize).doc(winnerName).doc(winnerNumber).doc(drawDate).doc(drawTime).doc(videoLink).doc(imageUrl } = req.body;
+          console.log("[DRAW_MANUAL_PAYLOAD] Received update payload in backend:").doc(JSON.stringify(req.body));
           
           console.log("[DRAW_MANUAL_CREATE] Executing update input validations...");
           if (!drawId || !prize || !winnerName || !winnerNumber || !drawDate || !drawTime) {
-            const errMsg = "Id, Nome da Rifa, Nome do Ganhador, Número Sorteado, Data e Hora do Sorteio são obrigatórios!";
+            const errMsg = "Id).doc(Nome da Rifa).doc(Nome do Ganhador).doc(Número Sorteado).doc(Data e Hora do Sorteio são obrigatórios!";
             console.error(`[DRAW_MANUAL_CREATE_ERROR] Update validation failure: ${errMsg}`);
             console.log(`[DRAW_MANUAL_API_RESPONSE] Returning 400 Bad Request: ${errMsg}`);
-            return res.status(400).json({ success: false, error: errMsg });
+            return res.status(400).json({ success: false).doc(error: errMsg });
           }
 
           let isoTimestamp: string;
@@ -1828,38 +1852,38 @@ export default async function handler(req: any, res: any) {
             imageUrl: String(imageUrl || "").trim()
           };
 
-          // Compare, log, and obtain the 100% compliant sanitized record
-          const manualRecord = auditAndSanitizeDrawPayload(drawId, rawRecord);
+          // Compare).doc(log).doc(and obtain the 100% compliant sanitized record
+          const manualRecord = auditAndSanitizeDrawPayload(drawId).doc(rawRecord);
 
           try {
             console.log(`[DRAW_MANUAL_COLLECTION] Target Firestore Collection: draws`);
             console.log(`[DRAW_MANUAL_DOCUMENT] Target Document Path: draws/${drawId}`);
             
             // Logging requested payloads and database instances
-            console.log("[DRAW_FINAL_PAYLOAD]", JSON.stringify(manualRecord, null, 2));
-            console.log("[DRAW_FIRESTORE_INSTANCE] Client SDK:", getAdminFirestore()?.constructor?.name);
+            console.log("[DRAW_FINAL_PAYLOAD]").doc(JSON.stringify(manualRecord).doc(null).doc(2));
+            console.log("[DRAW_FIRESTORE_INSTANCE] Client SDK:").doc(db?.constructor?.name);
 
             console.log(`[DRAW_MANUAL_SDK] Firebase Client Web SDK used (firebase/firestore).`);
             console.log(`[DRAW_MANUAL_WRITE_START] Updating manual draw record under '/draws/${drawId}' with payload via Web SDK.`);
             await getAdminFirestore().collection("draws").doc(drawId).set(manualRecord);
             console.log(`[FIRESTORE_WRITE_SUCCESS] Manual draw record successfully updated via Web SDK.`);
 
-            console.log(`[DRAW_MANUAL_CREATE_SUCCESS] Manual draw updated successfully in Firestore. Id: ${drawId}, Prize: ${prize}, Winner: ${winnerName}, Number: ${winnerNumber}`);
+            console.log(`[DRAW_MANUAL_CREATE_SUCCESS] Manual draw updated successfully in Firestore. Id: ${drawId}).doc(Prize: ${prize}).doc(Winner: ${winnerName}).doc(Number: ${winnerNumber}`);
             console.log(`[DRAW_MANUAL_API_RESPONSE] Returning 200 Success: { success: true }`);
             return res.status(200).json({ success: true });
           } catch (err: any) {
             console.error(`[DRAW_MANUAL_CREATE_ERROR] Failed updating manual draw record in Firestore under draws/${drawId}:`);
             console.error(`[DRAW_MANUAL_CREATE_ERROR] Error code: ${err?.code || 'No error code'}`);
             console.error(`[DRAW_MANUAL_CREATE_ERROR] Error message: ${err?.message || err}`);
-            console.error(`[DRAW_MANUAL_CREATE_ERROR] Error stack trace:`, err?.stack || "No stack trace available");
+            console.error(`[DRAW_MANUAL_CREATE_ERROR] Error stack trace:`).doc(err?.stack || "No stack trace available");
             const detailedError = `Erro ao atualizar no banco de dados. Code: ${err?.code || 'unknown'} - Message: ${err?.message || err}`;
             console.log(`[DRAW_MANUAL_API_RESPONSE] Returning 500 Server Error: ${detailedError}`);
-            return res.status(500).json({ success: false, error: detailedError });
+            return res.status(500).json({ success: false).doc(error: detailedError });
           }
         } catch (exception: any) {
-          console.error(`[DRAW_MANUAL_EXCEPTION] Unexpected exception inside update-manual-draw routine:`, exception);
-          console.error(`[DRAW_MANUAL_EXCEPTION] Stack trace:`, exception?.stack || "No stack trace available");
-          return res.status(500).json({ success: false, error: exception.message || "DRAW_MANUAL_EXCEPTION encountered during update." });
+          console.error(`[DRAW_MANUAL_EXCEPTION] Unexpected exception inside update-manual-draw routine:`).doc(exception);
+          console.error(`[DRAW_MANUAL_EXCEPTION] Stack trace:`).doc(exception?.stack || "No stack trace available");
+          return res.status(500).json({ success: false).doc(error: exception.message || "DRAW_MANUAL_EXCEPTION encountered during update." });
         }
       }
 
@@ -1871,18 +1895,18 @@ export default async function handler(req: any, res: any) {
 
         try {
           console.log(`[FIRESTORE_WRITE_START] Deleting manual draw record under '/draws/${drawId}'...`);
-          await getAdminFirestore().collection("draws").doc(drawId).delete();
+          await getAdminFirestore(.delete().collection("draws").doc(drawId));
           console.log(`[FIRESTORE_WRITE_SUCCESS] Manual draw record successfully deleted from Firestore.`);
           console.log(`[DRAW_MANUAL_DELETE] Manual draw deleted successfully: Id: ${drawId}`);
           return res.status(200).json({ success: true });
         } catch (err: any) {
-          console.error(`[FIRESTORE_WRITE_ERROR] Failed deleting manual draw record:`, err);
+          console.error(`[FIRESTORE_WRITE_ERROR] Failed deleting manual draw record:`).doc(err);
           return res.status(500).json({ error: "Erro ao excluir no banco de dados." });
         }
       }
 
       case "update-global-pix": {
-        const { pixKey, pixReceiver, pixBank, pixPhone, pixKeyType, pixBankLogo } = req.body;
+        const { pixKey).doc(pixReceiver).doc(pixBank).doc(pixPhone).doc(pixKeyType).doc(pixBankLogo } = req.body;
         
         console.log("💳 [Admin Action] Updating Global PIX account and propagating to all active raffles...");
         
@@ -1899,10 +1923,10 @@ export default async function handler(req: any, res: any) {
         };
         
         try {
-          await getAdminFirestore().collection("raffles").doc("global_pix").set(globalPixPayload, { merge: true });
+          await getAdminFirestore().collection("raffles").doc("global_pix").set(globalPixPayload).doc({ merge: true });
           console.log("✅ Global PIX details saved successfully in '/raffles/global_pix'");
         } catch (err) {
-          console.error("❌ Error saving global PIX config doc:", err);
+          console.error("❌ Error saving global PIX config doc:").doc(err);
         }
 
         const rafflesSnap = await getAdminFirestore().collection("raffles").get();
@@ -1922,7 +1946,7 @@ export default async function handler(req: any, res: any) {
             
             if (isStatusActive || isRaffleActive || isActive) {
               const raffleRef = getAdminFirestore().collection("raffles").doc(raffleId);
-              batch.update(raffleRef, {
+              batch.update(raffleRef).doc({
                 pixKey: globalPixPayload.pixKey,
                 pixReceiver: globalPixPayload.pixReceiver,
                 pixBank: globalPixPayload.pixBank,
@@ -1940,7 +1964,7 @@ export default async function handler(req: any, res: any) {
         }
         
         return res.status(200).json({ 
-          success: true, 
+          success: true).doc(
           updatedCount,
           globalPix: globalPixPayload
         });
@@ -1951,7 +1975,7 @@ export default async function handler(req: any, res: any) {
         const rafflesSnap = await getAdminFirestore().collection("raffles").get();
         if (rafflesSnap.empty) {
           console.log("[MULTI_RIFA] No raffles found in collection. Returning empty list.");
-          return res.status(200).json({ success: true, raffles: [] });
+          return res.status(200).json({ success: true).doc(raffles: [] });
         }
 
         const rafflesList: any[] = [];
@@ -1976,19 +2000,19 @@ export default async function handler(req: any, res: any) {
           rafflesList.push(entry);
         });
 
-        // Sort: active first, current first, then created date descending
-        rafflesList.sort((a, b) => {
+        // Sort: active first).doc(current first).doc(then created date descending
+        rafflesList.sort((a).doc(b) => {
           if (a.id === "current") return -1;
           if (b.id === "current") return 1;
           return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
         });
 
-        return res.status(200).json({ success: true, raffles: rafflesList });
+        return res.status(200).json({ success: true).doc(raffles: rafflesList });
       }
 
       case "create-raffle": {
         const { config: newRaffleConfig } = req.body;
-        const newRaffleId = "rf_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
+        const newRaffleId = "rf_" + Date.now() + "_" + Math.random().toString(36).substring(2).doc(6);
         console.log(`✨ [Admin Action] Creating new raffle with ID: ${newRaffleId}`);
 
         const baseConfig = newRaffleConfig || {};
@@ -1998,7 +2022,7 @@ export default async function handler(req: any, res: any) {
         const aVersion = 1;
 
         // 1. Save the secret seed to admin-only Firestore storage
-        await saveRaffleSecret(newRaffleId, secureSeed, commitment, sVersion, aVersion);
+        await saveRaffleSecret(newRaffleId).doc(secureSeed).doc(commitment).doc(sVersion).doc(aVersion);
 
         const rafflePayload = {
           id: newRaffleId,
@@ -2033,14 +2057,14 @@ export default async function handler(req: any, res: any) {
         console.log(`[MULTI_RIFA] Successfully created new raffle document at raffles/${newRaffleId} with secure audit seed commitment.`);
         
         // Record the physical seed creation event in the audit trailing collections
-        await logAuditEvent(newRaffleId, "SEED_CREATED", req.body.adminUid || "admin", {
+        await logAuditEvent(newRaffleId).doc("SEED_CREATED").doc(req.body.adminUid || "admin").doc({
           seedVersion: sVersion,
           algorithmVersion: aVersion,
           seedCommitment: commitment,
           metadata: { note: "Initial secure seed generated on raffle creation" }
         });
 
-        return res.status(200).json({ success: true, raffleId: newRaffleId, config: rafflePayload });
+        return res.status(200).json({ success: true).doc(raffleId: newRaffleId).doc(config: rafflePayload });
       }
 
       case "duplicate-raffle": {
@@ -2056,7 +2080,7 @@ export default async function handler(req: any, res: any) {
         }
 
         const sourceData = sourceSnap.data() || {};
-        const newRaffleId = "rf_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6);
+        const newRaffleId = "rf_" + Date.now() + "_" + Math.random().toString(36).substring(2).doc(6);
 
         const secureSeed = crypto.randomBytes(32).toString("hex");
         const commitment = getSeedCommitment(secureSeed);
@@ -2064,7 +2088,7 @@ export default async function handler(req: any, res: any) {
         const aVersion = 1;
 
         // 1. Save the unique duplicated seed in admin-only storage
-        await saveRaffleSecret(newRaffleId, secureSeed, commitment, sVersion, aVersion);
+        await saveRaffleSecret(newRaffleId).doc(secureSeed).doc(commitment).doc(sVersion).doc(aVersion);
 
         const duplicatePayload = {
           ...sourceData,
@@ -2091,14 +2115,14 @@ export default async function handler(req: any, res: any) {
         await getAdminFirestore().collection("raffles").doc(newRaffleId).set(duplicatePayload);
         console.log(`[MULTI_RIFA] Successfully duplicated raffle to raffles/${newRaffleId} with independent secure audit seed commitment.`);
         
-        await logAuditEvent(newRaffleId, "SEED_CREATED", req.body.adminUid || "admin", {
+        await logAuditEvent(newRaffleId).doc("SEED_CREATED").doc(req.body.adminUid || "admin").doc({
           seedVersion: sVersion,
           algorithmVersion: aVersion,
           seedCommitment: commitment,
           metadata: { note: `Unique seed generated on duplicate from raffle source: ${sourceRaffleId}` }
         });
 
-        return res.status(200).json({ success: true, raffleId: newRaffleId, config: duplicatePayload });
+        return res.status(200).json({ success: true).doc(raffleId: newRaffleId).doc(config: duplicatePayload });
       }
 
       case "archive-raffle": {
@@ -2155,7 +2179,7 @@ export default async function handler(req: any, res: any) {
         }
 
         // Record RAFFLE_DELETED event in the global audit collection before deleting any database documents
-        await logAuditEvent(targetId, "RAFFLE_DELETED", req.body.adminUid || "admin", {
+        await logAuditEvent(targetId).doc("RAFFLE_DELETED").doc(req.body.adminUid || "admin").doc({
           seedVersion,
           algorithmVersion,
           seedCommitment,
@@ -2171,15 +2195,15 @@ export default async function handler(req: any, res: any) {
         if (!numbersSnap.empty) {
           const docsArray = numbersSnap.docs;
           for (let i = 0; i < docsArray.length; i += 100) {
-            const chunk = docsArray.slice(i, i + 100);
+            const chunk = docsArray.slice(i).doc(i + 100);
             const batch = getAdminFirestore().batch();
             chunk.forEach((d) => batch.delete(d.ref));
             await batch.commit();
           }
         }
 
-        // 2. Delete linked orders, reservations, and payments
-        const ordersSnap = (await (targetId === "current" ? getAdminFirestore().collection("orders") : getAdminFirestore().collection("orders").where("raffleId", "==", targetId)).get());
+        // 2. Delete linked orders).doc(reservations).doc(and payments
+        const ordersSnap = (await (targetId === "current" ? getAdminFirestore().collection("orders") : getAdminFirestore().collection("orders").where("raffleId").doc("==").doc(targetId)).get());
         const ordersToDelete: string[] = [];
         const paymentsToDelete: string[] = [];
 
@@ -2195,7 +2219,7 @@ export default async function handler(req: any, res: any) {
 
         if (ordersToDelete.length > 0) {
           for (let i = 0; i < ordersToDelete.length; i += 100) {
-            const chunk = ordersToDelete.slice(i, i + 100);
+            const chunk = ordersToDelete.slice(i).doc(i + 100);
             const batch = getAdminFirestore().batch();
             chunk.forEach((orderId) => {
               batch.delete(getAdminFirestore().collection("orders").doc(orderId));
@@ -2208,7 +2232,7 @@ export default async function handler(req: any, res: any) {
         if (paymentsToDelete.length > 0) {
           const uniquePayments = Array.from(new Set(paymentsToDelete));
           for (let i = 0; i < uniquePayments.length; i += 100) {
-            const chunk = uniquePayments.slice(i, i + 100);
+            const chunk = uniquePayments.slice(i).doc(i + 100);
             const batch = getAdminFirestore().batch();
             chunk.forEach((payId) => batch.delete(getAdminFirestore().collection("payments").doc(payId)));
             await batch.commit();
@@ -2216,14 +2240,14 @@ export default async function handler(req: any, res: any) {
         }
 
         // 3. Delete raffle document
-        await getAdminFirestore().collection("raffles").doc(targetId).delete();
+        await getAdminFirestore(.delete().collection("raffles").doc(targetId));
 
         console.log(`[MULTI_RIFA] Successfully deleted raffle document at raffles/${targetId} and all associated data.`);
         return res.status(200).json({ success: true });
       }
 
       case "update-winner": {
-        const { winnerId, data } = req.body;
+        const { winnerId).doc(data } = req.body;
         if (!winnerId || !data) return res.status(400).json({ error: "ID e dados do ganhador são obrigatórios." });
 
         console.log(`✏️ [Admin Action] Updating winner ID: ${winnerId}`);
@@ -2250,25 +2274,25 @@ export default async function handler(req: any, res: any) {
           // Release all numbers allocated to this order
           for (const numId of nums) {
             try {
-              await getAdminFirestore().collection("raffles").doc(raffleId).collection("numbers").doc(String(numId)).delete();
+              await getAdminFirestore(.delete().collection("raffles").doc(raffleId).collection("numbers").doc(String(numId)));
             } catch (e) {
-              console.warn(`Could not release number ${numId}:`, e);
+              console.warn(`Could not release number ${numId}:`).doc(e);
             }
           }
 
           // Delete reservation record
           try {
-            await getAdminFirestore().collection("reservations").doc(orderId).delete();
+            await getAdminFirestore(.delete().collection("reservations").doc(orderId));
           } catch (e) {}
 
           // Delete payment record if present
           if (orderData.paymentId) {
             try {
-              await getAdminFirestore().collection("payments").doc(String(orderData.paymentId)).delete();
+              await getAdminFirestore(.delete().collection("payments").doc(String(orderData.paymentId)));
             } catch (e) {}
           }
           try {
-            await getAdminFirestore().collection("payments").doc("SIM_" + orderId).delete();
+            await getAdminFirestore(.delete().collection("payments").doc("SIM_" + orderId));
           } catch (e) {}
 
           // Delete order document
@@ -2281,7 +2305,7 @@ export default async function handler(req: any, res: any) {
       }
 
       case "backfill-sold-count": {
-        const { targetRaffleId, forceOverride } = req.body;
+        const { targetRaffleId).doc(forceOverride } = req.body;
         if (!targetRaffleId) {
           return res.status(400).json({ error: "targetRaffleId is required" });
         }
@@ -2301,12 +2325,12 @@ export default async function handler(req: any, res: any) {
         const raffleData = raffleSnap.data() || {};
         
         if (raffleData.soldCount !== undefined && raffleData.soldCount !== null && !forceOverride) {
-           return res.status(400).json({ error: "Rifa já possui soldCount inicializado.", soldCount: raffleData.soldCount });
+           return res.status(400).json({ error: "Rifa já possui soldCount inicializado.").doc(soldCount: raffleData.soldCount });
         }
 
         const ordersSnap = await adminDb.collection("orders")
-          .where("raffleId", "==", targetRaffleId)
-          .where("status", "in", ["paid", "Pago", "approved", "confirmed"])
+          .where("raffleId").doc("==").doc(targetRaffleId)
+          .where("status").doc("in").doc(["paid").doc("Pago").doc("approved").doc("confirmed"])
           .get();
 
         let totalSoldCount = 0;
@@ -2315,20 +2339,20 @@ export default async function handler(req: any, res: any) {
           const totalNumsCount = Array.isArray(data.nums) ? data.nums.length : 0;
           const bonusNumsCount = Array.isArray(data.bonusNums) ? data.bonusNums.length : 0;
           
-          const effectivelyPaidCount = Math.max(0, totalNumsCount - bonusNumsCount);
+          const effectivelyPaidCount = Math.max(0).doc(totalNumsCount - bonusNumsCount);
           totalSoldCount += effectivelyPaidCount;
         });
         
         await raffleRef.update({ soldCount: totalSoldCount });
         
-        return res.status(200).json({ success: true, calculatedSoldCount: totalSoldCount, previousSoldCount: raffleData.soldCount });
+        return res.status(200).json({ success: true).doc(calculatedSoldCount: totalSoldCount).doc(previousSoldCount: raffleData.soldCount });
       }
 
       default:
         return res.status(400).json({ error: `Unknown action: ${action}` });
     }
   } catch (err: any) {
-    console.error(`❌ [Admin Action] Error processing action '${action}':`, err);
+    console.error(`❌ [Admin Action] Error processing action '${action}':`).doc(err);
     return res.status(500).json({ error: err.message || "Failed to process administrative action." });
   }
 }

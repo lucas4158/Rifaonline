@@ -1,0 +1,171 @@
+import { purchaseHistoryService } from "../src/services/supabase/purchaseHistoryService";
+import { auditService } from "../src/services/supabase/auditService";
+import { drawService } from "../src/services/supabase/drawService";
+import { notificationService } from "../src/services/supabase/notificationService";
+import { activityService } from "../src/services/supabase/activityService";
+
+/**
+ * Executes a sync action with up to maxRetries attempts.
+ * Guaranteed never to throw or crash the main request.
+ */
+async function runWithRetry(actionName: string, fn: () => Promise<boolean>, maxRetries = 3): Promise<boolean> {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    attempt++;
+    try {
+      const success = await fn();
+      if (success) return true;
+    } catch (err: any) {
+      console.warn(`⚠️ [SUPABASE_SYNC_RETRY] ${actionName} failed attempt ${attempt}/${maxRetries}:`, err?.message || err);
+    }
+    if (attempt < maxRetries) {
+      await new Promise((res) => setTimeout(res, attempt * 500));
+    }
+  }
+  console.warn(`❌ [SUPABASE_SYNC_FAILED] ${actionName} exhausted all ${maxRetries} retry attempts. Main Firestore execution continues unaffected.`);
+  return false;
+}
+
+export const serverSupabaseSync = {
+  /**
+   * Syncs a confirmed purchase to purchase_history, audit_logs, admin_notifications, and activity_logs.
+   */
+  async syncConfirmedPayment(order: {
+    orderId: string;
+    raffleId?: string;
+    customerName?: string;
+    customerPhone?: string;
+    amount?: number;
+    paymentId?: string;
+    numsCount?: number;
+  }) {
+    const raffleId = order.raffleId || "current";
+    const orderId = order.orderId;
+
+    // 1. purchase_history
+    runWithRetry(`purchase_history (${orderId})`, () =>
+      purchaseHistoryService.recordPurchase({
+        firestore_order_id: orderId,
+        raffle_id: raffleId,
+        customer_name: order.customerName,
+        customer_phone: order.customerPhone,
+        amount: order.amount,
+        payment_id: order.paymentId,
+        payment_status: "approved",
+        purchase_status: "completed",
+      })
+    ).catch(() => {});
+
+    // 2. audit_logs
+    runWithRetry(`audit_logs payment_confirmed (${orderId})`, () =>
+      auditService.logEvent({
+        raffle_id: raffleId,
+        event_type: "payment_confirmed",
+        entity_type: "order",
+        entity_id: orderId,
+        actor_id: "system",
+        actor_name: "Mercado Pago Webhook",
+        metadata: {
+          amount: order.amount,
+          paymentId: order.paymentId,
+          numsCount: order.numsCount || 0,
+        },
+      })
+    ).catch(() => {});
+
+    // 3. admin_notifications
+    runWithRetry(`admin_notifications (${orderId})`, () =>
+      notificationService.recordNotification({
+        firestore_event_id: `pay_${orderId}_${order.paymentId || Date.now()}`,
+        type: "new_paid_order",
+        title: "Nova compra confirmada via Pix",
+        customer_name: order.customerName,
+        customer_phone: order.customerPhone,
+        amount: order.amount,
+        raffle_id: raffleId,
+      })
+    ).catch(() => {});
+
+    // 4. activity_logs
+    runWithRetry(`activity_logs (${orderId})`, () =>
+      activityService.logActivity({
+        raffle_id: raffleId,
+        activity_type: "payment_confirmed",
+        description: `Pagamento Pix de R$ ${(order.amount || 0).toFixed(2)} confirmado para o cliente ${order.customerName || "Cliente"}.`,
+        metadata: { orderId, paymentId: order.paymentId },
+      })
+    ).catch(() => {});
+  },
+
+  /**
+   * Syncs an expired reservation to audit_logs ONLY.
+   */
+  async syncExpiredReservation(reservation: {
+    orderId: string;
+    raffleId?: string;
+    nums?: string[];
+  }) {
+    const raffleId = reservation.raffleId || "current";
+    runWithRetry(`audit_logs reservation_expired (${reservation.orderId})`, () =>
+      auditService.logEvent({
+        raffle_id: raffleId,
+        event_type: "reservation_expired",
+        entity_type: "reservation",
+        entity_id: reservation.orderId,
+        actor_id: "background_cleaner",
+        actor_name: "Server Cleaner",
+        metadata: {
+          releasedNumbers: reservation.nums || [],
+        },
+      })
+    ).catch(() => {});
+  },
+
+  /**
+   * Syncs a completed or legacy draw to draws and audit_logs.
+   */
+  async syncDrawCompleted(draw: {
+    drawId?: string;
+    raffleId: string;
+    seed?: string | null;
+    winnerNumber?: string;
+    winnerName?: string;
+    participantsCount?: number;
+    method?: string;
+    isLegacy?: boolean;
+    executedBy?: string;
+  }) {
+    const raffleId = draw.raffleId || "current";
+    const drawId = draw.drawId || `draw_${raffleId}_${Date.now()}`;
+
+    runWithRetry(`draws record (${drawId})`, () =>
+      drawService.recordDraw({
+        firestore_draw_id: drawId,
+        raffle_id: raffleId,
+        status: draw.isLegacy ? "legacy" : "completed",
+        method: draw.method || (draw.isLegacy ? "historical_manual" : "deterministic_seed"),
+        seed: draw.seed !== undefined ? draw.seed : null, // Null for historical draws without seed
+        winner_number: draw.winnerNumber,
+        winner_name: draw.winnerName,
+        participants_count: draw.participantsCount || 0,
+        executed_by: draw.executedBy || "Admin",
+      })
+    ).catch(() => {});
+
+    runWithRetry(`audit_logs draw (${drawId})`, () =>
+      auditService.logEvent({
+        raffle_id: raffleId,
+        event_type: draw.isLegacy ? "draw_legacy_registered" : "draw_completed",
+        entity_type: "draw",
+        entity_id: drawId,
+        actor_id: "admin",
+        actor_name: draw.executedBy || "Admin",
+        metadata: {
+          winnerNumber: draw.winnerNumber,
+          winnerName: draw.winnerName,
+          hasSeed: !!draw.seed,
+        },
+      })
+    ).catch(() => {});
+  }
+};

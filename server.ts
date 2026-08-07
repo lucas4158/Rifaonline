@@ -6,6 +6,7 @@ import { createServer as createViteServer } from "vite";
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore, doc, collection, getDocs, deleteDoc, writeBatch, setLogLevel } from "firebase/firestore";
 import { MercadoPagoConfig, Payment } from "mercadopago";
+import { serverSupabaseSync } from "./api/_supabaseSync.js";
 
 // Initialize Mercado Pago
 let mpPayment: any = null;
@@ -90,14 +91,11 @@ async function runBackgroundCleanup() {
 
   const now = Date.now();
   try {
-    // 1. Clean expired locks (pre-selections on landing page)
-    const locksSnap = await adminDb.collection("locks").get();
+    // 1. Efficient query: Clean expired locks ONLY (where expiresAt <= now)
+    const locksSnap = await adminDb.collection("locks").where("expiresAt", "<=", now).limit(100).get();
     const locksToDelete: string[] = [];
     locksSnap.forEach((docSnap: any) => {
-      const data = docSnap.data();
-      if (data && data.expiresAt && data.expiresAt <= now) {
-        locksToDelete.push(docSnap.id);
-      }
+      locksToDelete.push(docSnap.id);
     });
 
     if (locksToDelete.length > 0) {
@@ -111,9 +109,9 @@ async function runBackgroundCleanup() {
       }
     }
 
-    // 2. Clean expired reservations or orders (pending payment beyond 10 minute limit OR already cancelled in orders)
-    const resSnap = await adminDb.collection("reservations").get();
-    const expiredOrders: { id: string; nums: string[]; paymentId?: string }[] = [];
+    // 2. Efficient query: Clean expired pending reservations ONLY (where expiresAt <= now)
+    const resSnap = await adminDb.collection("reservations").where("expiresAt", "<=", now).limit(100).get();
+    const expiredOrders: { id: string; nums: string[]; paymentId?: string; raffleId?: string }[] = [];
 
     for (const docSnap of resSnap.docs) {
       const data = docSnap.data();
@@ -121,9 +119,9 @@ async function runBackgroundCleanup() {
         data &&
         (data.status === "pending_payment" || data.status === "Aguardando")
       ) {
-        const isExpired = data.expiresAt && data.expiresAt <= now;
         let isCancelledInOrders = false;
         let paymentId = data.paymentId; // Sometimes it's in reservation
+        let raffleId = data.raffleId || "current";
         
         // Absolute check: If status is paid/pago/confirmed on either reservation or order, NEVER expire/cancel it
         let isActuallyPaid = false;
@@ -137,40 +135,12 @@ async function runBackgroundCleanup() {
           isActuallyPaid = true;
         }
 
-        // Check if the order has been cancelled on the client-side
-        try {
-          const orderSnap = await adminDb.collection("orders").doc(docSnap.id).get();
-          if (orderSnap.exists) {
-            const orderData = orderSnap.data();
-            if (!paymentId && orderData?.paymentId) paymentId = orderData.paymentId;
-            const orderStatusLower = (orderData?.status || "").toLowerCase();
-            if (
-              orderStatusLower === "paid" || 
-              orderStatusLower === "pago" || 
-              orderStatusLower === "approved" || 
-              orderStatusLower === "confirmed"
-            ) {
-              isActuallyPaid = true;
-            }
-            if (
-              orderData &&
-              (orderData.status === "Cancelado" || orderData.status === "canceled")
-            ) {
-              isCancelledInOrders = true;
-            }
-          }
-        } catch (err) {
-          console.error(`❌ [Server Worker] Error looking up order for reservation ${docSnap.id}:`, err);
-        }
-
         if (isActuallyPaid) {
           console.log(`[PAID_QUOTA_PROTECTED] [RESERVATION_RELEASE_BLOCKED] Skipping timeout/cancellation for order ${docSnap.id} because it is PAID/CONFIRMED.`);
           continue;
         }
 
-        if (isExpired || isCancelledInOrders) {
-          expiredOrders.push({ id: docSnap.id, nums: data.nums || [], paymentId });
-        }
+        expiredOrders.push({ id: docSnap.id, nums: data.nums || [], paymentId, raffleId });
       }
     }
 
@@ -179,6 +149,7 @@ async function runBackgroundCleanup() {
       for (const order of expiredOrders) {
         const orderId = order.id;
         const nums = order.nums;
+        const raffleId = order.raffleId || "current";
         const batch = adminDb.batch();
 
         // Cancel Mercado Pago payment if exists and config is valid
@@ -193,10 +164,10 @@ async function runBackgroundCleanup() {
           }
         }
 
-        // A) Delete numbers from /raffles/current/numbers ONLY if they belong to this order and are NOT paid
+        // A) Delete numbers from /raffles/{raffleId}/numbers ONLY if they belong to this order and are NOT paid
         for (const num of nums) {
           try {
-            const numDocRef = adminDb.collection("raffles").doc("current").collection("numbers").doc(num);
+            const numDocRef = adminDb.collection("raffles").doc(raffleId).collection("numbers").doc(num);
             const numSnap = await numDocRef.get();
             if (numSnap.exists) {
               const numData = numSnap.data();
@@ -232,6 +203,13 @@ async function runBackgroundCleanup() {
           await batch.commit();
           console.log(`[PIX_EXPIRED] Order ${orderId} has expired automatically in background cleanup.`);
           console.log(`🔥 [Server Worker] Successfully processed expiration cleanup for reservation ${orderId} and released its authorized locks.`);
+
+          // Sync expired reservation event to Supabase audit_logs only
+          serverSupabaseSync.syncExpiredReservation({
+            orderId,
+            raffleId,
+            nums,
+          }).catch((err) => console.error("Non-critical error syncing expired reservation to Supabase:", err));
         } catch (e) {
           console.error(`❌ [Server Worker] Failed to atomic-cancel reservation ${orderId}:`, e);
         }
@@ -248,7 +226,7 @@ async function runBackgroundCleanup() {
   }
 }
 
-// Run cleanup immediately on boot, then every 30 seconds
+// Run cleanup immediately on boot, then every 60 seconds
 runBackgroundCleanup();
 setInterval(() => {
   runBackgroundCleanup().catch((e) => {
@@ -260,7 +238,7 @@ setInterval(() => {
       console.error("Error running background cleanup:", e);
     }
   });
-}, 30000);
+}, 60000);
 
 // API ROUTES
 app.get("/api/health", (req, res) => {

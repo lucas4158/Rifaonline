@@ -1,29 +1,5 @@
 import "dotenv/config";
-import path from "path";
-import fs from "fs";
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { 
-  getFirestore, 
-  doc, 
-  runTransaction,
-  setLogLevel
-} from "firebase/firestore";
-
-setLogLevel("silent");
-
-// Initialize Firebase
-let db: any = null;
-try {
-  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-  if (fs.existsSync(configPath)) {
-    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
-    console.log("👮 [Lock API] Firebase initialized successfully for lock action handler.");
-  }
-} catch (err) {
-  console.error("❌ [Lock API] Firebase init error:", err);
-}
+import { getAdminFirestore } from "./_firebaseAdmin.js";
 
 export default async function handler(req: any, res: any) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -41,6 +17,7 @@ export default async function handler(req: any, res: any) {
 
   const { numberId, sessionId, action, numbers, raffleId } = req.body;
   const targetRaffleId = raffleId || "current";
+
   const idsToProcess = numbers && Array.isArray(numbers) && numbers.length > 0
     ? numbers
     : numberId ? [numberId] : [];
@@ -49,8 +26,12 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: "Parâmetros inválidos ou insuficientes." });
   }
 
-  if (!db) {
-    return res.status(500).json({ error: "Serviço de banco de dados indisponível." });
+  let db;
+  try {
+    db = getAdminFirestore();
+  } catch (err) {
+    console.error("❌ [Lock API] Failed to initialize Admin Firestore:", err);
+    return res.status(500).json({ error: "Serviço de banco de dados administrativo indisponível." });
   }
 
   const currentNow = Date.now();
@@ -59,16 +40,15 @@ export default async function handler(req: any, res: any) {
   try {
     if (action === "lock") {
       const expiresAt = currentNow + locksDuration;
-
       if (idsToProcess.length > 500) {
           return res.status(400).json({ error: "Limite de cotas excedido na requisição." });
       }
 
-      const resultArr = await runTransaction(db, async (transaction: any) => {
+      const resultArr = await db.runTransaction(async (transaction: any) => {
         // Read locks
-        const readPromises = idsToProcess.map((num: string) => transaction.get(doc(db, "locks", num)));
+        const readPromises = idsToProcess.map((num: string) => transaction.get(db.collection("locks").doc(num)));
         // Read actual raffle numbers to prevent booking already paid items
-        const numReadPromises = idsToProcess.map((num: string) => transaction.get(doc(db, "raffles", targetRaffleId, "numbers", num)));
+        const numReadPromises = idsToProcess.map((num: string) => transaction.get(db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num)));
         
         const reads = await Promise.all(readPromises);
         const numReads = await Promise.all(numReadPromises);
@@ -81,15 +61,13 @@ export default async function handler(req: any, res: any) {
            const lockSnap = reads[index];
            const numSnap = numReads[index];
            let fail = false;
-
-           if (lockSnap.exists()) {
+           if (lockSnap.exists) {
              const data = lockSnap.data();
              if (data.expiresAt > currentNow && data.sessionId !== sessionId) {
                  fail = true;
              }
            }
-
-           if (numSnap.exists()) {
+           if (numSnap.exists) {
              const numData = numSnap.data();
              const status = (numData.status || "").toLowerCase();
              const expAt = numData.expiresAt || 0;
@@ -112,13 +90,15 @@ export default async function handler(req: any, res: any) {
 
         // Lock all successes
         successIds.forEach((num) => {
-            transaction.set(doc(db, "locks", num), {
+            transaction.set(db.collection("locks").doc(num), {
                sessionId,
                expiresAt,
+               raffleId: targetRaffleId,
                updatedAt: new Date().toISOString()
             });
+
             // Update the nested scalable Raffle Number
-            transaction.set(doc(db, "raffles", targetRaffleId, "numbers", num), {
+            transaction.set(db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num), {
               id: num,
               status: "reserved",
               sessionId: sessionId,
@@ -132,39 +112,40 @@ export default async function handler(req: any, res: any) {
 
       console.log(`[LOCK_CREATED] Session ${sessionId} locked numbers: ${resultArr.successIds.join(", ")}`);
       console.log(`🔒 [Lock API] Locked ${resultArr.successIds.length} cotas for session ${sessionId}`);
+
       return res.status(200).json({ 
-        success: true, 
-        lockedNumbers: resultArr.successIds, 
-        failedNumbers: resultArr.failures, 
-        expiresAt: resultArr.expiresAt 
-      });
+         success: true, 
+         lockedNumbers: resultArr.successIds, 
+         failedNumbers: resultArr.failures, 
+         expiresAt: resultArr.expiresAt 
+       });
 
     } else if (action === "unlock") {
-        await runTransaction(db, async (transaction: any) => {
-            const reads = await Promise.all(idsToProcess.map((num: string) => transaction.get(doc(db, "locks", num))));
+        await db.runTransaction(async (transaction: any) => {
+            const reads = await Promise.all(idsToProcess.map((num: string) => transaction.get(db.collection("locks").doc(num))));
             
             // To ensure deletes of the nested tracking documents as well
-            const numReads = await Promise.all(idsToProcess.map((num: string) => transaction.get(doc(db, "raffles", targetRaffleId, "numbers", num))));
+            const numReads = await Promise.all(idsToProcess.map((num: string) => transaction.get(db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num))));
 
-            reads.forEach((lockSnap, index) => {
+            reads.forEach((lockSnap: any, index: number) => {
                 const num = idsToProcess[index];
-                if (lockSnap.exists()) {
+                if (lockSnap.exists) {
                     const data = lockSnap.data();
-                    if (data.sessionId === sessionId || data.expiresAt <= currentNow) {
-                         transaction.delete(doc(db, "locks", num));
+                    if (data.sessionId === sessionId || data.expiresAt <= currentNow) { 
+                         transaction.delete(db.collection("locks").doc(num));
                     }
                 }
             });
             
-            numReads.forEach((numSnap, index) => {
+            numReads.forEach((numSnap: any, index: number) => {
                 const num = idsToProcess[index];
-                if (numSnap.exists()) {
+                if (numSnap.exists) {
                     const data = numSnap.data();
                     const status = (data.status || "").toLowerCase();
                     const isReservedOrPending = status === "reserved" || status === "pending_payment" || status === "aguardando";
                     
-                    if (isReservedOrPending && (data.sessionId === sessionId || data.expiresAt <= currentNow)) {
-                         transaction.delete(doc(db, "raffles", targetRaffleId, "numbers", num));
+                    if (isReservedOrPending && (data.sessionId === sessionId || data.expiresAt <= currentNow)) { 
+                         transaction.delete(db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num));
                     }
                 }
             });
@@ -179,10 +160,10 @@ export default async function handler(req: any, res: any) {
     const errStr = String(err) + " " + String(err?.message || "");
     if (errStr.includes("RESOURCE_EXHAUSTED") || errStr.includes("Quota exceeded") || err?.code === 8) {
        console.warn("⚠️ [Lock API] Quota limit hit on Firestore:", errStr);
-       return res.status(429).json({ 
-         error: "quota_exceeded", 
-         message: "Limite diário do banco de dados atingido. Tente novamente em alguns instantes." 
-       });
+       return res.status(429).json({
+          error: "quota_exceeded",
+          message: "Limite diário do banco de dados atingido. Tente novamente em alguns instantes."
+        });
     }
     console.error("❌ [Lock API] Internal Error:", err);
     return res.status(500).json({ error: "Erro interno no servidor ao processar lock/unlock." });

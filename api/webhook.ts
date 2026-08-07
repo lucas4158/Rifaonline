@@ -2,11 +2,14 @@ import "dotenv/config";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, doc, getDoc, collection, query, where, getDocs, writeBatch, setLogLevel } from "firebase/firestore";
-import { allocatePromotionalBonus } from "./promo-helper.js";
 
-setLogLevel("silent");
+
+import { allocatePromotionalBonus } from "./promo-helper.js";
+import { serverSupabaseSync } from "./_supabaseSync.js";
+
+import admin from "firebase-admin";
+import { getAdminFirestore } from "./_firebaseAdmin.js";
+
 import { MercadoPagoConfig, Payment } from "mercadopago";
 
 // Initialize Mercado Pago
@@ -20,18 +23,7 @@ if (process.env.MP_ACCESS_TOKEN) {
   }
 }
 
-// Initialize Firebase
-let db: any = null;
-try {
-  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-  if (fs.existsSync(configPath)) {
-    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
-  }
-} catch (err) {
-  console.error("❌ [Firebase Serverless] Init error:", err);
-}
+
 
 export default async function handler(req: any, res: any) {
   // CORS configuration
@@ -145,175 +137,196 @@ export default async function handler(req: any, res: any) {
     }
 
     // If approved, update Firestore Documents atomically
-    if (paymentIsApproved && db) {
-      const ordersRef = collection(db, "orders");
-      const q = query(ordersRef, where("paymentId", "==", String(paymentId)));
-      const querySnapshot = await getDocs(q);
+    if (paymentIsApproved) {
+      const ordersRef = getAdminFirestore().collection("orders");
+      const q = ordersRef.where("paymentId", "==", String(paymentId));
+      const querySnapshot = await q.get();
 
       if (!querySnapshot.empty) {
         const currentNow = Date.now();
         const promises = querySnapshot.docs.map(async (docSnap) => {
-          const order = docSnap.data();
           const orderId = docSnap.id;
-          const orderNums = order.nums || [];
-
-          // IDEMPOTENCY GUARD: If order is already Pago or paid, strictly ignore
-          if (order.status === "Pago" || order.status === "paid") {
-            console.log(`ℹ️ [Webhook Serverless] Order ${orderId} is already marked as 'Pago'. Skipping to prevent duplicate processing.`);
-            return;
-          }
           
-          // 1. Check if the reservation/order has expired
-          const isExpired = order.status === "expired" || order.status === "PAYMENT_AFTER_EXPIRATION" || (order.expiresAt && order.expiresAt <= currentNow);
-
-          if (isExpired) {
-            console.log(`⚠️ [Webhook Serverless] Order ${orderId} has expired. Rejecting payment.`);
-            console.log(`[PIX_EXPIRED] Pix expired or late check-in! orderId: ${orderId}, paymentId: ${paymentId}`);
-            console.log(`[PAYMENT_AFTER_EXPIRATION] Late payment received for order ${orderId} (payment ${paymentId}) after expiration list.`);
-            
-            const batch = writeBatch(db);
-
-            batch.update(doc(db, "orders", orderId), {
-              status: "PAYMENT_AFTER_EXPIRATION",
-              receivedLatePayment: true,
-              approvedAt: null,
-              paymentCollisionError: true,
-              paymentCollisionReason: "Pagamento atrasado recebido após a expiração da reserva de 10 minutos."
-            });
-
-            batch.update(doc(db, "reservations", orderId), {
-              status: "PAYMENT_AFTER_EXPIRATION",
-              approvedAt: null
-            });
-
-            batch.set(doc(db, "payments", paymentId), {
-              id: paymentId,
-              orderId: orderId,
-              status: "PAYMENT_AFTER_EXPIRATION",
-              amount: Number(order.val || 0),
-              createdAt: order.createdAt || new Date().toISOString(),
-              collisionError: true,
-              collisionNotes: "Pagamento atrasado recebido após a expiração."
-            }, { merge: true });
-
-            await batch.commit();
-            console.log(`❌ [Webhook Serverless] Order ${orderId} marked as PAYMENT_AFTER_EXPIRATION to prevent duplicate processing.`);
-            return;
-          }
-
-          const orderRaffleId = order.raffleId || "current";
+          let transactionSuccess = false;
+          let paymentConfirmedEvent = false;
+          let needsPromoAllocation = false;
+          let orderDataSnapshot: any = null;
           
-          // Direct checking of number conflicts in /raffles/{orderRaffleId}/numbers/{numId}
-          let hasCollision = false;
-          const conflictingDocuments: string[] = [];
-
-          for (const num of orderNums) {
-            const numSnap = await getDoc(doc(db, "raffles", orderRaffleId, "numbers", num));
-            if (numSnap.exists()) {
-              const numData = numSnap.data();
-              // Conflict if owned by another order AND status is active (paid or unexpired reservation)
-              if (numData && numData.orderId !== orderId) {
-                const statusClean = (numData.status || "").toLowerCase().trim();
-                const isPaidStatus = statusClean === "paid" || statusClean === "pago" || statusClean === "approved";
-                const isReservedStatus = statusClean === "reserved" || statusClean === "pending_payment" || statusClean === "aguardando";
-
-                if (
-                  isPaidStatus ||
-                  (isReservedStatus && (!numData.expiresAt || numData.expiresAt > currentNow))
-                ) {
-                  hasCollision = true;
-                  conflictingDocuments.push(`Número ${num} (Pedido ${numData.orderId})`);
+          try {
+            await getAdminFirestore().runTransaction(async (transaction: any) => {
+              const orderRef = getAdminFirestore().collection("orders").doc(orderId);
+              const reservationRef = getAdminFirestore().collection("reservations").doc(orderId);
+              const paymentRef = getAdminFirestore().collection("payments").doc(paymentId);
+              
+              const currentOrderSnap = await transaction.get(orderRef);
+              if (!currentOrderSnap.exists) {
+                 throw new Error("ORDER_NOT_FOUND");
+              }
+              const order = currentOrderSnap.data();
+              orderDataSnapshot = order;
+              const orderNums = order.nums || [];
+              const orderRaffleId = order.raffleId || "current";
+              
+              // IDEMPOTENCY GUARD
+              if (order.status === "Pago" || order.status === "paid" || order.status === "Cancelado" || order.status === "PAYMENT_AFTER_EXPIRATION") {
+                console.log(`ℹ️ [Webhook Serverless] Order ${orderId} is already ${order.status}. Skipping to prevent duplicate processing.`);
+                throw new Error("ALREADY_PROCESSED");
+              }
+              
+              const isExpired = order.status === "expired" || (order.expiresAt && order.expiresAt <= currentNow);
+              if (isExpired) {
+                transaction.update(orderRef, {
+                  status: "PAYMENT_AFTER_EXPIRATION",
+                  receivedLatePayment: true,
+                  approvedAt: null,
+                  paymentCollisionError: true,
+                  paymentCollisionReason: "Pagamento atrasado recebido após a expiração da reserva."
+                });
+                transaction.update(reservationRef, { status: "PAYMENT_AFTER_EXPIRATION", approvedAt: null });
+                transaction.set(paymentRef, {
+                  id: paymentId,
+                  orderId: orderId,
+                  status: "PAYMENT_AFTER_EXPIRATION",
+                  amount: Number(order.val || 0),
+                  createdAt: order.createdAt || new Date().toISOString(),
+                  collisionError: true,
+                  collisionNotes: "Pagamento atrasado."
+                }, { merge: true });
+                throw new Error("EXPIRED");
+              }
+              
+              // Collision check inside transaction
+              let hasCollision = false;
+              const conflictingDocuments: string[] = [];
+              const numRefs = orderNums.map((num: string) => getAdminFirestore().collection("raffles").doc(orderRaffleId).collection("numbers").doc(num));
+              const numSnaps = await Promise.all(numRefs.map((ref: any) => transaction.get(ref)));
+              
+              for (let i = 0; i < orderNums.length; i++) {
+                const numSnap = numSnaps[i];
+                if (numSnap.exists) {
+                  const numData = numSnap.data();
+                  if (numData && numData.orderId !== orderId) {
+                    const statusClean = (numData.status || "").toLowerCase().trim();
+                    const isPaidStatus = statusClean === "paid" || statusClean === "pago" || statusClean === "approved";
+                    const isReservedStatus = statusClean === "reserved" || statusClean === "pending_payment" || statusClean === "aguardando";
+                    if (isPaidStatus || (isReservedStatus && (!numData.expiresAt || numData.expiresAt > currentNow))) {
+                      hasCollision = true;
+                      conflictingDocuments.push(`Número ${orderNums[i]} (Pedido ${numData.orderId})`);
+                    }
+                  }
                 }
               }
-            }
-          }
-
-          const batch = writeBatch(db);
-
-          if (hasCollision) {
-            // Cancel and release any of our own reserved numbers so they don't remain locked
-            for (const num of orderNums) {
-              const numRef = doc(db, "raffles", orderRaffleId, "numbers", num);
-              const numSnap = await getDoc(numRef);
-              if (numSnap.exists() && numSnap.data()?.orderId === orderId) {
-                batch.delete(numRef);
+              
+              if (hasCollision) {
+                // Remove our own reserved numbers
+                for (let i = 0; i < orderNums.length; i++) {
+                  const numSnap = numSnaps[i];
+                  if (numSnap.exists && numSnap.data()?.orderId === orderId) {
+                    transaction.delete(numRefs[i]);
+                  }
+                }
+                const collisionReason = `Pagamento recebido, mas conflito detectado: ${conflictingDocuments.join("; ")}`;
+                transaction.update(orderRef, {
+                  status: "Cancelado",
+                  paymentCollisionError: true,
+                  paymentCollisionReason: collisionReason,
+                  approvedAt: new Date().toISOString(),
+                  receivedLatePayment: true
+                });
+                transaction.update(reservationRef, { status: "Cancelado", paymentCollisionError: true, approvedAt: new Date().toISOString() });
+                transaction.set(paymentRef, {
+                  id: paymentId,
+                  orderId: orderId,
+                  status: "canceled",
+                  amount: Number(order.val || 0),
+                  createdAt: order.createdAt || new Date().toISOString(),
+                  collisionError: true,
+                  collisionNotes: collisionReason
+                }, { merge: true });
+                throw new Error("COLLISION");
+              } else {
+                // SUCCESS: Mark as paid
+                transaction.update(orderRef, { status: "Pago", approvedAt: new Date().toISOString() });
+                transaction.update(reservationRef, { status: "Pago", approvedAt: new Date().toISOString() });
+                transaction.set(paymentRef, {
+                  id: paymentId,
+                  orderId: orderId,
+                  status: "approved",
+                  amount: Number(order.val || 0),
+                  createdAt: order.createdAt || new Date().toISOString(),
+                  approvedAt: new Date().toISOString()
+                }, { merge: true });
+                
+                const bonusNumsSet = new Set<string>(order.bonusNums || []);
+                let mainPaidCount = 0;
+                
+                for (let i = 0; i < orderNums.length; i++) {
+                  transaction.set(numRefs[i], {
+                    id: orderNums[i],
+                    status: "paid",
+                    orderId: orderId,
+                    name: order.name,
+                    phone: order.phone,
+                    isBonus: bonusNumsSet.has(orderNums[i]),
+                    updatedAt: new Date().toISOString()
+                  });
+                  // Only count non-bonus numbers for soldCount
+                  if (!bonusNumsSet.has(orderNums[i])) {
+                    mainPaidCount++;
+                  }
+                }
+                
+                // Atomically increment soldCount on the raffle
+                const raffleRef = getAdminFirestore().collection("raffles").doc(orderRaffleId);
+                transaction.update(raffleRef, {
+                  soldCount: admin.firestore.FieldValue.increment(mainPaidCount)
+                });
+                
+                paymentConfirmedEvent = true;
+                
+                // NOTA TÉCNICA (LIMITAÇÃO DE ARQUITETURA): 
+                // Não executamos allocatePromotionalBonus dentro da transaction porque a função 
+                // precisa realizar um getDocs(collection(numbers)) para encontrar cotas livres. 
+                // Firestore não suporta queries dentro de transações de cliente (somente gets diretos).
+                // Portanto, alocamos os bônus num writeBatch em seguida. A atomicidade crítica (venda e soldCount)
+                // já está garantida acima.
+                needsPromoAllocation = true;
               }
-            }
-
-            // Commit cancel state to avoid double booking
-            const collisionReason = `Pagamento recebido pós-expiração, mas conflito de cotas detectado: ${conflictingDocuments.join("; ")}`;
-            console.warn(`[CONFLICT_DETECTED] Webhook payment conflict detected for order ${orderId}, paymentId: ${paymentId}. Reason: ${collisionReason}`);
-            
-            batch.update(doc(db, "orders", orderId), {
-              status: "Cancelado",
-              paymentCollisionError: true,
-              paymentCollisionReason: collisionReason,
-              approvedAt: new Date().toISOString(),
-              receivedLatePayment: true
             });
-
-            batch.update(doc(db, "reservations", orderId), {
-              status: "Cancelado",
-              paymentCollisionError: true,
-              approvedAt: new Date().toISOString()
-            });
-
-            batch.set(doc(db, "payments", paymentId), {
-              id: paymentId,
-              orderId: orderId,
-              status: "canceled",
-              amount: Number(order.val || 0),
-              createdAt: order.createdAt || new Date().toISOString(),
-              collisionError: true,
-              collisionNotes: collisionReason
-            }, { merge: true });
-
-            await batch.commit();
-            console.log(`⚠️ [Webhook Serverless] Conflict detected! Order, Reservation left as Cancelled with warning logs for paymentId: ${paymentId}`);
-          } else {
-            // Mark as approved atomically across all entities
-            batch.update(doc(db, "orders", orderId), {
-              status: "Pago",
-              approvedAt: new Date().toISOString()
-            });
-
-            batch.update(doc(db, "reservations", orderId), {
-              status: "Pago",
-              approvedAt: new Date().toISOString()
-            });
-
-            batch.set(doc(db, "payments", paymentId), {
-              id: paymentId,
-              orderId: orderId,
-              status: "approved",
-              amount: Number(order.val || 0),
-              createdAt: order.createdAt || new Date().toISOString(),
-              approvedAt: new Date().toISOString()
-            }, { merge: true });
-
-            // Lock numbers as strictly PAID
-            const bonusNumsSet = new Set<string>(order.bonusNums || []);
-            orderNums.forEach((num: string) => {
-              const numDocRef = doc(db, "raffles", orderRaffleId, "numbers", num);
-              batch.set(numDocRef, {
-                id: num,
-                status: "paid",
-                orderId: orderId,
-                name: order.name,
-                phone: order.phone,
-                isBonus: bonusNumsSet.has(num),
-                updatedAt: new Date().toISOString()
-              });
-            });
-
-             await allocatePromotionalBonus(db, orderId, order, batch);
-
-            await batch.commit();
-            console.log(`[PAYMENT_CONFIRMED] Webhook confirmed payment approved successfully! orderId: ${orderId}, paymentId: ${paymentId}, amount: ${Number(order.val)}, cotas: ${orderNums.join(", ")}`);
-            console.log(`🔥 [Webhook Serverless] Atomically approved Order, Reservation, Payment and set PAID status for cotas: ${orderNums.join(", ")}`);
+            transactionSuccess = true;
+          } catch (error: any) {
+             if (error.message !== "ALREADY_PROCESSED" && error.message !== "ORDER_NOT_FOUND" && error.message !== "EXPIRED" && error.message !== "COLLISION") {
+               console.error(`❌ [Webhook Transaction] Error processing ${orderId}:`, error);
+             }
+          }
+          
+          if (transactionSuccess && needsPromoAllocation) {
+             try {
+                const batch = getAdminFirestore().batch();
+                await allocatePromotionalBonus(getAdminFirestore(), orderId, orderDataSnapshot, batch);
+                await batch.commit();
+             } catch (bonusErr) {
+                console.error(`❌ [Webhook Bonus] Failed to allocate bonus after successful transaction for ${orderId}:`, bonusErr);
+             }
+          }
+          
+          if (paymentConfirmedEvent) {
+            console.log(`[PAYMENT_CONFIRMED] Webhook confirmed payment approved successfully! orderId: ${orderId}, paymentId: ${paymentId}`);
+            const orderNums = orderDataSnapshot.nums || [];
+            const orderRaffleId = orderDataSnapshot.raffleId || "current";
+            serverSupabaseSync.syncConfirmedPayment({
+              orderId,
+              raffleId: orderRaffleId,
+              customerName: orderDataSnapshot.name,
+              customerPhone: orderDataSnapshot.phone,
+              amount: Number(orderDataSnapshot.val || 0),
+              paymentId: String(paymentId),
+              numsCount: orderNums.length,
+            }).catch((syncErr) => console.error("Non-critical error syncing to Supabase:", syncErr));
           }
         });
         await Promise.all(promises);
+
       } else {
         console.log(`⚠️ [Webhook Serverless] No order found matching paymentId: ${paymentId}`);
       }

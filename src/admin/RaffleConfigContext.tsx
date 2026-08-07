@@ -99,7 +99,7 @@ export function RaffleConfigProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     fetchRaffles();
-    // Realtime collection subscription
+    // Single Realtime collection subscription for all raffles (avoids duplicate per-doc listener)
     const colRef = collection(db, "raffles");
     const unsubRaffles = onSnapshot(
       colRef,
@@ -113,33 +113,42 @@ export function RaffleConfigProvider({ children }: { children: React.ReactNode }
             ...data,
             id: docSnap.id,
             status: data.status || (data.isRaffleActive !== false ? "ativa" : "pausada"),
+            isActive: data.isActive !== false,
+            isRaffleActive: data.isRaffleActive !== false,
           });
         });
         setRaffles(list);
+        setIsConfigLoaded(true);
         if (list.length === 0) {
           setSelectedRaffleIdState("");
           setRaffleConfig(EMPTY_CONFIG);
-          setIsConfigLoaded(true);
           try {
             localStorage.removeItem("selected_raffle_id");
             localStorage.removeItem("raffle_config_v1");
           } catch (e) {}
         } else {
           setSelectedRaffleIdState((prevId) => {
-            if (prevId && list.some((r) => r.id === prevId)) {
-              return prevId;
+            const targetId = (prevId && list.some((r) => r.id === prevId)) ? prevId : list[0].id;
+            const currentSelected = list.find((r) => r.id === targetId);
+            if (currentSelected) {
+              setRaffleConfig(currentSelected);
+              try {
+                localStorage.setItem("raffle_config_v1", JSON.stringify(currentSelected));
+              } catch (e) {}
             }
-            return list[0].id;
+            return targetId;
           });
         }
       },
       (err) => {
         console.error("Failed realtime raffles listener:", err);
+        setIsConfigLoaded(true);
       }
     );
     return () => unsubRaffles();
   }, []);
 
+  // Synchronize active raffleConfig when selectedRaffleId or raffles list updates
   useEffect(() => {
     if (!selectedRaffleId) {
       setRaffleConfig(EMPTY_CONFIG);
@@ -147,48 +156,17 @@ export function RaffleConfigProvider({ children }: { children: React.ReactNode }
       return;
     }
 
-    console.log(`🔗 [REALTIME_CONFIG_SETUP] Setting up listener for 'raffles/${selectedRaffleId}'...`);
-    
-    const docRef = doc(db, "raffles", selectedRaffleId);
-    const unsub = onSnapshot(
-      docRef,
-      (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data() as RaffleConfig;
-          const mergedData = {
-            ...EMPTY_CONFIG,
-            ...data,
-            id: docSnap.id,
-            isActive: data.isActive !== false,
-            isRaffleActive: data.isRaffleActive !== false,
-          };
-
-          setRaffleConfig(mergedData);
-          
-          try {
-            localStorage.setItem("raffle_config_v1", JSON.stringify(mergedData));
-          } catch (storageErr) {
-            console.error("Failed to cache raffle config into localStorage:", storageErr);
-          }
-        } else {
-          // Document does not exist (deleted)
-          setRaffleConfig(EMPTY_CONFIG);
-          try {
-            localStorage.removeItem("raffle_config_v1");
-          } catch (e) {}
-        }
-        setIsConfigLoaded(true);
-      },
-      (error) => {
-        console.error(`🔴 [REALTIME_CONFIG_ERROR] Failed during realtime config sync for ${selectedRaffleId}:`, error);
-        setIsConfigLoaded(true);
+    const found = raffles.find((r) => r.id === selectedRaffleId);
+    if (found) {
+      setRaffleConfig(found);
+      try {
+        localStorage.setItem("raffle_config_v1", JSON.stringify(found));
+      } catch (storageErr) {
+        console.error("Failed to cache raffle config into localStorage:", storageErr);
       }
-    );
-
-    return () => {
-      unsub();
-    };
-  }, [selectedRaffleId]);
+    }
+    setIsConfigLoaded(true);
+  }, [selectedRaffleId, raffles]);
 
   return (
     <RaffleConfigContext.Provider value={{

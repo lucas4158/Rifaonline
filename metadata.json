@@ -1,6 +1,6 @@
 {
-  "name": "RifaMaster",
-  "description": "Rifa de teste",
+  "name": "Rifa Master",
+  "description": "Rifa Master v2 - Equipamentos Premium de Pesca e Camping em Sorteios Atômicos e Seguros",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

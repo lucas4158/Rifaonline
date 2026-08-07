@@ -1,30 +1,11 @@
 import "dotenv/config";
 import path from "path";
 import fs from "fs";
-import { NextApiRequest, NextApiResponse } from "next";
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { 
-  getFirestore, 
-  doc, 
-  updateDoc,
-  getDoc,
-  deleteDoc,
-  writeBatch
-} from "firebase/firestore";
+
+import { getAdminFirestore } from "./_firebaseAdmin.js";
 import { MercadoPagoConfig, Payment } from "mercadopago";
 
-let db: any = null;
-try {
-  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-  if (fs.existsSync(configPath)) {
-    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
-    console.log("👮 [CancelOrder API] Firebase initialized successfully.");
-  }
-} catch (err) {
-  console.error("❌ [CancelOrder API] Firebase init error:", err);
-}
+
 
 // Initialize Mercado Pago Client
 let mpPayment: any = null;
@@ -43,7 +24,7 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  if (!db) {
+  if (false) {
     return res.status(500).json({ error: "Banco de dados não configurado." });
   }
 
@@ -56,13 +37,13 @@ export default async function handler(req: any, res: any) {
   try {
     console.log(`[BACKEND_FIRESTORE_WRITE] Cancelling order ${orderId}...`);
 
-    const orderRef = doc(db, "orders", orderId);
-    const reservationRef = doc(db, "reservations", orderId);
+    const orderRef = getAdminFirestore().collection("orders").doc(orderId);
+    const reservationRef = getAdminFirestore().collection("reservations").doc(orderId);
 
     // 1. Fetch order details to protect paid quotas
-    const orderSnap = await getDoc(orderRef);
+    const orderSnap = await orderRef.get();
     let orderNums: string[] = [];
-    const orderExists = orderSnap.exists();
+    const orderExists = orderSnap.exists;
 
     if (orderExists) {
       const orderData = orderSnap.data();
@@ -92,8 +73,8 @@ export default async function handler(req: any, res: any) {
     }
 
     // 2. Fetch reservation details as well
-    const reservationSnap = await getDoc(reservationRef);
-    const reservationExists = reservationSnap.exists();
+    const reservationSnap = await reservationRef.get();
+    const reservationExists = reservationSnap.exists;
 
     if (!orderExists && !reservationExists) {
       console.warn(`[RESERVATION_RELEASE_BLOCKED] Neither Order nor Reservation found for ${orderId}. Aborting cancellation.`);
@@ -106,7 +87,7 @@ export default async function handler(req: any, res: any) {
     // 3. Resiliently update order document if it exists
     if (orderExists) {
       promises.push(
-        updateDoc(orderRef, {
+        orderRef.update({
           status: "Cancelado",
           canceledAt: now,
         }).then(() => {
@@ -121,7 +102,7 @@ export default async function handler(req: any, res: any) {
     // 4. Resiliently update reservation document if it exists
     if (reservationExists) {
       promises.push(
-        updateDoc(reservationRef, {
+        reservationRef.update({
           status: "Cancelado",
           canceledAt: now,
         }).then(() => {
@@ -133,17 +114,17 @@ export default async function handler(req: any, res: any) {
       );
     }
 
-    const targetRaffleId = orderSnap.exists() ? (orderSnap.data()?.raffleId || "current") : "current";
+    const targetRaffleId = orderSnap.exists ? (orderSnap.data()?.raffleId || "current") : "current";
 
     // 5. Only delete assigned numbers if they still belong to this orderId
     orderNums.forEach((num: string) => {
-      const numDocRef = doc(db, "raffles", targetRaffleId, "numbers", num);
+      const numDocRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
       promises.push(
-        getDoc(numDocRef).then((numSnap) => {
-          if (numSnap.exists()) {
+        numDocRef.get().then((numSnap) => {
+          if (numSnap.exists) {
             const data = numSnap.data();
             if (data?.orderId === orderId) {
-              return deleteDoc(numDocRef).then(() => {
+              return numDocRef.delete().then(() => {
                 console.log(`✅ [CancelOrder API] Success deleting number allocation doc for ${num}`);
               });
             } else {

@@ -150,66 +150,59 @@ service cloud.firestore {
     // Secure locks
     match /locks/{numberId} {
       allow read: if true;
-      allow create, update: if isValidId(numberId) && isValidLock(request.resource.data);
-      allow delete: if true; 
+      allow create, update: if false;
+      allow delete: if false; 
     }
 
     // Secure orders
     match /orders/{orderId} {
       allow read, list: if true;
-      allow create: if isValidId(orderId) && orderId.matches('^[A-Z0-9]{5}$') && isValidNewOrder(request.resource.data, orderId);
-      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'nums', 'bonusNums', 'val', 'approvedAt', 'canceledAt', 'paymentCollisionError', 'paymentCollisionReason', 'receivedLatePayment'])
-                    && (!('status' in request.resource.data) || request.resource.data.status in ['Aguardando', 'pending_payment', 'Pago', 'Cancelado', 'paid', 'refunded', 'confirmed', 'Reembolsado', 'expired'])
-                    && (!('nums' in request.resource.data) || request.resource.data.nums is list)
-                    && (!('val' in request.resource.data) || (request.resource.data.val is int || request.resource.data.val is float))
-                    && (!('approvedAt' in request.resource.data) || request.resource.data.approvedAt == null || request.resource.data.approvedAt is string)
-                    && (!('canceledAt' in request.resource.data) || request.resource.data.canceledAt == null || request.resource.data.canceledAt is string);
-      allow delete: if true;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
     }
 
     // Secure reservations
     match /reservations/{reservationId} {
       allow read, list: if true;
-      allow create: if isValidId(reservationId) && isValidReservation(request.resource.data);
-      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'val', 'nums', 'bonusNums', 'approvedAt', 'canceledAt', 'paymentCollisionError'])
-                    && (!('status' in request.resource.data) || request.resource.data.status in ['pending_payment', 'Pago', 'Cancelado', 'Reembolsado', 'expired'])
-                    && (!('nums' in request.resource.data) || request.resource.data.nums is list)
-                    && (!('val' in request.resource.data) || (request.resource.data.val is int || request.resource.data.val is float))
-                    && (!('approvedAt' in request.resource.data) || request.resource.data.approvedAt == null || request.resource.data.approvedAt is string)
-                    && (!('canceledAt' in request.resource.data) || request.resource.data.canceledAt == null || request.resource.data.canceledAt is string);
-      allow delete: if true;
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
     }
 
     // Secure payments
     match /payments/{paymentId} {
       allow read, list: if true;
-      allow create, update: if isValidId(paymentId) && isValidPayment(request.resource.data);
-      allow delete: if true;
+      allow create, update: if false;
+      allow delete: if false;
     }
 
     // Secure draws
     match /draws/{drawId} {
       allow read, list: if true;
       allow create, update: if isValidId(drawId) && isValidDraw(request.resource.data);
-      allow delete: if true;
+      allow delete: if false;
     }
 
     // Global Winners History collection ("Histórico de Ganhadores")
     match /winners_history/{winnerId} {
       allow read, list: if true;
-      allow create, update, delete: if true;
+      allow create, update: if isAdminConfigWrite(request.resource.data);
+      allow delete: if false;
     }
 
     // Secure Store Products collection ("Loja Premium")
     match /store_products/{productId} {
       allow read, list: if true;
-      allow create, update, delete: if true;
+      allow create, update: if isAdminConfigWrite(request.resource.data);
+      allow delete: if false; // Or require admin API
     }
 
     // Secure Store Settings ("Status e Configurações da Loja")
     match /store_settings/{configId} {
       allow read, list: if true;
-      allow create, update, delete: if true;
+      allow create, update: if isAdminConfigWrite(request.resource.data);
+      allow delete: if false;
     }
 
     // Secure raffle legacy/current configurations
@@ -222,14 +215,36 @@ service cloud.firestore {
     match /raffles/{raffleId} {
       allow read, list: if true;
       allow create, update: if isValidId(raffleId) && isValidConfig(request.resource.data) && isAdminConfigWrite(request.resource.data);
-      allow delete: if true;
+      allow delete: if false;
     }
 
     // Secure raffle number allocations
     match /raffles/{raffleId}/numbers/{numberId} {
       allow read, list: if true;
-      allow create, update: if isValidId(raffleId) && isValidId(numberId) && isValidRaffleNumber(request.resource.data);
-      allow delete: if true;
+      allow create, update, delete: if false;
+    }
+
+    // Secure public audit trail logs for cryptographic seed history
+    match /raffles/{raffleId}/audit/{auditId} {
+      allow read, list: if true;
+      allow create, update, delete: if false;
+    }
+
+    // Secure public global audit trail logs mirror
+    match /global_audit/{auditId} {
+      allow read, list: if true;
+      allow create, update, delete: if false;
+    }
+
+    // Secure immutable participant snapshots for raffle drawing verification
+    match /raffles/{raffleId}/snapshots/{snapshotId} {
+      allow read, list: if true;
+      allow create, update, delete: if false;
+    }
+
+    // Absolutely deny any client access to secret seeds collection (managed strictly by server Admin SDK)
+    match /raffle_secrets/{raffleId} {
+      allow read, write: if false;
     }
   }
 }

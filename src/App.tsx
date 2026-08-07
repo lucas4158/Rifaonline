@@ -42,6 +42,9 @@ import {
   ArrowRight,
   ArrowLeft,
   Ticket,
+  Play,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { doc, collection, setDoc, updateDoc, deleteDoc, getDocs, getDoc, writeBatch, onSnapshot } from "firebase/firestore";
@@ -97,6 +100,7 @@ const StorePage = lazyWithRetry(() =>
 const Login = lazyWithRetry(() => import("./admin/Login"));
 const Dashboard = lazyWithRetry(() => import("./admin/Dashboard"));
 const ProtectedRoute = lazyWithRetry(() => import("./admin/ProtectedRoute"));
+const RaffleAuditView = lazyWithRetry(() => import("./components/RaffleAuditView"));
 
 function RifaOnlineApp() {
   const [currentPath, setCurrentPath] = useState(
@@ -173,6 +177,14 @@ function RifaOnlineApp() {
     };
   }, []);
 
+  // Redirect to Home if store is disabled and user is on /loja
+  useEffect(() => {
+    if (currentPath === "/loja" && !isStoreEnabled) {
+      window.history.replaceState({}, "", "/");
+      setCurrentPath("/");
+    }
+  }, [currentPath, isStoreEnabled]);
+
   // Automatic Admin Redirect
   useEffect(() => {
     if (!checking && isAuthenticated) {
@@ -206,10 +218,19 @@ function RifaOnlineApp() {
     </React.Suspense>
   ) : (
     <LayoutWithHeader currentPath={currentPath} setCurrentPath={setCurrentPath}>
-      {currentPath === "/minhas-cotas" ? (
+      {currentPath === "/minhas-cotas" || currentPath === "/minha-conta" || currentPath === "/minhas-compras" || currentPath === "/meus-numeros" ? (
         <MinhasCotas currentPath={currentPath} setCurrentPath={setCurrentPath} />
       ) : currentPath === "/ganhadores" ? (
         <WinnerHistory currentPath={currentPath} setCurrentPath={setCurrentPath} />
+      ) : currentPath === "/auditoria" ? (
+        <React.Suspense fallback={
+          <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4">
+            <div className="w-12 h-12 rounded-full border-4 border-zinc-900 border-t-orange-500 animate-spin" />
+            <p className="text-zinc-500 text-xs font-black uppercase tracking-widest mt-6 animate-pulse">Carregando Área de Auditoria...</p>
+          </div>
+        }>
+          <RaffleAuditView currentPath={currentPath} setCurrentPath={setCurrentPath} />
+        </React.Suspense>
       ) : currentPath === "/loja" ? (
         isStoreEnabled ? (
           <React.Suspense
@@ -253,6 +274,7 @@ function LayoutWithHeader({
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { isAuthenticated } = useAuth();
+  const { raffleConfig } = useRaffleConfig();
   const [isAdminLocally, setIsAdminLocally] = useState(false);
   const [isStoreEnabled, setIsStoreEnabled] = useState<boolean>(() => {
     return storeService.getLocalStoreConfig().isEnabled;
@@ -394,22 +416,149 @@ function LayoutWithHeader({
             
             <div className="flex flex-col justify-center translate-y-0.5" style={{ width: 'max-content' }}>
               <h1 className="text-[22px] sm:text-[28px] md:text-[32px] text-white leading-none font-bold tracking-tight mb-1 text-left">
-                Rifa<span className="text-[#FF8A00] font-black">Master</span>
+                Rifa<span className="text-[#a3e635] font-black">Master</span>
               </h1>
-              <div className="text-[6.5px] sm:text-[8px] md:text-[9.5px] text-[#FF9900] uppercase leading-none font-bold font-montserrat w-full opacity-90 flex justify-between items-center" style={{ letterSpacing: '0px' }}>
-                <span>E</span><span>Q</span><span>U</span><span>I</span><span>P</span><span>A</span><span>M</span><span>E</span><span>N</span><span>T</span><span>O</span><span>S</span><span className="w-[0.5ex] shrink-0" /><span>P</span><span>R</span><span>E</span><span>M</span><span>I</span><span>U</span><span>M</span>
+              <div className="text-[6.5px] sm:text-[8px] md:text-[9px] text-[#bef264] uppercase leading-none font-extrabold font-montserrat tracking-widest opacity-90" style={{ letterSpacing: '0.8px' }}>
+                PESCA • CAMPING • AVENTURA
               </div>
             </div>
           </div>
 
-          <div className="relative">
+          {/* DESKTOP NAVIGATION MENU */}
+          <nav className="hidden xl:flex items-center gap-7">
+            <button
+              onClick={() => {
+                window.history.pushState({}, "", "/");
+                setCurrentPath("/");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              className="text-zinc-400 hover:text-[#a3e635] text-[11px] font-extrabold tracking-widest uppercase transition-colors cursor-pointer"
+            >
+              Início
+            </button>
+            <button
+              onClick={() => {
+                window.history.pushState({}, "", "/");
+                setCurrentPath("/");
+                setTimeout(() => {
+                  document.getElementById("como-funciona-section")?.scrollIntoView({ behavior: "smooth" });
+                }, 100);
+              }}
+              className="text-zinc-400 hover:text-[#a3e635] text-[11px] font-extrabold tracking-widest uppercase transition-colors cursor-pointer"
+            >
+              Como Funciona
+            </button>
+            <button
+              onClick={() => {
+                window.history.pushState({}, "", "/");
+                setCurrentPath("/");
+                setTimeout(() => {
+                  document.getElementById("rifas-section")?.scrollIntoView({ behavior: "smooth" });
+                }, 100);
+              }}
+              className="text-zinc-400 hover:text-[#a3e635] text-[11px] font-extrabold tracking-widest uppercase transition-colors cursor-pointer"
+            >
+              Sorteios
+            </button>
+            <button
+              onClick={() => {
+                window.history.pushState({}, "", "/ganhadores");
+                setCurrentPath("/ganhadores");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              className={`text-[11px] font-extrabold tracking-widest uppercase transition-colors cursor-pointer ${
+                currentPath === "/ganhadores" ? "text-[#a3e635]" : "text-zinc-400 hover:text-[#a3e635]"
+              }`}
+            >
+              Resultados
+            </button>
+            {isStoreEnabled && (
+              <button
+                onClick={() => {
+                  window.history.pushState({}, "", "/loja");
+                  setCurrentPath("/loja");
+                  window.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+                className={`text-[11px] font-extrabold tracking-widest uppercase transition-colors cursor-pointer ${
+                  currentPath === "/loja" ? "text-[#a3e635]" : "text-zinc-400 hover:text-[#a3e635]"
+                }`}
+              >
+                Loja
+              </button>
+            )}
+            <button
+              onClick={() => {
+                window.history.pushState({}, "", "/auditoria");
+                setCurrentPath("/auditoria");
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+              className={`text-[11px] font-extrabold tracking-widest uppercase transition-colors cursor-pointer ${
+                currentPath === "/auditoria" ? "text-[#a3e635]" : "text-zinc-400 hover:text-[#a3e635]"
+              }`}
+            >
+              Auditoria
+            </button>
+          </nav>
+
+          <div className="flex items-center gap-3">
+            {/* DESKTOP ENTRAR / CADASTRAR */}
             <button
               onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="flex items-center justify-center bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 p-2.5 rounded-xl transition-all active:scale-95 cursor-pointer relative z-[102]"
-              aria-label="Menu"
+              className="hidden md:flex items-center gap-2 bg-zinc-900/30 hover:bg-zinc-900/60 border border-zinc-800/60 text-zinc-300 hover:text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer"
             >
-              <Menu className="w-5 h-5 text-orange-400" />
+              <User className="w-3.5 h-3.5 text-[#a3e635]" />
+              <span>Entrar / Cadastrar</span>
             </button>
+
+            {/* DESKTOP CTA */}
+            <button
+              onClick={() => {
+                window.history.pushState({}, "", "/");
+                setCurrentPath("/");
+                setTimeout(() => {
+                  document.getElementById("rifas-section")?.scrollIntoView({ behavior: "smooth" });
+                }, 100);
+              }}
+              className="hidden md:inline-flex bg-[#a3e635] hover:bg-[#bef264] text-black text-xs font-black uppercase tracking-wider px-5 py-2.5 rounded-xl transition-all shadow-lg shadow-[#a3e635]/15 active:scale-95 cursor-pointer"
+            >
+              Ver Rifas
+            </button>
+
+            {/* MOBILE QUICK CTA */}
+            <button
+              onClick={() => {
+                window.history.pushState({}, "", "/");
+                setCurrentPath("/");
+                setTimeout(() => {
+                  document.getElementById("como-funciona-section")?.scrollIntoView({ behavior: "smooth" });
+                }, 100);
+              }}
+              className="inline-flex md:hidden bg-zinc-900/40 hover:bg-zinc-900/60 border border-zinc-800/80 text-zinc-300 text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg transition-all active:scale-95 cursor-pointer"
+            >
+              Como Funciona
+            </button>
+
+            <button
+              onClick={() => {
+                window.history.pushState({}, "", "/");
+                setCurrentPath("/");
+                setTimeout(() => {
+                  document.getElementById("rifas-section")?.scrollIntoView({ behavior: "smooth" });
+                }, 100);
+              }}
+              className="inline-flex md:hidden bg-[#a3e635]/10 hover:bg-[#a3e635]/20 border border-[#a3e635]/30 text-[#a3e635] text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg transition-all active:scale-95 cursor-pointer"
+            >
+              Ver Rifas
+            </button>
+
+            <div className="relative">
+              <button
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                className="flex items-center justify-center bg-zinc-950 hover:bg-zinc-900 border border-zinc-800/80 text-zinc-300 p-2.5 rounded-xl transition-all active:scale-95 cursor-pointer relative z-[102] hover:border-[#a3e635]/40"
+                aria-label="Menu"
+              >
+                <Menu className="w-5 h-5 text-[#a3e635]" />
+              </button>
 
             {isMenuOpen && (
               <>
@@ -418,77 +567,151 @@ function LayoutWithHeader({
                   className="fixed inset-0 z-[100]" 
                   onClick={() => setIsMenuOpen(false)}
                 />
-                <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-zinc-800 bg-zinc-900/95 p-2 shadow-2xl backdrop-blur-xl z-[101] overflow-hidden">
-                  <button
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      window.history.pushState(null, "", "/");
-                      setCurrentPath("/");
-                    }}
-                    className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold transition-all cursor-pointer ${
-                      currentPath === "/" ? "text-orange-400 bg-zinc-800/50" : "text-zinc-200 hover:bg-zinc-800/80 hover:text-orange-400"
-                    }`}
-                  >
-                    <span>🏠</span>
-                    <span>Página Inicial</span>
-                  </button>
-                  {isStoreEnabled && (
+                <div className="absolute right-0 mt-3.5 w-64 rounded-[20px] border border-zinc-800/90 bg-zinc-950/98 p-2 shadow-2xl backdrop-blur-2xl z-[101] overflow-hidden divide-y divide-zinc-900/80">
+                  <div className="space-y-1 pb-1">
+                    {/* Minha Conta */}
                     <button
                       onClick={() => {
                         setIsMenuOpen(false);
-                        window.history.pushState(null, "", "/loja");
+                        window.history.pushState(null, "", "/minha-conta");
                         window.dispatchEvent(new PopStateEvent("popstate"));
                       }}
-                      className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold transition-all cursor-pointer ${
-                        currentPath === "/loja" ? "text-orange-400 bg-zinc-800/50" : "text-zinc-200 hover:bg-zinc-800/80 hover:text-orange-400"
+                      className={`flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-bold transition-all cursor-pointer ${
+                        currentPath === "/minha-conta" ? "text-[#a3e635] bg-zinc-900/50" : "text-zinc-300 hover:bg-zinc-900/80 hover:text-white"
                       }`}
                     >
-                      <span>🛒</span>
-                      <span className="font-montserrat font-black text-transparent bg-clip-text bg-gradient-to-r from-[#FF8A00] to-[#FFC247]">Loja Premium</span>
+                      <User className="w-4 h-4 text-zinc-400 shrink-0" />
+                      <span>Minha Conta</span>
                     </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      window.history.pushState(null, "", "/minhas-cotas");
-                      window.dispatchEvent(new PopStateEvent("popstate"));
-                    }}
-                    className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold transition-all cursor-pointer ${
-                      currentPath === "/minhas-cotas" ? "text-orange-400 bg-zinc-800/50" : "text-zinc-200 hover:bg-zinc-800/80 hover:text-orange-400 font-bold"
-                    }`}
-                  >
-                    <span>🎣</span>
-                    <span>Minhas Compras</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsMenuOpen(false);
-                      window.history.pushState(null, "", "/ganhadores");
-                      window.dispatchEvent(new PopStateEvent("popstate"));
-                    }}
-                    className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold transition-all cursor-pointer ${
-                      currentPath === "/ganhadores" ? "text-orange-400 bg-zinc-800/50" : "text-zinc-200 hover:bg-zinc-800/80 hover:text-orange-400 font-bold"
-                    }`}
-                  >
-                    <span>🏆</span>
-                    <span>Ganhadores</span>
-                  </button>
-                  {hasAdminAccess && (
+
+                    {/* Como Funciona (Atalho Celular) */}
+                    <button
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        window.history.pushState(null, "", "/");
+                        setCurrentPath("/");
+                        setTimeout(() => {
+                          document.getElementById("como-funciona-section")?.scrollIntoView({ behavior: "smooth" });
+                        }, 100);
+                      }}
+                      className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-bold text-zinc-300 hover:bg-zinc-900/80 hover:text-white transition-all cursor-pointer"
+                    >
+                      <Play className="w-4 h-4 text-[#a3e635] shrink-0" />
+                      <span>Como Funciona</span>
+                    </button>
+
+                    {/* Loja Premium (Condicional) */}
+                    {isStoreEnabled && (
+                      <button
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          window.history.pushState(null, "", "/loja");
+                          window.dispatchEvent(new PopStateEvent("popstate"));
+                        }}
+                        className={`flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-bold transition-all cursor-pointer ${
+                          currentPath === "/loja" ? "text-[#a3e635] bg-zinc-900/50" : "text-zinc-300 hover:bg-zinc-900/80 hover:text-white"
+                        }`}
+                      >
+                        <Zap className="w-4 h-4 text-[#a3e635] shrink-0 animate-pulse" />
+                        <span>Loja Premium</span>
+                      </button>
+                    )}
+
+
+
+                    {/* Resultados */}
+                    <button
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        window.history.pushState(null, "", "/ganhadores");
+                        window.dispatchEvent(new PopStateEvent("popstate"));
+                      }}
+                      className={`flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-bold transition-all cursor-pointer ${
+                        currentPath === "/ganhadores" ? "text-[#a3e635] bg-zinc-900/50" : "text-zinc-300 hover:bg-zinc-900/80 hover:text-white"
+                      }`}
+                    >
+                      <Trophy className="w-4 h-4 text-zinc-400 shrink-0" />
+                      <span>Resultados</span>
+                    </button>
+
+                    {/* Auditoria Pública */}
+                    <button
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        window.history.pushState(null, "", "/auditoria");
+                        window.dispatchEvent(new PopStateEvent("popstate"));
+                      }}
+                      className={`flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-bold transition-all cursor-pointer ${
+                        currentPath === "/auditoria" ? "text-[#a3e635] bg-zinc-900/50" : "text-zinc-300 hover:bg-zinc-900/80 hover:text-white"
+                      }`}
+                    >
+                      <ShieldCheck className="w-4 h-4 text-zinc-400 shrink-0" />
+                      <span>Auditoria Pública</span>
+                    </button>
+
+                    {/* Dúvidas Frequentes */}
+                    <button
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        const cleanPhone = String(raffleConfig.pixPhone || raffleConfig.pixKey || "5563999659203").replace(/\D/g, "");
+                        const waLink = `https://wa.me/55${cleanPhone}?text=Ol%C3%A1%2C%20tenho%20d%C3%BAvidas%20sobre%20as%20rifas!`;
+                        window.open(waLink, "_blank");
+                      }}
+                      className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-bold text-zinc-300 hover:bg-zinc-900/80 hover:text-white transition-all cursor-pointer"
+                    >
+                      <MessageCircle className="w-4 h-4 text-zinc-400 shrink-0" />
+                      <span>Dúvidas Frequentes</span>
+                    </button>
+
+                    {/* Compartilhar */}
+                    <button
+                      onClick={() => {
+                        setIsMenuOpen(false);
+                        const shareUrl = window.location.origin;
+                        safeCopyToClipboard(shareUrl);
+                        alert("🔗 Link do site copiado para compartilhamento!");
+                      }}
+                      className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-bold text-zinc-300 hover:bg-zinc-900/80 hover:text-white transition-all cursor-pointer"
+                    >
+                      <Copy className="w-4 h-4 text-zinc-400 shrink-0" />
+                      <span>Compartilhar</span>
+                    </button>
+                  </div>
+
+                  <div className="pt-1.5 space-y-1">
+                    {/* Admin (Styled exactly like the solid green badge in the mockup) */}
                     <button
                       onClick={() => {
                         setIsMenuOpen(false);
                         window.history.pushState(null, "", "/admin");
                         window.dispatchEvent(new PopStateEvent("popstate"));
                       }}
-                      className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-bold text-zinc-205 hover:bg-zinc-850 hover:text-orange-400 border-t border-zinc-800/50 mt-1 cursor-pointer"
+                      className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-black uppercase tracking-wider bg-[#a3e635] hover:bg-[#bef264] text-black shadow-lg shadow-[#a3e635]/25 transition-all cursor-pointer active:scale-98"
                     >
-                      <span>⚙️</span>
-                      <span>Painel Admin</span>
+                      <ShieldCheck className="w-4 h-4 text-black shrink-0" />
+                      <span>Admin</span>
                     </button>
-                  )}
+
+                    {/* Sair (Exit option) */}
+                    {hasAdminAccess && (
+                      <button
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          localStorage.removeItem("raffle_admin_token");
+                          alert("Sessão encerrada!");
+                          window.location.href = "/";
+                        }}
+                        className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-bold text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all cursor-pointer"
+                      >
+                        <X className="w-4 h-4 text-red-400 shrink-0" />
+                        <span>Sair</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </>
             )}
+            </div>
           </div>
         </div>
       </header>
@@ -526,6 +749,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
     }
   };
   const [globalToast, setGlobalToast] = useState<{ message: string, type: "error" | "success" | "info" } | null>(null);
+  const [infoModalContent, setInfoModalContent] = useState<{ title: string; text: string } | null>(null);
 
   useEffect(() => {
     if (globalToast) {
@@ -569,6 +793,58 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       return null;
     }
   });
+
+  // Carousel slider refs & states for premium active raffle gallery selection
+  const customerCarouselRef = useRef<HTMLDivElement>(null);
+  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const handleCarouselScroll = useCallback(() => {
+    if (!customerCarouselRef.current) return;
+    const { scrollLeft, scrollWidth, clientWidth } = customerCarouselRef.current;
+    
+    // Determine current index dynamically
+    const firstChild = customerCarouselRef.current.firstElementChild;
+    if (firstChild) {
+      const cardWidth = firstChild.clientWidth + 24; // Width + gap-6
+      const newIndex = Math.round(scrollLeft / cardWidth);
+      if (newIndex >= 0 && newIndex < activeRaffles.length && newIndex !== activeSlideIndex) {
+        setActiveSlideIndex(newIndex);
+      }
+    }
+    
+    setCanScrollLeft(scrollLeft > 10);
+    setCanScrollRight(scrollLeft + clientWidth < scrollWidth - 10);
+  }, [activeRaffles.length, activeSlideIndex]);
+
+  const scrollCarouselLeft = useCallback(() => {
+    if (!customerCarouselRef.current) return;
+    const firstChild = customerCarouselRef.current.firstElementChild;
+    if (firstChild) {
+      const cardWidth = firstChild.clientWidth + 24;
+      customerCarouselRef.current.scrollBy({ left: -cardWidth, behavior: "smooth" });
+    }
+  }, []);
+
+  const scrollCarouselRight = useCallback(() => {
+    if (!customerCarouselRef.current) return;
+    const firstChild = customerCarouselRef.current.firstElementChild;
+    if (firstChild) {
+      const cardWidth = firstChild.clientWidth + 24;
+      customerCarouselRef.current.scrollBy({ left: cardWidth, behavior: "smooth" });
+    }
+  }, []);
+
+  const scrollCarouselToSlide = useCallback((index: number) => {
+    if (!customerCarouselRef.current) return;
+    const firstChild = customerCarouselRef.current.firstElementChild;
+    if (firstChild) {
+      const cardWidth = firstChild.clientWidth + 24;
+      customerCarouselRef.current.scrollTo({ left: cardWidth * index, behavior: "smooth" });
+      setActiveSlideIndex(index);
+    }
+  }, []);
 
   const checkIsActiveRaffle = (data: any): boolean => {
     if (!data) return false;
@@ -675,17 +951,9 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         await Promise.all(
           list.map(async (rf) => {
             try {
-              const numSnap = await getDocs(collection(db, "raffles", rf.id, "numbers"));
-              let paidCount = 0;
-              let reservedOrPending = 0;
-              numSnap.forEach((numDoc) => {
-                const nd = numDoc.data();
-                if (nd.status === "paid") {
-                  paidCount++;
-                } else if (nd.status === "reserved" || nd.status === "pending_payment") {
-                  reservedOrPending++;
-                }
-              });
+              // Etapa 4 - Otimização: Eliminação de full scans
+              // Utiliza a contagem consolidada em soldCount diretamente do documento da rifa
+              const paidCount = Number(rf.soldCount || 0);
               const total = Number(rf.totalNumbers || 100);
               // Progress reflects only paid cotas
               const percent = Math.min(100, (paidCount / total) * 100);
@@ -729,7 +997,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
     const rawSegment = decodeURIComponent(pathname.replace(/^\/+/, "")).trim();
 
     // Reserved system routes
-    const systemRoutes = ["admin", "dashboard", "loja", "minhas-cotas", "ganhadores"];
+    const systemRoutes = ["admin", "dashboard", "loja", "minhas-cotas", "ganhadores", "minha-conta", "minhas-compras", "meus-numeros"];
     if (systemRoutes.includes(rawSegment.toLowerCase())) {
       return;
     }
@@ -1020,12 +1288,14 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
     );
   }, [selectedCustomerRaffleId, setDbNumbersThrottled]);
 
-  // Real-time Firestore Sync for Orders (STRICTLY Admin view only, NO READS FOR CLIENT)
+  // Real-time Firestore Sync for Orders (STRICTLY Admin view only, limited to 50 recent orders)
   useEffect(() => {
     return realtimeService.subscribeOrders(
       db,
       isAdminAuthenticated,
-      (ordersList) => setOrders(ordersList)
+      (ordersList) => setOrders(ordersList),
+      undefined,
+      { limitCount: 50 }
     );
   }, [isAdminAuthenticated]);
 
@@ -1074,13 +1344,14 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
     return () => clearInterval(timer);
   }, []);
 
-  // Real-time Firestore Sync for Locks
+  // Real-time Firestore Sync for Locks (Filtered per raffle to avoid cross-raffle reads)
   useEffect(() => {
     return realtimeService.subscribeLocks(
       db,
-      (activeLocks) => setLocksThrottled(activeLocks)
+      (activeLocks) => setLocksThrottled(activeLocks),
+      selectedCustomerRaffleId
     );
-  }, [setLocksThrottled]);
+  }, [selectedCustomerRaffleId, setLocksThrottled]);
 
   const [userData, setUserData] = useState<{ name: string; phone: string }>(() => {
     try {
@@ -2638,157 +2909,592 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         )}
 
         {isConfigLoaded && !loadingRaffles && selectedCustomerRaffleId === null && (
-          <>
-            {activeRaffles.length === 0 ? (
-              <PreLaunchCard whatsappUrl={raffleConfig.whatsappGroupUrl} />
-            ) : (
-              <div className="max-w-7xl mx-auto px-4 py-8 sm:py-12 select-none">
-                {/* Header section */}
-                <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
-                  <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-orange-500/20 bg-orange-500/10 text-orange-400 text-xs font-bold uppercase tracking-widest mb-4">
-                    <Sparkles className="w-4 h-4 text-orange-400 animate-pulse" />
-                    <span>Campanhas Ativas</span>
+          <div className="flex flex-col bg-[#050505] min-h-screen text-white select-none font-montserrat">
+            
+            {/* 1. HERO / CAPA */}
+            <section className="relative min-h-[460px] lg:min-h-[580px] flex items-center justify-start overflow-hidden border-b border-[#121212] bg-[#050505]">
+              {/* Background image with multi-directional overlays */}
+              <div className="absolute inset-0 z-0">
+                <picture className="absolute inset-0 w-full h-full block">
+                  {/* Mobile Portrait: Premium, cozy vertical campsite under starry twilight, dark-toned forest background with high contrast for mobile viewports */}
+                  <source 
+                    media="(max-width: 767px)" 
+                    srcSet="https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?q=80&w=1080&auto=format&fit=crop" 
+                  />
+                  {/* Tablet/Landscape: Semi-wide cinematic lake camping scene with beautiful twilight horizon */}
+                  <source 
+                    media="(max-width: 1023px)" 
+                    srcSet="https://images.unsplash.com/photo-1537225228614-56cc3556d7ed?q=80&w=1200&auto=format&fit=crop" 
+                  />
+                  {/* Desktop Widescreen: High-end lakeside camp setup with premium gear, campfire, majestic alpine mountains and twilight skies, right-aligned to leave copy space on the left */}
+                  <img 
+                    src="https://images.unsplash.com/photo-1537225228614-56cc3556d7ed?q=80&w=1920&auto=format&fit=crop" 
+                    alt="Pesca e Camping Premium Rifa Master" 
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover opacity-45 md:opacity-60 object-right-bottom scale-105 transition-transform duration-1000"
+                  />
+                </picture>
+                {/* Advanced black shadow masks for optimal legibility of left-aligned text */}
+                <div className="absolute inset-0 bg-gradient-to-r from-[#050505] via-[#050505]/95 md:via-[#050505]/75 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-[#050505]/80 opacity-90" />
+                {/* Ambient warm amber glow from bottom right representing camp fire embers */}
+                <div className="absolute right-[-10%] bottom-[-10%] w-[60%] h-[60%] bg-[#f59e0b]/5 rounded-full blur-[120px] pointer-events-none" />
+              </div>
+
+              {/* Grid or container content */}
+              <div className="relative z-10 max-w-7xl mx-auto px-6 sm:px-8 py-10 lg:py-14 w-full flex flex-col lg:flex-row items-center justify-between gap-8 lg:gap-12">
+                <motion.div 
+                  initial={{ opacity: 0, x: -30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.8 }}
+                  className="max-w-xl text-left"
+                >
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[#a3e635]/20 bg-[#a3e635]/10 text-[#a3e635] text-[10px] font-black uppercase tracking-widest mb-6 shadow-lg shadow-[#a3e635]/5 select-none">
+                    <Compass className="w-3.5 h-3.5 text-[#a3e635] animate-spin" style={{ animationDuration: '6s' }} />
+                    <span>RIFA MASTER — PESCA &amp; CAMPING PREMIUM</span>
                   </div>
-                  <h2 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
-                    Escolha a Rifa e Participe
+
+                  <span className="text-[11px] font-black text-zinc-400 tracking-[0.25em] uppercase block mb-3">
+                    OS MELHORES ITENS DE
+                  </span>
+                  <h2 className="text-5xl sm:text-6xl md:text-[5.5rem] font-black tracking-tight leading-[0.85] uppercase text-white mb-2 font-montserrat">
+                    <span className="text-[#a3e635] block">PESCA E</span>
+                    <span className="block">CAMPING</span>
                   </h2>
-                  <p className="text-zinc-400 text-sm sm:text-base mt-2.5">
-                    Selecione uma das rifas em andamento abaixo para garantir suas cotas da sorte!
+                  <div className="text-xl sm:text-2xl md:text-3xl font-serif italic text-amber-100/90 tracking-wide font-normal lowercase mb-6 leading-none mt-2">
+                    em sorteios premium!
+                  </div>
+
+                  <p className="text-zinc-400 text-xs sm:text-sm md:text-base font-semibold leading-relaxed max-w-md mb-8">
+                    Participe dos nossos sorteios e concorra a equipamentos de Pesca, Camping e Outdoor das marcas mais cobiçadas do mundo de forma 100% auditável.
+                  </p>
+
+                  <div className="flex flex-col sm:flex-row gap-4 items-center">
+                    <button
+                      onClick={() => {
+                        document.getElementById("rifas-section")?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                      className="w-full sm:w-auto bg-[#a3e635] hover:bg-[#bef264] text-black font-black uppercase text-xs tracking-wider py-4 px-8 rounded-xl shadow-lg shadow-[#a3e635]/20 transition-all duration-300 transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <Ticket className="w-4 h-4" />
+                      <span>VER RIFAS</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        document.getElementById("como-funciona-section")?.scrollIntoView({ behavior: "smooth" });
+                      }}
+                      className="w-full sm:w-auto bg-transparent hover:bg-zinc-900/40 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white font-black uppercase text-xs tracking-wider py-4 px-8 rounded-xl transition-all duration-300 cursor-pointer flex items-center justify-center gap-2"
+                    >
+                      <Play className="w-4 h-4 text-zinc-400 fill-zinc-400" />
+                      <span>COMO FUNCIONA</span>
+                    </button>
+                  </div>
+
+                  {/* Trust indicator right under buttons */}
+                  <div className="mt-8 flex items-center gap-2.5 text-zinc-500 text-xs font-semibold uppercase tracking-wider select-none">
+                    <ShieldCheck className="w-4 h-4 text-[#a3e635]" />
+                    <span>100% Seguro • Ambiente protegido e transações seguras</span>
+                  </div>
+                </motion.div>
+                
+                {/* Right Column: Visual of Premium Gear (Exactly as in Mockup) */}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ duration: 0.8, delay: 0.2 }}
+                  className="hidden lg:flex w-[48%] relative aspect-[4/3] flex-col items-center justify-center"
+                >
+                  <div className="absolute inset-0 bg-[#a3e635]/5 rounded-[32px] blur-3xl opacity-30 pointer-events-none" />
+                  <div className="relative border border-zinc-800/40 bg-gradient-to-b from-zinc-950/80 to-zinc-950/20 backdrop-blur-md rounded-[24px] p-6 w-full shadow-2xl overflow-hidden group">
+                    <img
+                      src="https://images.unsplash.com/photo-1515263487990-61b07816b324?q=80&w=800&auto=format&fit=crop"
+                      alt="Equipamentos Premium Rifa Master"
+                      referrerPolicy="no-referrer"
+                      className="rounded-[16px] w-full h-[240px] object-cover border border-zinc-900/60 object-center transition-transform duration-700 group-hover:scale-[1.02]"
+                    />
+                    <div className="absolute top-10 left-10 bg-[#a3e635] text-black text-[9px] font-black uppercase px-2.5 py-1 rounded-md shadow-lg tracking-wider">
+                      EQUIPAMENTO OFICIAL
+                    </div>
+                    
+                    <div className="mt-5 flex items-center justify-between border-t border-zinc-900/80 pt-4">
+                      <div>
+                        <h4 className="text-white text-sm font-black uppercase tracking-wider">Shimano Stella SW 6000XG</h4>
+                        <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mt-1">Série Especial Japonesa</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[#a3e635] text-[9px] font-black block">A PARTIR DE</span>
+                        <span className="text-white text-base font-black">R$ 12,00</span>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              </div>
+            </section>
+
+            {/* FEATURES RIBBON (MOCKUP RIBBON) */}
+            <div className="bg-[#070707] border-b border-[#121212] py-4 sm:py-6 px-2 sm:px-4 relative z-10 select-none">
+              <div className="max-w-7xl mx-auto grid grid-cols-4 gap-1 sm:gap-4 divide-x divide-zinc-900/35">
+                <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-1 sm:gap-4 px-1 sm:px-4 w-full">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#a3e635]/10 flex items-center justify-center text-[#a3e635] shrink-0">
+                    <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <div className="flex flex-col items-center sm:items-start">
+                    <h5 className="text-[7.5px] xs:text-[9px] sm:text-[11px] font-extrabold sm:font-black text-white uppercase tracking-wider leading-none sm:leading-tight">100% Seguro</h5>
+                    <p className="hidden sm:block text-zinc-500 text-[10px] uppercase font-bold tracking-widest mt-1">Ambiente protegido e dados seguros</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-1 sm:gap-4 px-1 sm:px-4 w-full">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#a3e635]/10 flex items-center justify-center text-[#a3e635] shrink-0">
+                    <Trophy className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <div className="flex flex-col items-center sm:items-start">
+                    <h5 className="text-[7.5px] xs:text-[9px] sm:text-[11px] font-extrabold sm:font-black text-white uppercase tracking-wider leading-none sm:leading-tight">Resultado ao Vivo</h5>
+                    <p className="hidden sm:block text-zinc-500 text-[10px] uppercase font-bold tracking-widest mt-1">Acompanhe o sorteio em tempo real</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-1 sm:gap-4 px-1 sm:px-4 w-full">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#a3e635]/10 flex items-center justify-center text-[#a3e635] shrink-0">
+                    <Award className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <div className="flex flex-col items-center sm:items-start">
+                    <h5 className="text-[7.5px] xs:text-[9px] sm:text-[11px] font-extrabold sm:font-black text-white uppercase tracking-wider leading-none sm:leading-tight">Prêmios Premium</h5>
+                    <p className="hidden sm:block text-zinc-500 text-[10px] uppercase font-bold tracking-widest mt-1">Equipamentos selecionados originais</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-1 sm:gap-4 px-1 sm:px-4 w-full">
+                  <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#a3e635]/10 flex items-center justify-center text-[#a3e635] shrink-0">
+                    <MessageCircle className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <div className="flex flex-col items-center sm:items-start">
+                    <h5 className="text-[7.5px] xs:text-[9px] sm:text-[11px] font-extrabold sm:font-black text-white uppercase tracking-wider leading-none sm:leading-tight">Suporte Dedicado</h5>
+                    <p className="hidden sm:block text-zinc-500 text-[10px] uppercase font-bold tracking-widest mt-1">Atendimento rápido e humanizado</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 2. RIFAS EM DESTAQUE */}
+            <section id="rifas-section" className="py-10 sm:py-16 max-w-7xl mx-auto px-4 w-full border-b border-[#121212]">
+              <div className="text-center max-w-2xl mx-auto mb-10">
+                <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight uppercase">
+                  Rifas em destaque
+                </h3>
+                <div className="w-12 h-1 bg-[#a3e635] mx-auto mt-3 mb-4 rounded-full" />
+                <p className="text-zinc-400 text-xs sm:text-sm tracking-wide">
+                  Equipamentos selecionados para pesca, camping e aventura.
+                </p>
+              </div>
+
+              {activeRaffles.length === 0 ? (
+                <div className="max-w-2xl mx-auto bg-[#0A0A0A] border border-zinc-800/80 rounded-2xl p-8 sm:p-10 shadow-2xl relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1 bg-[#a3e635] h-full" />
+                  <div className="flex flex-col sm:flex-row items-start gap-5">
+                    <div className="p-3 bg-[#a3e635]/10 rounded-xl text-[#a3e635] shrink-0">
+                      <Sparkles className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-lg font-black text-white mb-2 uppercase tracking-wide">Campanhas em Preparação</h4>
+                      <p className="text-zinc-400 text-xs sm:text-sm leading-relaxed mb-6">
+                        Nossa equipe está selecionando os melhores equipamentos de pesca e aventura para os próximos sorteios. Participe do nosso grupo de membros VIP para receber as novidades e ter acesso antecipado às cotas!
+                      </p>
+                      {raffleConfig.whatsappGroupUrl && (
+                        <a
+                          href={raffleConfig.whatsappGroupUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 bg-[#25D366] hover:bg-[#20ba5a] text-white font-black uppercase text-xs py-3 px-5 rounded-xl shadow-lg transition-all cursor-pointer"
+                        >
+                          <MessageCircle className="w-4 h-4" />
+                          <span>Entrar no Grupo VIP</span>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="relative group/carousel max-w-6xl mx-auto px-2 md:px-12">
+                  {/* Left Navigation Button */}
+                  <button 
+                    onClick={scrollCarouselLeft}
+                    className={`absolute -left-2 md:left-0 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-zinc-950/90 border border-zinc-800 text-zinc-400 hover:text-[#a3e635] hover:border-[#a3e635]/50 flex items-center justify-center backdrop-blur-md shadow-2xl transition-all duration-300 opacity-0 group-hover/carousel:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-0 disabled:pointer-events-none`}
+                    disabled={!canScrollLeft}
+                    aria-label="Voltar rifa"
+                  >
+                    <ChevronLeft className="w-6 h-6" />
+                  </button>
+
+                  {/* Scrollable track */}
+                  <div 
+                    ref={customerCarouselRef}
+                    onScroll={handleCarouselScroll}
+                    className="flex overflow-x-auto gap-6 pb-6 pt-2 scroll-smooth snap-x snap-mandatory scrollbar-none"
+                    style={{
+                      maskImage: "linear-gradient(to right, transparent, white 5%, white 95%, transparent)",
+                      WebkitMaskImage: "linear-gradient(to right, transparent, white 5%, white 95%, transparent)"
+                    }}
+                  >
+                    {activeRaffles.map((raffle, index) => {
+                      const stats = activeRafflesStats[raffle.id] || { soldCount: 0, percentSold: 0, remainingCount: Number(raffle.totalNumbers || 100) };
+                      const isQuaseEncerrada = stats.percentSold >= 80;
+                      const isSelected = activeSlideIndex === index;
+                      
+                      return (
+                        <div 
+                          key={raffle.id}
+                          className={`bg-[#0A0A0A] border ${
+                            isSelected ? "border-[#a3e635]/60 shadow-[0_15px_40px_rgba(163,230,53,0.06)]" : "border-zinc-900 hover:border-[#a3e635]/25"
+                          } rounded-2xl overflow-hidden shadow-2xl transition-all duration-500 flex flex-col justify-between group relative w-[88vw] xs:w-[82vw] sm:w-[380px] md:w-[360px] lg:w-[380px] shrink-0 snap-center transform ${
+                            isSelected ? "scale-[1.01] z-10" : "scale-[0.98] opacity-80 hover:opacity-100"
+                          }`}
+                        >
+                          {/* Card Image */}
+                          <div 
+                            className="relative h-56 sm:h-64 w-full overflow-hidden bg-zinc-950 cursor-pointer"
+                            onClick={() => {
+                              const targetSlug = raffle.slug || slugify(raffle.title) || raffle.id;
+                              window.history.pushState(null, "", "/" + targetSlug);
+                              if (setCurrentPath) setCurrentPath("/" + targetSlug);
+                              setSelectedCustomerRaffleId(raffle.id);
+                              setSelectedRaffleId(raffle.id);
+                              window.scrollTo({ top: 0, behavior: "smooth" });
+                            }}
+                          >
+                            {raffle.imageUrl ? (
+                              <img 
+                                src={raffle.imageUrl} 
+                                alt={raffle.title} 
+                                referrerPolicy="no-referrer"
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                              />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center bg-zinc-900 text-zinc-700">
+                                <Ticket className="w-12 h-12 opacity-30 text-[#a3e635] mb-2" />
+                                <span className="text-[10px] text-zinc-600 font-bold uppercase tracking-widest">Sem Imagem</span>
+                              </div>
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-transparent to-black/30 pointer-events-none" />
+                            
+                            {/* Status Badge */}
+                            <div className="absolute top-4 left-4 z-10">
+                              {isQuaseEncerrada ? (
+                                <div className="bg-amber-500 text-black text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full shadow-lg flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-black animate-ping" />
+                                  <span>Quase Encerrada</span>
+                                </div>
+                              ) : (
+                                <div className="bg-[#a3e635] text-black text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full shadow-lg flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-black animate-pulse" />
+                                  <span>Disponível</span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Draw Mode Badge */}
+                            <div className="absolute top-4 right-4 z-10 bg-zinc-950/80 border border-zinc-800 text-zinc-300 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full shadow-md">
+                              {raffle.drawMode === "federal" ? "🎰 Loteria Federal" : "⚡ Sorteio Automático"}
+                            </div>
+
+                            {/* Price Tag (Verde-Lima Accent) */}
+                            <div className="absolute bottom-4 right-4 bg-zinc-950/95 border border-[#a3e635]/30 text-[#a3e635] font-black text-xs px-3.5 py-1.5 rounded-xl shadow-lg backdrop-blur-md">
+                              Cota a partir de <span className="text-sm">R$ {Number(raffle.price || 10).toFixed(2).replace(".", ",")}</span>
+                            </div>
+                          </div>
+
+                          {/* Card Content */}
+                          <div className="p-6 flex-1 flex flex-col justify-between space-y-5">
+                            <div>
+                              <div className="text-[9px] text-[#a3e635] font-extrabold uppercase tracking-widest mb-1.5">
+                                {raffle.drawMode === "federal" ? "Sorteio Oficial" : "Sorteio Criptográfico"}
+                              </div>
+                              <h4 className="text-lg font-extrabold text-white group-hover:text-[#a3e635] transition-colors line-clamp-2 leading-snug">
+                                {raffle.title}
+                              </h4>
+                              {raffle.description && (
+                                <p className="text-xs text-zinc-500 line-clamp-2 mt-2 leading-relaxed">
+                                  {raffle.description}
+                                </p>
+                              )}
+                            </div>
+
+                            <div className="space-y-3 pt-4 border-t border-zinc-900">
+                              {/* Progress details */}
+                              <div className="flex justify-between items-end text-xs">
+                                <span className="text-zinc-500 font-semibold uppercase tracking-wider text-[10px]">
+                                  {stats.soldCount} de {raffle.totalNumbers || 100} cotas
+                                </span>
+                                <span className="text-[#a3e635] font-black text-sm">{stats.percentSold.toFixed(1)}%</span>
+                              </div>
+                              <div className="w-full h-2 bg-zinc-950 rounded-full overflow-hidden border border-zinc-900 p-0.5">
+                                <div 
+                                  className="h-full bg-gradient-to-r from-[#a3e635] to-[#bef264] rounded-full transition-all duration-500"
+                                  style={{ width: `${Math.max(4, stats.percentSold)}%` }}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex gap-2.5 pt-1">
+                              <button
+                                onClick={() => {
+                                  const targetSlug = raffle.slug || slugify(raffle.title) || raffle.id;
+                                  window.history.pushState(null, "", "/" + targetSlug);
+                                  if (setCurrentPath) setCurrentPath("/" + targetSlug);
+                                  setSelectedCustomerRaffleId(raffle.id);
+                                  setSelectedRaffleId(raffle.id);
+                                  window.scrollTo({ top: 0, behavior: "smooth" });
+                                }}
+                                className="flex-1 bg-[#a3e635] hover:bg-[#bef264] text-black font-black uppercase text-xs py-3.5 px-4 rounded-xl shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer"
+                              >
+                                <span>Participar</span>
+                                <ArrowRight className="w-4 h-4 shrink-0" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const targetSlug = raffle.slug || slugify(raffle.title) || raffle.id;
+                                  const shareUrl = `${window.location.origin}/${targetSlug}`;
+                                  safeCopyToClipboard(shareUrl);
+                                  setGlobalToast({ message: "🔗 Link da rifa copiado com sucesso!", type: "success" });
+                                }}
+                                className="p-3.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-850 hover:border-[#a3e635]/30 text-zinc-400 hover:text-[#a3e635] rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0"
+                                title="Compartilhar"
+                              >
+                                <Copy className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Right Navigation Button */}
+                  <button 
+                    onClick={scrollCarouselRight}
+                    className={`absolute -right-2 md:right-0 top-1/2 -translate-y-1/2 z-20 w-12 h-12 rounded-full bg-zinc-950/90 border border-zinc-800 text-zinc-400 hover:text-[#a3e635] hover:border-[#a3e635]/50 flex items-center justify-center backdrop-blur-md shadow-2xl transition-all duration-300 opacity-0 group-hover/carousel:opacity-100 focus:opacity-100 cursor-pointer disabled:opacity-0 disabled:pointer-events-none`}
+                    disabled={!canScrollRight}
+                    aria-label="Avançar rifa"
+                  >
+                    <ChevronRight className="w-6 h-6" />
+                  </button>
+
+                  {/* Indicator Dots */}
+                  {activeRaffles.length > 1 && (
+                    <div className="flex justify-center items-center gap-2.5 mt-8 select-none">
+                      {activeRaffles.map((_, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => scrollCarouselToSlide(idx)}
+                          className={`h-2 rounded-full transition-all duration-300 ${
+                            activeSlideIndex === idx ? "w-8 bg-[#a3e635]" : "w-2 bg-zinc-800 hover:bg-zinc-700"
+                          }`}
+                          aria-label={`Ir para slide ${idx + 1}`}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+
+            {/* 3. CATEGORIAS */}
+            <section id="categories-section" className="py-20 sm:py-28 max-w-7xl mx-auto px-4 w-full border-b border-[#121212]">
+              <div className="text-center max-w-2xl mx-auto mb-16">
+                <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight uppercase">
+                  Categorias de Equipamentos
+                </h3>
+                <div className="w-12 h-1 bg-[#a3e635] mx-auto mt-3 mb-4 rounded-full" />
+                <p className="text-zinc-400 text-xs sm:text-sm tracking-wide">
+                  Nossos prêmios são focados nas principais vertentes de vida selvagem e outdoor.
+                </p>
+              </div>
+
+              <div className="flex overflow-x-auto pb-4 gap-6 scrollbar-thin scrollbar-thumb-zinc-850 scrollbar-track-transparent snap-x snap-mandatory md:grid md:grid-cols-3 md:gap-8 md:overflow-visible md:pb-0">
+                {/* CATEGORY 1 */}
+                <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 sm:p-8 hover:border-[#a3e635]/20 hover:shadow-[0_15px_30px_rgba(0,0,0,0.5)] transition-all duration-300 group shrink-0 w-[82%] sm:w-[280px] md:w-auto snap-center">
+                  <div className="w-12 h-12 rounded-xl bg-[#a3e635]/10 flex items-center justify-center text-[#a3e635] text-2xl font-bold mb-4 sm:mb-6 group-hover:scale-110 transition-transform">
+                    🎣
+                  </div>
+                  <h4 className="text-base sm:text-lg font-extrabold text-white mb-2 uppercase tracking-wide">Pesca Esportiva</h4>
+                  <p className="text-zinc-500 text-xs sm:text-sm leading-relaxed">
+                    Varas de fibra de carbono, carretilhas importadas, conjuntos profissionais de fly e iscas de alta performance.
                   </p>
                 </div>
 
-                {/* Cards Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
-                  {activeRaffles.map((raffle) => {
-                    const stats = activeRafflesStats[raffle.id] || { soldCount: 0, percentSold: 0, remainingCount: Number(raffle.totalNumbers || 100) };
-                    return (
-                      <div 
-                        key={raffle.id}
-                        className="bg-[#0D0D0D] border border-zinc-800/80 hover:border-orange-500/50 rounded-3xl overflow-hidden shadow-2xl hover:shadow-[0_10px_30px_rgba(255,138,0,0.15)] transition-all duration-300 flex flex-col justify-between group transform hover:-translate-y-1"
-                      >
-                        {/* Card Image */}
-                        <div 
-                          className="relative h-52 sm:h-60 w-full overflow-hidden bg-zinc-950 cursor-pointer"
-                          onClick={() => {
-                            const targetSlug = raffle.slug || slugify(raffle.title) || raffle.id;
-                            window.history.pushState(null, "", "/" + targetSlug);
-                            if (setCurrentPath) setCurrentPath("/" + targetSlug);
-                            setSelectedCustomerRaffleId(raffle.id);
-                            setSelectedRaffleId(raffle.id);
-                            window.scrollTo({ top: 0, behavior: "smooth" });
-                          }}
-                        >
-                          {raffle.imageUrl ? (
-                            <img 
-                              src={raffle.imageUrl} 
-                              alt={raffle.title} 
-                              referrerPolicy="no-referrer"
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                            />
-                          ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-zinc-900 to-zinc-950 text-zinc-700">
-                              <Ticket className="w-16 h-16 opacity-30 text-orange-500 mb-2" />
-                              <span className="text-xs text-zinc-600 font-bold uppercase tracking-widest">Sem Imagem</span>
-                            </div>
-                          )}
-                          <div className="absolute inset-0 bg-gradient-to-t from-[#0D0D0D] via-transparent to-black/40 pointer-events-none" />
-                          
-                          {/* Badge: Ativa */}
-                          <div className="absolute top-3.5 left-3.5 bg-emerald-500/90 text-zinc-950 text-[10px] font-black uppercase tracking-wider px-3.5 py-1.5 rounded-full shadow-lg backdrop-blur-md flex items-center gap-1.5">
-                            <span className="w-2 h-2 rounded-full bg-zinc-950 animate-ping" />
-                            <span>Ativa</span>
-                          </div>
+                {/* CATEGORY 2 */}
+                <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 sm:p-8 hover:border-[#a3e635]/20 hover:shadow-[0_15px_30px_rgba(0,0,0,0.5)] transition-all duration-300 group shrink-0 w-[82%] sm:w-[280px] md:w-auto snap-center">
+                  <div className="w-12 h-12 rounded-xl bg-[#a3e635]/10 flex items-center justify-center text-[#a3e635] text-2xl font-bold mb-4 sm:mb-6 group-hover:scale-110 transition-transform">
+                    🏕️
+                  </div>
+                  <h4 className="text-base sm:text-lg font-extrabold text-white mb-2 uppercase tracking-wide">Camping & Outdoor</h4>
+                  <p className="text-zinc-500 text-xs sm:text-sm leading-relaxed">
+                    Barracas técnicas ultra-leves, sacos de dormir térmicos, fogareiros portáteis e isolantes auto-infláveis.
+                  </p>
+                </div>
 
-                          {/* Badge: Sorteio Mode (Piscando) */}
-                          <div className="absolute top-3.5 right-3.5 z-20">
-                            {raffle.drawMode === "federal" ? (
-                              <div className="bg-amber-500/90 text-zinc-950 font-black text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full shadow-lg backdrop-blur-md flex items-center gap-1.5 animate-pulse border border-amber-300/50">
-                                <span className="w-1.5 h-1.5 rounded-full bg-zinc-950 animate-ping" />
-                                <span>🎰 Loteria Federal</span>
-                              </div>
-                            ) : (
-                              <div className="bg-purple-600/90 text-white font-black text-[10px] uppercase tracking-wider px-2.5 py-1 rounded-full shadow-lg backdrop-blur-md flex items-center gap-1.5 animate-pulse border border-purple-300/50">
-                                <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
-                                <span>⚡ Sorteio Automático</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Price Tag */}
-                          <div className="absolute bottom-3.5 right-3.5 bg-zinc-950/90 border border-orange-500/40 text-orange-400 font-black text-sm px-3.5 py-1.5 rounded-xl shadow-lg backdrop-blur-md">
-                            R$ {Number(raffle.price || 10).toFixed(2).replace(".", ",")} <span className="text-[10px] text-zinc-400 font-medium">/ cota</span>
-                          </div>
-                        </div>
-
-                        {/* Card Content */}
-                        <div className="p-5 sm:p-6 flex-1 flex flex-col justify-between space-y-5">
-                          <div>
-                            <h3 className="text-lg sm:text-xl font-black text-white group-hover:text-orange-400 transition-colors line-clamp-2 leading-tight">
-                              {raffle.title}
-                            </h3>
-                            {raffle.description && (
-                              <p className="text-xs text-zinc-400 line-clamp-2 mt-2 leading-relaxed">
-                                {raffle.description}
-                              </p>
-                            )}
-                          </div>
-
-                          <div className="space-y-2 pt-3 border-t border-zinc-800/80">
-                            {/* Progress Bar showing only % */}
-                            <div className="flex justify-between items-center text-xs font-bold text-zinc-400">
-                              <span className="flex items-center gap-1.5">
-                                <TrendingUp className="w-3.5 h-3.5 text-orange-400" />
-                                <span>Progresso:</span>
-                              </span>
-                              <span className="text-orange-400 font-extrabold text-sm">{stats.percentSold.toFixed(1)}%</span>
-                            </div>
-                            <div className="w-full h-3 bg-zinc-950 rounded-full overflow-hidden p-0.5 border border-zinc-800">
-                              <div 
-                                className="h-full bg-gradient-to-r from-orange-500 via-amber-400 to-yellow-400 rounded-full transition-all duration-500"
-                                style={{ width: `${Math.max(4, stats.percentSold)}%` }}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Participar and Copy Link Buttons */}
-                          <div className="flex gap-2 mt-2">
-                            <button
-                              onClick={() => {
-                                const targetSlug = raffle.slug || slugify(raffle.title) || raffle.id;
-                                window.history.pushState(null, "", "/" + targetSlug);
-                                if (setCurrentPath) setCurrentPath("/" + targetSlug);
-                                setSelectedCustomerRaffleId(raffle.id);
-                                setSelectedRaffleId(raffle.id);
-                                window.scrollTo({ top: 0, behavior: "smooth" });
-                              }}
-                              className="flex-1 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-zinc-950 font-black uppercase text-xs sm:text-sm py-3.5 px-4 rounded-xl shadow-lg shadow-orange-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2 cursor-pointer"
-                            >
-                              <span>Participar</span>
-                              <ArrowRight className="w-4 h-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const targetSlug = raffle.slug || slugify(raffle.title) || raffle.id;
-                                const shareUrl = `${window.location.origin}/${targetSlug}`;
-                                safeCopyToClipboard(shareUrl);
-                                setGlobalToast({ message: "🔗 Link da rifa copiado com sucesso!", type: "success" });
-                              }}
-                              className="p-3.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-orange-500/40 text-zinc-300 hover:text-orange-400 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0"
-                              title="Copiar Link para Compartilhar"
-                            >
-                              <Copy className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                {/* CATEGORY 3 */}
+                <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 sm:p-8 hover:border-[#a3e635]/20 hover:shadow-[0_15px_30px_rgba(0,0,0,0.5)] transition-all duration-300 group shrink-0 w-[82%] sm:w-[280px] md:w-auto snap-center">
+                  <div className="w-12 h-12 rounded-xl bg-[#a3e635]/10 flex items-center justify-center text-[#a3e635] text-2xl font-bold mb-4 sm:mb-6 group-hover:scale-110 transition-transform">
+                    🧭
+                  </div>
+                  <h4 className="text-base sm:text-lg font-extrabold text-white mb-2 uppercase tracking-wide">Aventura & Sobrevivência</h4>
+                  <p className="text-zinc-500 text-xs sm:text-sm leading-relaxed">
+                    Mochilas cargueiras de alta durabilidade, facas esportivas de aço damasco, lanternas táticas e kits EDC de sobrevivência.
+                  </p>
                 </div>
               </div>
-            )}
-          </>
+            </section>
+
+            {/* 4. COMO FUNCIONA */}
+            <section id="como-funciona-section" className="py-20 sm:py-28 max-w-7xl mx-auto px-4 w-full border-b border-[#121212]">
+              <div className="text-center max-w-2xl mx-auto mb-16">
+                <h3 className="text-2xl sm:text-3xl font-black text-white tracking-tight uppercase">
+                  Sua jornada rumo ao prêmio
+                </h3>
+                <div className="w-12 h-1 bg-[#a3e635] mx-auto mt-3 mb-4 rounded-full" />
+                <p className="text-zinc-400 text-xs sm:text-sm tracking-wide">
+                  É extremamente simples e 100% transparente participar das nossas campanhas.
+                </p>
+              </div>
+
+              <div className="flex overflow-x-auto pb-4 gap-4 scrollbar-thin scrollbar-thumb-zinc-850 scrollbar-track-transparent snap-x snap-mandatory lg:grid lg:grid-cols-5 lg:gap-6 lg:overflow-visible lg:pb-0">
+                {/* STEP 1 */}
+                <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 relative overflow-hidden shrink-0 w-[78%] sm:w-[220px] lg:w-auto snap-center">
+                  <div className="text-[#a3e635]/10 font-black text-7xl absolute -right-3 -top-3">01</div>
+                  <h5 className="text-sm font-black text-white uppercase tracking-wider mb-2 relative z-10 pt-4">Escolha seu prêmio</h5>
+                  <p className="text-zinc-500 text-[11px] sm:text-xs leading-relaxed">
+                    Navegue pelas campanhas e encontre o equipamento ideal para sua próxima aventura selvagem.
+                  </p>
+                </div>
+
+                {/* STEP 2 */}
+                <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 relative overflow-hidden shrink-0 w-[78%] sm:w-[220px] lg:w-auto snap-center">
+                  <div className="text-[#a3e635]/10 font-black text-7xl absolute -right-3 -top-3">02</div>
+                  <h5 className="text-sm font-black text-white uppercase tracking-wider mb-2 relative z-10 pt-4">Escolha suas cotas</h5>
+                  <p className="text-zinc-500 text-[11px] sm:text-xs leading-relaxed">
+                    Selecione quantos números deseja comprar para potencializar suas chances de ganhar.
+                  </p>
+                </div>
+
+                {/* STEP 3 */}
+                <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 relative overflow-hidden shrink-0 w-[78%] sm:w-[220px] lg:w-auto snap-center">
+                  <div className="text-[#a3e635]/10 font-black text-7xl absolute -right-3 -top-3">03</div>
+                  <h5 className="text-sm font-black text-white uppercase tracking-wider mb-2 relative z-10 pt-4">Faça o pagamento</h5>
+                  <p className="text-zinc-500 text-[11px] sm:text-xs leading-relaxed">
+                    Efetue o pagamento por Pix de forma rápida e segura, com compensação automática.
+                  </p>
+                </div>
+
+                {/* STEP 4 */}
+                <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 relative overflow-hidden shrink-0 w-[78%] sm:w-[220px] lg:w-auto snap-center">
+                  <div className="text-[#a3e635]/10 font-black text-7xl absolute -right-3 -top-3">04</div>
+                  <h5 className="text-sm font-black text-white uppercase tracking-wider mb-2 relative z-10 pt-4">Acompanhe</h5>
+                  <p className="text-zinc-500 text-[11px] sm:text-xs leading-relaxed">
+                    Monitore a venda das cotas em tempo real e verifique os detalhes publicados na plataforma.
+                  </p>
+                </div>
+
+                {/* STEP 5 */}
+                <div className="bg-[#0A0A0A] border border-zinc-900 rounded-2xl p-6 relative overflow-hidden shrink-0 w-[78%] sm:w-[220px] lg:w-auto snap-center">
+                  <div className="text-[#a3e635]/10 font-black text-7xl absolute -right-3 -top-3">05</div>
+                  <h5 className="text-sm font-black text-white uppercase tracking-wider mb-2 relative z-10 pt-4">Confira o resultado</h5>
+                  <p className="text-zinc-500 text-[11px] sm:text-xs leading-relaxed">
+                    Após o sorteio, faça a conferência transparente no nosso painel de auditoria.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            {/* 5. AUDITORIA PÚBLICA */}
+            <section id="auditoria-home-section" className="py-20 sm:py-28 max-w-7xl mx-auto px-4 w-full">
+              <div className="bg-gradient-to-br from-[#0A0A0A] to-[#0D0D0D] border border-zinc-900 rounded-3xl p-8 sm:p-14 shadow-2xl relative overflow-hidden flex flex-col lg:flex-row items-center gap-12">
+                <div className="absolute top-0 right-0 w-96 h-96 bg-[#a3e635]/5 rounded-full filter blur-3xl pointer-events-none" />
+                
+                <div className="space-y-6 lg:w-1/2">
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-[#a3e635]/20 bg-[#a3e635]/5 text-[#a3e635] text-[9px] font-black uppercase tracking-wider">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Sorteio Criptográfico Seguro</span>
+                  </div>
+                  
+                  <h3 className="text-2xl sm:text-4xl font-black text-white leading-tight uppercase tracking-tight">
+                    Você não precisa apenas confiar.<br/>Você pode verificar.
+                  </h3>
+                  
+                  <p className="text-zinc-400 text-xs sm:text-sm leading-relaxed">
+                    Após o sorteio, o Rifa Master disponibiliza todos os dados do seed secreto de forma pública. Qualquer pessoa ou auditor independente pode recalcular deterministicamente o resultado usando o algoritmo oficial de Fisher-Yates e garantir que o sorteio foi realizado sem manipulações.
+                  </p>
+
+                  <div className="space-y-3 pt-2 text-zinc-500 text-xs font-bold uppercase tracking-wider">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#a3e635]" />
+                      <span>Verificação SHA-256 do Seed Commitment</span>
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#a3e635]" />
+                      <span>Transparência total na população participante</span>
+                    </div>
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#a3e635]" />
+                      <span>Gerador de sorteio aberto e testável online</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-4">
+                    <button
+                      onClick={() => {
+                        window.history.pushState({}, "", "/auditoria");
+                        setCurrentPath("/auditoria");
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                      className="bg-[#a3e635] hover:bg-[#bef264] text-black font-black uppercase text-xs tracking-wider py-4 px-8 rounded-xl shadow-lg transition-all cursor-pointer inline-flex items-center gap-2"
+                    >
+                      <span>Ir para Auditoria Pública</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="lg:w-1/2 flex justify-center w-full">
+                  <div className="bg-[#050505] border border-zinc-850 rounded-2xl p-6 w-full max-w-md shadow-2xl relative">
+                    <div className="flex items-center justify-between border-b border-zinc-900 pb-4 mb-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-red-500/80" />
+                        <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
+                        <div className="w-3 h-3 rounded-full bg-green-500/80" />
+                      </div>
+                      <span className="text-[10px] text-zinc-600 font-extrabold uppercase tracking-widest font-mono">PROVABLY_FAIR_VERIFIER</span>
+                    </div>
+                    <div className="space-y-4 font-mono text-[10px] text-zinc-400">
+                      <div>
+                        <div className="text-zinc-600 mb-1">// Commitment do Sorteio (Gerado pré-vendas)</div>
+                        <div className="bg-zinc-950 p-2.5 rounded border border-zinc-900 text-zinc-400 select-all truncate">
+                          SHA256: d04b98fec3dc6509f62c08cc681a...
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-zinc-600 mb-1">// Revelação do Seed (Após encerramento)</div>
+                        <div className="bg-zinc-950 p-2.5 rounded border border-zinc-900 text-[#a3e635] select-all truncate">
+                          SEED: e9a2c3fb107d...
+                        </div>
+                      </div>
+                      <div className="pt-2 border-t border-zinc-900 flex justify-between items-center">
+                        <span className="text-emerald-500 font-black flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>INTEGRIDADE CONFIRMADA</span>
+                        </span>
+                        <span className="text-zinc-600">v1.0.0</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+          </div>
         )}
 
         {isConfigLoaded && !loadingRaffles && selectedCustomerRaffleId !== null && (
@@ -2804,9 +3510,9 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                     setSelectedNumbers([]);
                     window.scrollTo({ top: 0, behavior: "smooth" });
                   }}
-                  className="inline-flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-orange-500/40 text-zinc-300 hover:text-orange-400 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-lg active:scale-95"
+                  className="inline-flex items-center gap-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 hover:border-[#a3e635]/40 text-zinc-300 hover:text-[#a3e635] px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-lg active:scale-95"
                 >
-                  <ArrowLeft className="w-4 h-4 text-orange-400" />
+                  <ArrowLeft className="w-4 h-4 text-[#a3e635]" />
                   <span>Voltar para Rifas</span>
                 </button>
 
@@ -2817,7 +3523,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                     safeCopyToClipboard(shareUrl);
                     setGlobalToast({ message: "🔗 Link direto da rifa copiado!", type: "success" });
                   }}
-                  className="inline-flex items-center gap-1.5 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 text-orange-400 px-3.5 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer"
+                  className="inline-flex items-center gap-1.5 bg-[#a3e635]/10 hover:bg-[#a3e635]/20 border border-[#a3e635]/30 text-[#a3e635] px-3.5 py-2.5 rounded-xl font-bold text-xs transition-all cursor-pointer"
                   title="Copiar link direto para compartilhar esta rifa"
                 >
                   <Copy className="w-3.5 h-3.5" />
@@ -2827,7 +3533,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
               <div className="text-right">
                 <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-bold block">Rifa Selecionada</span>
-                <span className="text-xs sm:text-sm font-extrabold text-orange-400">{raffleConfig.title}</span>
+                <span className="text-xs sm:text-sm font-extrabold text-[#a3e635]">{raffleConfig.title}</span>
               </div>
             </div>
 
@@ -2838,11 +3544,11 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                 transition={{ duration: 0.6, type: "spring" }}
                 className="max-w-7xl mx-auto px-4 py-16 sm:py-24"
               >
-                <div className="bg-gradient-to-br from-amber-500/10 via-zinc-900 to-amber-600/5 border-2 border-amber-500/30 rounded-[2.5rem] p-10 sm:p-14 relative overflow-hidden shadow-[0_0_50px_-12px_rgba(245,158,11,0.25)] flex flex-col md:flex-row items-center justify-between gap-8 min-h-[400px]">
+                <div className="bg-gradient-to-br from-[#a3e635]/10 via-zinc-900 to-[#a3e635]/5 border-2 border-[#a3e635]/30 rounded-[2.5rem] p-10 sm:p-14 relative overflow-hidden shadow-[0_0_50px_-12px_rgba(163,230,53,0.25)] flex flex-col md:flex-row items-center justify-between gap-8 min-h-[400px]">
                   <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none animate-pulse">
-                    <PartyPopper className="w-64 h-64 text-amber-500" />
+                    <PartyPopper className="w-64 h-64 text-[#a3e635]" />
                   </div>
-                  <div className="absolute -bottom-16 -left-16 w-80 h-80 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+                  <div className="absolute -bottom-16 -left-16 w-80 h-80 bg-[#a3e635]/5 rounded-full blur-3xl pointer-events-none" />
 
                   <div className="flex items-center gap-8 flex-col sm:flex-row text-center sm:text-left relative z-10">
                     <motion.div
@@ -2855,12 +3561,12 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         duration: 4,
                         repeatDelay: 2,
                       }}
-                      className="bg-amber-500/20 text-amber-400 w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center shrink-0 border border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.1)]"
+                      className="bg-[#a3e635]/20 text-[#a3e635] w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center shrink-0 border border-[#a3e635]/30 shadow-[0_0_20px_rgba(163,230,53,0.1)]"
                     >
                       <Trophy className="w-10 h-10 sm:w-12 sm:h-12" />
                     </motion.div>
                     <div>
-                      <span className="bg-amber-500/15 text-amber-400 text-xs font-black uppercase tracking-widest px-4 py-1.5 rounded-full border border-amber-500/20">
+                      <span className="bg-[#a3e635]/15 text-[#a3e635] text-xs font-black uppercase tracking-widest px-4 py-1.5 rounded-full border border-[#a3e635]/20">
                         Sorteio Realizado 🏆
                       </span>
                       <h3 className="text-4xl sm:text-5xl font-black text-white mt-4 tracking-tighter leading-none">
@@ -2871,7 +3577,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         deste sorteio especial! Entraremos em contato
                         diretamente com o proprietário(a) do bilhete premiado
                         para realizar a entrega oficial do prêmio:{" "}
-                        <strong className="text-amber-400">
+                        <strong className="text-[#a3e635]">
                           {raffleConfig.title}
                         </strong>
                         .
@@ -2884,7 +3590,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                       <p className="text-zinc-500 text-[10px] uppercase font-black tracking-widest mb-1">
                         Número Sorteado
                       </p>
-                      <span className="text-5xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-yellow-300">
+                      <span className="text-5xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-r from-[#a3e635] to-[#bef264]">
                         {raffleConfig.winnerNumber}
                       </span>
                     </div>
@@ -2936,7 +3642,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         )}
 
                         {/* Price Badge on image */}
-                        <div className="absolute bottom-2.5 right-2.5 bg-zinc-950/90 border border-orange-500/40 text-orange-400 font-black text-xs px-3 py-1 rounded-xl shadow-lg backdrop-blur-md z-20">
+                        <div className="absolute bottom-2.5 right-2.5 bg-zinc-950/90 border border-[#a3e635]/40 text-[#a3e635] font-black text-xs px-3 py-1 rounded-xl shadow-lg backdrop-blur-md z-20">
                           R$ {Number(raffleConfig?.price || 10).toFixed(2).replace(".", ",")} <span className="text-[9px] text-zinc-400 font-bold">/ cota</span>
                         </div>
                       </div>
@@ -2947,21 +3653,21 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                           <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
                              <div className="flex flex-wrap items-center gap-2">
                               {(isRaffleFullyClosed ?? false) ? (
-                                <span className="bg-orange-500/15 text-orange-400 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-orange-500/30 animate-pulse">
+                                <span className="bg-[#a3e635]/15 text-[#a3e635] text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-[#a3e635]/30 animate-pulse">
                                   Rifa Fechada (Aguardar Sorteio)
                                 </span>
                               ) : (
-                                <span className="bg-orange-500/10 text-orange-400 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-orange-500/20 flex items-center gap-1">
-                                  <Sparkles className="w-3 h-3 text-orange-400" /> Rifa Ativa
+                                <span className="bg-[#a3e635]/10 text-[#a3e635] text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider border border-[#a3e635]/20 flex items-center gap-1">
+                                  <Sparkles className="w-3 h-3 text-[#a3e635]" /> Rifa Ativa
                                 </span>
                               )}
 
                               {/* Blinking Draw Mode Indicator Badge */}
                               {raffleConfig?.drawMode === "federal" ? (
-                                <span className="bg-amber-500/20 text-amber-300 border border-amber-500/50 text-[10px] sm:text-xs font-black px-3 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-lg animate-pulse">
+                                <span className="bg-[#a3e635]/20 text-[#bef264] border border-[#a3e635]/50 text-[10px] sm:text-xs font-black px-3 py-0.5 rounded-full uppercase tracking-wider flex items-center gap-1.5 shadow-lg animate-pulse">
                                   <span className="relative flex h-2 w-2">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#a3e635] opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-[#a3e635]"></span>
                                   </span>
                                   🎰 Sorteio: Loteria Federal
                                 </span>
@@ -2992,8 +3698,8 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                             <div className="shrink-0">
                               {raffleConfig?.drawMode === "federal" ? (
                                 <span className="relative flex h-3 w-3">
-                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                                  <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#a3e635] opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-3 w-3 bg-[#a3e635]"></span>
                                 </span>
                               ) : (
                                 <span className="relative flex h-3 w-3">
@@ -3004,7 +3710,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                             </div>
                             <div className="text-xs">
                               <span className={`uppercase font-black animate-pulse tracking-wide ${
-                                raffleConfig?.drawMode === "federal" ? "text-amber-400" : "text-purple-400"
+                                raffleConfig?.drawMode === "federal" ? "text-[#a3e635]" : "text-purple-400"
                               }`}>
                                 {raffleConfig?.drawMode === "federal" ? "🎰 Sorteio pela Loteria Federal" : "⚡ Sorteio Automático pelo Sistema"}
                               </span>
@@ -3029,10 +3735,10 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         <div className="space-y-1.5 bg-zinc-950/60 border border-zinc-800/80 rounded-2xl p-3">
                           <div className="flex justify-between items-center text-[11px] font-bold">
                             <span className="text-zinc-400 flex items-center gap-1.5">
-                              <TrendingUp className="w-3.5 h-3.5 text-orange-400" />
+                              <TrendingUp className="w-3.5 h-3.5 text-[#a3e635]" />
                               <span>Progresso das Vendas:</span>
                             </span>
-                            <span className="text-orange-400 font-black text-sm">
+                            <span className="text-[#a3e635] font-black text-sm">
                               {(((stats?.countPaid ?? 0) / (raffleConfig?.totalNumbers ?? 1)) * 100).toFixed(1)}%
                             </span>
                           </div>
@@ -3041,7 +3747,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               initial={{ width: 0 }}
                               animate={{ width: `${((stats?.countPaid ?? 0) / (raffleConfig?.totalNumbers ?? 1)) * 100}%` }}
                               transition={{ duration: 1, ease: "easeOut" }}
-                              className="h-full bg-gradient-to-r from-orange-500 via-amber-400 to-emerald-400 rounded-full"
+                              className="h-full bg-gradient-to-r from-[#a3e635] via-[#bef264] to-emerald-400 rounded-full"
                             />
                           </div>
                         </div>
@@ -3049,7 +3755,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         {/* Trust Security Badges Compact Row */}
                         <div className="flex items-center gap-2 pt-1 overflow-x-auto whitespace-nowrap [scrollbar-width:none] [&::-webkit-scrollbar]:hidden w-full">
                           {[
-                            { title: "PIX Automático", color: "text-orange-400 bg-orange-500/5 border-orange-500/20" },
+                            { title: "PIX Automático", color: "text-[#a3e635] bg-[#a3e635]/5 border-[#a3e635]/20" },
                             { title: "Mercado Pago Seguro", color: "text-emerald-400 bg-emerald-500/5 border-emerald-500/20" },
                             { title: "Suporte no WhatsApp", color: "text-green-400 bg-green-500/5 border-green-500/20" },
                             { title: "Atualização em Tempo Real", color: "text-blue-400 bg-blue-500/5 border-blue-500/20" },
@@ -3069,12 +3775,12 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                     initial={{ opacity: 0, y: 15 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.05 }}
-                    className={`bg-gradient-to-r from-orange-500/10 via-amber-500/10 to-orange-500/10 border-2 border-orange-500/40 rounded-3xl p-4 sm:p-5 shadow-[0_0_30px_rgba(255,138,0,0.15)] relative overflow-hidden ${(isRaffleFullyClosed || (raffleConfig?.isRaffleActive ?? false) === false) ? "opacity-40 select-none pointer-events-none" : ""}`}
+                    className={`bg-gradient-to-r from-[#a3e635]/10 via-[#a3e635]/5 to-[#a3e635]/10 border-2 border-[#a3e635]/40 rounded-3xl p-4 sm:p-5 shadow-[0_0_30px_rgba(163,230,53,0.15)] relative overflow-hidden ${(isRaffleFullyClosed || (raffleConfig?.isRaffleActive ?? false) === false) ? "opacity-40 select-none pointer-events-none" : ""}`}
                   >
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       <div>
                         <div className="flex items-center gap-2 mb-1">
-                          <Zap className="w-4 h-4 text-orange-400 animate-bounce" />
+                          <Zap className="w-4 h-4 text-[#a3e635] animate-bounce" />
                           <h3 className="text-sm sm:text-base font-black uppercase tracking-wider text-white">
                             ⚡ Compra Rápida de Cotas
                           </h3>
@@ -3094,9 +3800,9 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               type="button"
                               onClick={() => selectRandomNumbers(num)}
                               disabled={isRaffleFullyClosed || (raffleConfig?.isRaffleActive ?? false) === false}
-                              className="bg-gradient-to-b from-zinc-800 to-zinc-900 border border-orange-500/30 hover:border-orange-400 text-white hover:text-orange-400 px-3.5 py-2 rounded-2xl text-xs font-black transition-all active:scale-95 cursor-pointer flex flex-col items-center justify-center min-w-[58px] shadow-lg hover:shadow-orange-500/20 group"
+                              className="bg-gradient-to-b from-zinc-800 to-zinc-900 border border-[#a3e635]/30 hover:border-[#a3e635] text-white hover:text-[#a3e635] px-3.5 py-2 rounded-2xl text-xs font-black transition-all active:scale-95 cursor-pointer flex flex-col items-center justify-center min-w-[58px] shadow-lg hover:shadow-[#a3e635]/20 group"
                             >
-                              <span className="text-sm font-black text-amber-400 group-hover:scale-110 transition-transform">+{num}</span>
+                              <span className="text-sm font-black text-[#a3e635] group-hover:scale-110 transition-transform">+{num}</span>
                               <span className="text-[8px] text-zinc-400 font-bold">R$ {estimatedPrice}</span>
                             </button>
                           );
@@ -3122,7 +3828,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               }
                             }}
                             disabled={isRaffleFullyClosed || (raffleConfig?.isRaffleActive ?? false) === false}
-                            className="bg-orange-500 hover:bg-orange-400 text-zinc-950 text-xs font-black px-3 py-1.5 rounded-xl transition-all active:scale-95 cursor-pointer shadow-md"
+                            className="bg-[#a3e635] hover:bg-[#bef264] text-zinc-950 text-xs font-black px-3 py-1.5 rounded-xl transition-all active:scale-95 cursor-pointer shadow-md"
                           >
                             Ok
                           </button>
@@ -3134,7 +3840,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
                 {/* NUMBER GRID SECTION */}
                 <section id="selection-grid-section" className="max-w-7xl mx-auto px-4 mt-4 scroll-mt-24">
-                  <div className="bg-zinc-900 border border-zinc-800/80 rounded-3xl sm:rounded-[2.5rem] p-5 sm:p-8 shadow-2xl border-b-[12px] border-b-orange-600/10">
+                  <div className="bg-zinc-900 border border-zinc-800/80 rounded-3xl sm:rounded-[2.5rem] p-5 sm:p-8 shadow-2xl border-b-[12px] border-b-[#a3e635]/10">
                     {raffleConfig.isRaffleActive === false && (
                       <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
@@ -3164,17 +3870,17 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                       <motion.div
                         initial={{ opacity: 0, scale: 0.95 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="mb-8 p-6 rounded-3xl bg-amber-500/15 border border-amber-500/30 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left shadow-lg shadow-amber-500/5 relative overflow-hidden"
+                        className="mb-8 p-6 rounded-3xl bg-[#a3e635]/15 border border-[#a3e635]/30 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left shadow-lg shadow-[#a3e635]/5 relative overflow-hidden"
                       >
                         <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-                          <Clock className="w-24 h-24 text-amber-500" />
+                          <Clock className="w-24 h-24 text-[#a3e635]" />
                         </div>
                         <div className="flex items-center gap-4 flex-col sm:flex-row relative z-10">
-                          <div className="bg-amber-500/20 w-12 h-12 rounded-full flex items-center justify-center animate-pulse text-amber-400 shrink-0">
+                          <div className="bg-[#a3e635]/20 w-12 h-12 rounded-full flex items-center justify-center animate-pulse text-[#a3e635] shrink-0">
                             <Clock className="w-6 h-6" />
                           </div>
                           <div>
-                            <h4 className="text-amber-400 font-black text-lg uppercase tracking-wider">
+                            <h4 className="text-[#a3e635] font-black text-lg uppercase tracking-wider">
                               rifa fechada, aguardar sorteio
                             </h4>
                             <p className="text-zinc-400 text-sm mt-0.5 max-w-2xl">
@@ -3193,7 +3899,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         <div className="text-center space-y-2">
                           <h2 className="text-xl sm:text-2xl font-black text-white uppercase tracking-tight flex items-center justify-center gap-3">
                             Compra Rápida e Aleatória
-                            <span className="text-xs bg-amber-500/20 text-amber-400 px-2.5 py-1 rounded-lg font-black font-mono">
+                            <span className="text-xs bg-[#a3e635]/20 text-[#a3e635] px-2.5 py-1 rounded-lg font-black font-mono">
                               Bolsão de Cotas
                             </span>
                           </h2>
@@ -3216,7 +3922,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                 }}
                                 className={`p-6 rounded-3xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-2 active:scale-95 ${
                                   isSelectedPreset
-                                    ? "bg-amber-500/15 border-amber-500 text-amber-400 font-black shadow-lg shadow-amber-500/10"
+                                    ? "bg-[#a3e635]/15 border-[#a3e635] text-[#a3e635] font-black shadow-lg shadow-[#a3e635]/10"
                                     : "bg-zinc-900/50 hover:bg-zinc-900 border-zinc-850 hover:border-zinc-700 text-zinc-300"
                                 }`}
                               >
@@ -3242,7 +3948,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               placeholder="Ex: 15"
                               value={randomCount}
                               onChange={(e) => setRandomCount(e.target.value)}
-                              className="flex-1 bg-black border border-zinc-850 rounded-2xl px-4 py-3 text-sm font-black text-white font-mono outline-none focus:border-amber-500"
+                              className="flex-1 bg-black border border-zinc-850 rounded-2xl px-4 py-3 text-sm font-black text-white font-mono outline-none focus:border-[#a3e635]"
                             />
                             <button
                               type="button"
@@ -3255,7 +3961,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                 setSelectedNumbers([]);
                                 await selectRandomNumbers(parsed);
                               }}
-                              className="px-6 bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded-2xl text-xs font-black uppercase tracking-wider cursor-pointer active:scale-95 transition-all"
+                              className="px-6 bg-[#a3e635] hover:bg-[#bef264] text-zinc-950 rounded-2xl text-xs font-black uppercase tracking-wider cursor-pointer active:scale-95 transition-all"
                             >
                               Reservar Cotas
                             </button>
@@ -3274,16 +3980,16 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                             </h2>
                             <p className="text-zinc-400 text-xs mt-1">
                               Clique nos números desejados para reservar. Tempo de reserva:{" "}
-                              <span className="text-orange-400 font-black">3 minutos</span>.
+                              <span className="text-[#a3e635] font-black">3 minutos</span>.
                             </p>
 
                             {/* Status Legend Pills */}
                             <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
                               {[
                                 { label: "Disponível", style: "bg-zinc-950/80 border-zinc-800 text-zinc-400" },
-                                { label: "Reservado", style: "bg-orange-500/10 border-orange-500/25 text-orange-400 font-bold" },
+                                { label: "Reservado", style: "bg-[#a3e635]/10 border-[#a3e635]/25 text-[#a3e635] font-bold" },
                                 { label: "Pago", style: "bg-emerald-500/10 border-emerald-500/25 text-emerald-400 font-bold" },
-                                { label: "Selecionado", style: "bg-yellow-500 border-yellow-400 text-zinc-950 font-bold" },
+                                { label: "Selecionado", style: "bg-[#a3e635] border-[#bef264] text-zinc-950 font-bold" },
                               ].map((status) => (
                                 <div
                                   key={status.label}
@@ -3298,12 +4004,12 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
                           <div className="flex flex-col sm:flex-row gap-3">
                             <div className="relative group">
-                              <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-orange-400 transition-colors" />
+                              <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:text-[#a3e635] transition-colors" />
                               <input
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 placeholder="Buscar número..."
-                                className="bg-zinc-800/80 border border-zinc-700/80 rounded-xl pl-11 pr-4 py-2.5 w-full sm:w-48 outline-none focus:border-orange-500/50 transition-all text-sm text-white"
+                                className="bg-zinc-800/80 border border-zinc-700/80 rounded-xl pl-11 pr-4 py-2.5 w-full sm:w-48 outline-none focus:border-[#a3e635]/50 transition-all text-sm text-white"
                               />
                             </div>
 
@@ -3312,7 +4018,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               <select
                                 value={filter}
                                 onChange={(e) => setFilter(e.target.value)}
-                                className="bg-zinc-800/80 border border-zinc-700/80 rounded-xl pl-11 pr-8 py-2.5 outline-none focus:border-orange-500/50 transition-all text-sm appearance-none cursor-pointer w-full sm:w-auto text-white"
+                                className="bg-zinc-800/80 border border-zinc-700/80 rounded-xl pl-11 pr-8 py-2.5 outline-none focus:border-[#a3e635]/50 transition-all text-sm appearance-none cursor-pointer w-full sm:w-auto text-white"
                               >
                                 <option>Todos</option>
                                 <option>Disponíveis</option>
@@ -3443,7 +4149,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                   name: e.target.value,
                                 })
                               }
-                              className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-2xl pl-12 pr-4 py-4 outline-none focus:border-emerald-500/50 focus:bg-zinc-800 transition-all text-lg"
+                              className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-2xl pl-12 pr-4 py-4 outline-none focus:border-[#a3e635]/50 focus:bg-zinc-800 transition-all text-lg"
                               placeholder="Ex: João da Silva"
                             />
                           </div>
@@ -3475,7 +4181,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                 setUserData({ ...userData, phone: v });
                               }}
                               maxLength={15}
-                              className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-2xl pl-12 pr-4 py-4 outline-none focus:border-emerald-500/50 focus:bg-zinc-800 transition-all text-lg"
+                              className="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-2xl pl-12 pr-4 py-4 outline-none focus:border-[#a3e635]/50 focus:bg-zinc-800 transition-all text-lg"
                               placeholder="(11) 99999-9999"
                             />
                           </div>
@@ -3495,7 +4201,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                           isGeneratingPayment
                         }
                         onClick={handleCreateMercadoPagoPayment}
-                        className="w-full bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-black py-5 rounded-2xl text-xl transition-all shadow-xl shadow-orange-500/20 active:scale-[0.98] mt-4 flex items-center justify-center gap-2 cursor-pointer"
+                        className="w-full bg-[#a3e635] hover:bg-[#bef264] disabled:opacity-50 disabled:cursor-not-allowed text-black font-black py-5 rounded-2xl text-xl transition-all shadow-xl shadow-[#a3e635]/20 active:scale-[0.98] mt-4 flex items-center justify-center gap-2 cursor-pointer"
                       >
                         {isGeneratingPayment ? (
                           <>
@@ -3533,21 +4239,21 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                             <h2 className="text-2xl sm:text-3xl font-black text-white">
                               Pagamento Pix
                             </h2>
-                            <span className="text-orange-500 text-xs font-bold uppercase tracking-widest mt-1">
+                            <span className="text-[#a3e635] text-xs font-bold uppercase tracking-widest mt-1">
                               Mercado Pago Pix Automatizado
                             </span>
                           </div>
-                          <div className="flex items-center self-start sm:self-auto gap-2 bg-yellow-500/10 text-yellow-500 text-[10px] px-3.5 py-2 rounded-full font-black border border-yellow-500/20 animate-pulse shrink-0">
+                          <div className="flex items-center self-start sm:self-auto gap-2 bg-[#a3e635]/10 text-[#a3e635] text-[10px] px-3.5 py-2 rounded-full font-black border border-[#a3e635]/20 animate-pulse shrink-0">
                             <Clock className="w-3.5 h-3.5" />
                             RESERVA ATIVA: {formatTime(timerInSeconds)}
                           </div>
                         </div>
 
                         {isSelectionChanged && !isGeneratingPayment && (
-                          <div className="bg-orange-600/10 border border-orange-500/20 text-orange-400 rounded-2xl p-4 mb-6 flex items-start gap-3 animate-pulse">
+                          <div className="bg-[#a3e635]/10 border border-[#a3e635]/20 text-[#a3e635] rounded-2xl p-4 mb-6 flex items-start gap-3 animate-pulse">
                             <RefreshCw className="w-5 h-5 animate-spin shrink-0 mt-0.5" />
                             <div className="space-y-1">
-                              <p className="font-extrabold text-xs sm:text-sm text-orange-300">
+                              <p className="font-extrabold text-xs sm:text-sm text-[#bef264]">
                                 Alteração detectada no carrinho!
                               </p>
                               <p className="text-zinc-400 text-[11px] sm:text-xs leading-relaxed font-semibold">
@@ -3560,7 +4266,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-3xl p-4 sm:p-8 mb-6 flex flex-col items-center justify-center relative group w-full max-w-full overflow-hidden">
                           {isGeneratingPayment && (
                             <div className="absolute inset-0 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 z-20 space-y-4">
-                              <RefreshCw className="w-10 h-10 text-orange-500 animate-spin" />
+                              <RefreshCw className="w-10 h-10 text-[#a3e635] animate-spin" />
                               <p className="text-white font-black text-base sm:text-lg">
                                 Atualizando seu Pix...
                               </p>
@@ -3603,7 +4309,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               <span className="text-xs font-black uppercase tracking-wider text-zinc-500">
                                 Status da Reserva
                               </span>
-                              <span className="self-start sm:self-auto bg-orange-500/10 text-orange-400 border border-orange-500/20 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider animate-pulse whitespace-nowrap">
+                              <span className="self-start sm:self-auto bg-[#a3e635]/10 text-[#a3e635] border border-[#a3e635]/20 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-wider animate-pulse whitespace-nowrap">
                                 Aguardando Pagamento Pix
                               </span>
                             </div>
@@ -3611,7 +4317,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               <span className="text-xs text-zinc-500 uppercase font-black tracking-wider shrink-0">
                                 Código Reserva
                               </span>
-                              <span className="text-sm font-mono font-black text-orange-400 truncate max-w-[150px] sm:max-w-none text-right">
+                              <span className="text-sm font-mono font-black text-[#a3e635] truncate max-w-[150px] sm:max-w-none text-right">
                                 {mpPaymentInfo?.orderId}
                               </span>
                             </div>
@@ -3791,7 +4497,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                 }}
                                 className={`
                                   w-full py-4 rounded-xl text-xs font-black transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg h-12 uppercase tracking-wider select-none shrink-0 cursor-pointer
-                                  ${isCopied ? "bg-emerald-500 text-black shadow-emerald-500/10" : "bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-400 hover:to-amber-500 text-white"}
+                                  ${isCopied ? "bg-emerald-500 text-black shadow-emerald-500/10" : "bg-[#a3e635] hover:bg-[#bef264] text-black shadow-lg shadow-[#a3e635]/20"}
                                 `}
                               >
                                 {isCopied ? (
@@ -5221,23 +5927,189 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
       {/* DISCRETE PREMIUM FOOTER */}
       {isConfigLoaded && (
-        <footer className="border-t border-[#121212] bg-[#0A0A0A] pb-32 pt-10 px-4 flex justify-center items-center text-center">
-          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 text-zinc-500 text-[11px] sm:text-xs font-semibold tracking-wider uppercase select-none font-montserrat">
-            <span className="tracking-[0.15em] font-bold">&copy; 2026 RIFAMASTER</span>
-            <span className="hidden sm:inline text-zinc-800">•</span>
-            <span className="tracking-widest text-[#FFC247]/50">
-              Desenvolvido por{" "}
-              <a
-                href="https://www.instagram.com/lucaspescadoresportivo?igsh=MWhrcGo4c2tnbjBwZA%3D%3D&utm_source=qr"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[#FF8A00] hover:text-[#FFC247] font-black transition-colors duration-300 cursor-pointer pb-0.5 normal-case tracking-normal hover:underline"
-              >
-                Lucas Gomes
-              </a>
-            </span>
-          </div>
-        </footer>
+        <>
+          <footer className="border-t border-[#121212] bg-[#070707] pt-16 pb-32 sm:pb-16 px-6 relative z-10 font-montserrat select-none">
+            <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-start gap-10 md:gap-6 border-b border-[#121212] pb-12">
+              <div className="space-y-4 max-w-sm">
+                <div className="flex items-center gap-2">
+                  <h4 className="text-xl font-bold text-white tracking-tight">
+                    Rifa<span className="text-[#a3e635] font-black">Master</span>
+                  </h4>
+                </div>
+                <p className="text-zinc-500 text-xs font-semibold uppercase tracking-wider">
+                  Pesca • Camping • Aventura
+                </p>
+                <p className="text-zinc-600 text-xs leading-relaxed">
+                  Oferecendo oportunidades reais de conquistar os melhores equipamentos do mundo outdoor com transparência, segurança e auditoria pública garantidas por criptografia matemática.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-x-12 gap-y-6">
+                <div className="space-y-3.5">
+                  <h5 className="text-[10px] font-black text-[#a3e635] uppercase tracking-widest">Navegação</h5>
+                  <ul className="space-y-2 text-xs font-bold text-zinc-400">
+                    <li>
+                      <button
+                        onClick={() => {
+                          window.history.pushState({}, "", "/");
+                          setCurrentPath("/");
+                          setTimeout(() => {
+                            document.getElementById("rifas-section")?.scrollIntoView({ behavior: "smooth" });
+                          }, 100);
+                        }}
+                        className="hover:text-white transition-colors cursor-pointer"
+                      >
+                        Rifas Ativas
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        onClick={() => {
+                          window.history.pushState({}, "", "/auditoria");
+                          setCurrentPath("/auditoria");
+                          window.scrollTo({ top: 0, behavior: "smooth" });
+                        }}
+                        className="hover:text-white transition-colors cursor-pointer"
+                      >
+                        Auditoria Pública
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        onClick={() => {
+                          window.history.pushState({}, "", "/");
+                          setCurrentPath("/");
+                          setTimeout(() => {
+                            document.getElementById("como-funciona-section")?.scrollIntoView({ behavior: "smooth" });
+                          }, 100);
+                        }}
+                        className="hover:text-white transition-colors cursor-pointer"
+                      >
+                        Como Funciona
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="space-y-3.5">
+                  <h5 className="text-[10px] font-black text-[#a3e635] uppercase tracking-widest">Legal & Suporte</h5>
+                  <ul className="space-y-2 text-xs font-bold text-zinc-400">
+                    <li>
+                      <button
+                        onClick={() => {
+                          setInfoModalContent({
+                            title: "Termos de Uso - Rifa Master",
+                            text: "1. A participação nas campanhas do Rifa Master é destinada a maiores de 18 anos.\n\n2. Cada cota adquirida representa uma fração de participação no sorteio final associado à campanha.\n\n3. O sorteio oficial é executado de forma provably fair. O seed secreto criptografado correspondente a cada rifa é fixado antes do início de qualquer venda de cotas e publicado na rede como commitment SHA-256.\n\n4. Após a venda de 100% das cotas, o seed secreto original é revelado publicamente. O algoritmo de embaralhamento Fisher-Yates (DETERMINÍSTICO) é utilizado para associar de forma aleatória as cotas à população imutável de participantes com base neste seed.\n\n5. Pagamentos via Pix são processados e confirmados automaticamente por nossos intermediadores integrados de alta segurança. Caso ocorra qualquer falha no processo, entre em contato imediatamente através dos canais de suporte oficiais no WhatsApp."
+                          });
+                        }}
+                        className="hover:text-white transition-colors cursor-pointer text-left"
+                      >
+                        Termos de Uso
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        onClick={() => {
+                          setInfoModalContent({
+                            title: "Política de Privacidade - Rifa Master",
+                            text: "1. Nós respeitamos profundamente a sua privacidade e segurança de dados.\n\n2. As informações de contato fornecidas no momento da reserva de cotas (Nome completo, Telefone e E-mail) são coletadas com a finalidade exclusiva de processar pagamentos e viabilizar a entrega dos prêmios aos respectivos ganhadores.\n\n3. Nós não comercializamos nem compartilhamos seus dados pessoais com terceiros sob nenhuma circunstância.\n\n4. As transações financeiras são criptografadas de ponta a ponta através de conexões SSL seguras com nossos parceiros de pagamento autorizados.\n\n5. Você poderá solicitar a exclusão total de seus dados cadastrais a qualquer momento entrando em contato direto com o suporte."
+                          });
+                        }}
+                        className="hover:text-white transition-colors cursor-pointer text-left"
+                      >
+                        Política de Privacidade
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        onClick={() => {
+                          const cleanPhone = String(raffleConfig.pixPhone || raffleConfig.pixKey || "5563999659203").replace(/\D/g, "");
+                          const waLink = `https://wa.me/55${cleanPhone}?text=Ol%C3%A1%2C%20tenho%20d%C3%BAvidas%20sobre%20as%20rifas!`;
+                          window.open(waLink, "_blank");
+                        }}
+                        className="hover:text-[#a3e635] transition-colors cursor-pointer text-left flex items-center gap-1"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" />
+                        <span>Suporte WhatsApp</span>
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <div className="max-w-7xl mx-auto pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-zinc-500 text-[10px] sm:text-xs font-semibold tracking-wider uppercase">
+              <span className="tracking-[0.15em]">&copy; 2026 RIFA MASTER • TODOS OS DIREITOS RESERVADOS</span>
+              <span className="tracking-widest text-[#a3e635]/50">
+                Desenvolvido por{" "}
+                <a
+                  href="https://www.instagram.com/lucaspescadoresportivo?igsh=MWhrcGo4c2tnbjBwZA%3D%3D&utm_source=qr"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#a3e635] hover:text-[#bef264] font-black transition-colors duration-300 cursor-pointer pb-0.5 normal-case tracking-normal hover:underline"
+                >
+                  Lucas Gomes
+                </a>
+              </span>
+            </div>
+          </footer>
+
+          {/* DYNAMIC TERMS & PRIVACY MODAL */}
+          <AnimatePresence>
+            {infoModalContent && (
+              <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+                {/* Overlay backdrop */}
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setInfoModalContent(null)}
+                  className="fixed inset-0 bg-black/80 backdrop-blur-md"
+                />
+                
+                {/* Modal Container */}
+                <motion.div
+                  initial={{ scale: 0.95, opacity: 0, y: 15 }}
+                  animate={{ scale: 1, opacity: 1, y: 0 }}
+                  exit={{ scale: 0.95, opacity: 0, y: 15 }}
+                  transition={{ duration: 0.3 }}
+                  className="bg-[#0A0A0A] border border-zinc-850 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col relative z-10 overflow-hidden shadow-2xl shadow-black"
+                >
+                  {/* Header */}
+                  <div className="p-6 border-b border-zinc-900 flex justify-between items-center bg-zinc-950/40">
+                    <h3 className="text-sm font-black text-[#a3e635] uppercase tracking-wider">
+                      {infoModalContent.title}
+                    </h3>
+                    <button
+                      onClick={() => setInfoModalContent(null)}
+                      className="p-1.5 hover:bg-zinc-900 rounded-lg text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                      aria-label="Fechar"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  
+                  {/* Content body with custom styling */}
+                  <div className="p-6 overflow-y-auto text-zinc-300 text-xs sm:text-sm leading-relaxed space-y-4 font-montserrat select-text scrollbar-thin">
+                    {infoModalContent.text.split("\n\n").map((para, idx) => (
+                      <p key={idx}>{para}</p>
+                    ))}
+                  </div>
+                  
+                  {/* Footer */}
+                  <div className="p-4 border-t border-zinc-900 bg-zinc-950/40 flex justify-end">
+                    <button
+                      onClick={() => setInfoModalContent(null)}
+                      className="bg-[#a3e635] hover:bg-[#bef264] text-black font-extrabold uppercase text-xs px-5 py-2.5 rounded-xl transition-all cursor-pointer"
+                    >
+                      Entendi
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
+        </>
       )}
 
       {/* FIXED SUMMARY BAR */}
@@ -5321,7 +6193,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
           )}
       </AnimatePresence>
 
-      {/* Sorteador RifaMaster Fullscreen Drawing Countdown Takeover */}
+      {/* Sorteador Rifa Master Fullscreen Drawing Countdown Takeover */}
       <AnimatePresence>
         {isDrawing && (
           <motion.div
@@ -5394,7 +6266,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                   {/* Decorative Header */}
                   <div className="flex flex-col items-center gap-2">
                     <span className="bg-amber-500 text-black text-[10px] font-black uppercase tracking-widest px-4 py-1.5 rounded-full shadow-lg shadow-amber-500/20">
-                      Sorteador Oficial RifaMaster 🎫
+                      Sorteador Oficial Rifa Master 🎫
                     </span>
                     <h2 className="text-zinc-400 font-bold uppercase tracking-widest text-xs mt-2">
                       Gerando Resultado Premiado

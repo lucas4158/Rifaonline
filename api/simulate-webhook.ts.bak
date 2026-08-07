@@ -1,16 +1,25 @@
 import "dotenv/config";
 import path from "path";
 import fs from "fs";
-
-
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getFirestore, doc, getDoc, collection, query, where, getDocs, writeBatch, setLogLevel, runTransaction, increment } from "firebase/firestore";
 import { allocatePromotionalBonus } from "./promo-helper.js";
 import { serverSupabaseSync } from "./_supabaseSync.js";
 
-import admin from "firebase-admin";
-import { getAdminFirestore } from "./_firebaseAdmin.js";
+setLogLevel("silent");
 
-
-
+// Initialize Firebase
+let db: any = null;
+try {
+  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+  if (fs.existsSync(configPath)) {
+    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+  }
+} catch (err) {
+  console.error("❌ [Firebase Serverless] Init error:", err);
+}
 
 export default async function handler(req: any, res: any) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -33,11 +42,11 @@ export default async function handler(req: any, res: any) {
 
   console.log(`🧪 [Simulator Serverless] Webhook simulation request for ID: ${paymentId}`);
 
-  if (true) {
+  if (db) {
     try {
-      const ordersRef = getAdminFirestore().collection("orders");
-      const q = ordersRef.where("paymentId", "==", String(paymentId));
-      const querySnapshot = await q.get();
+      const ordersRef = collection(db, "orders");
+      const q = query(ordersRef, where("paymentId", "==", String(paymentId)));
+      const querySnapshot = await getDocs(q);
 
       if (!querySnapshot.empty) {
         let anyCollision = false;
@@ -51,13 +60,13 @@ export default async function handler(req: any, res: any) {
           let orderDataSnapshot: any = null;
           
           try {
-            await getAdminFirestore().runTransaction(async (transaction: any) => {
-              const orderRef = getAdminFirestore().collection("orders").doc(orderId);
-              const reservationRef = getAdminFirestore().collection("reservations").doc(orderId);
-              const paymentRef = getAdminFirestore().collection("payments").doc(paymentId);
+            await runTransaction(db, async (transaction) => {
+              const orderRef = doc(db, "orders", orderId);
+              const reservationRef = doc(db, "reservations", orderId);
+              const paymentRef = doc(db, "payments", paymentId);
               
               const currentOrderSnap = await transaction.get(orderRef);
-              if (!currentOrderSnap.exists) {
+              if (!currentOrderSnap.exists()) {
                  throw new Error("ORDER_NOT_FOUND");
               }
               const order = currentOrderSnap.data();
@@ -96,12 +105,12 @@ export default async function handler(req: any, res: any) {
               // Collision check inside transaction
               let hasCollision = false;
               const conflictingDocuments: string[] = [];
-              const numRefs = orderNums.map((num: string) => getAdminFirestore().collection("raffles").doc(orderRaffleId).collection("numbers").doc(num));
+              const numRefs = orderNums.map((num: string) => doc(db, "raffles", orderRaffleId, "numbers", num));
               const numSnaps = await Promise.all(numRefs.map((ref: any) => transaction.get(ref)));
               
               for (let i = 0; i < orderNums.length; i++) {
                 const numSnap = numSnaps[i];
-                if (numSnap.exists) {
+                if (numSnap.exists()) {
                   const numData = numSnap.data();
                   if (numData && numData.orderId !== orderId) {
                     const statusClean = (numData.status || "").toLowerCase().trim();
@@ -119,7 +128,7 @@ export default async function handler(req: any, res: any) {
                 // Remove our own reserved numbers
                 for (let i = 0; i < orderNums.length; i++) {
                   const numSnap = numSnaps[i];
-                  if (numSnap.exists && numSnap.data()?.orderId === orderId) {
+                  if (numSnap.exists() && numSnap.data()?.orderId === orderId) {
                     transaction.delete(numRefs[i]);
                   }
                 }
@@ -175,9 +184,9 @@ export default async function handler(req: any, res: any) {
                 }
                 
                 // Atomically increment soldCount on the raffle
-                const raffleRef = getAdminFirestore().collection("raffles").doc(orderRaffleId);
+                const raffleRef = doc(db, "raffles", orderRaffleId);
                 transaction.update(raffleRef, {
-                  soldCount: admin.firestore.FieldValue.increment(mainPaidCount)
+                  soldCount: increment(mainPaidCount)
                 });
                 
                 paymentConfirmedEvent = true;
@@ -200,8 +209,8 @@ export default async function handler(req: any, res: any) {
           
           if (transactionSuccess && needsPromoAllocation) {
              try {
-                const batch = getAdminFirestore().batch();
-                await allocatePromotionalBonus(getAdminFirestore(), orderId, orderDataSnapshot, batch);
+                const batch = writeBatch(db);
+                await allocatePromotionalBonus(db, orderId, orderDataSnapshot, batch);
                 await batch.commit();
              } catch (bonusErr) {
                 console.error(`❌ [Webhook Bonus] Failed to allocate bonus after successful transaction for ${orderId}:`, bonusErr);

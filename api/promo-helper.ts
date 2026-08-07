@@ -1,4 +1,4 @@
-import { doc, getDoc, getDocs, collection } from "firebase/firestore";
+
 
 console.log("🚀 [PROMO_HELPER_LOADED] Promotional helper loading successfully into current thread context.");
 
@@ -11,9 +11,9 @@ export async function allocatePromotionalBonus(
 ) {
   const targetRaffleId = orderData.raffleId || raffleId || "current";
   // 1. Fetch current configuration
-  const configRef = doc(db, "raffles", targetRaffleId);
-  const configSnap = await getDoc(configRef);
-  if (!configSnap.exists()) {
+  const configRef = db.collection("raffles").doc(targetRaffleId);
+  const configSnap = await configRef.get();
+  if (!configSnap.exists) {
     console.log(`[PROMOTION_DISABLED] No config found for orderId ${orderId} on raffle ${targetRaffleId}.`);
     return;
   }
@@ -54,8 +54,8 @@ export async function allocatePromotionalBonus(
   console.log(`[PROMOTION_APPLIED] Order ${orderId} has ${originalNums.length} bought numbers. Eligible for ${calculatedBonus} bonus numbers.`);
 
   // Find free available numbers from the database
-  const numbersCollection = collection(db, "raffles", targetRaffleId, "numbers");
-  const numbersSnap = await getDocs(numbersCollection);
+  const numbersCollection = db.collection("raffles").doc(targetRaffleId).collection("numbers");
+  const numbersSnap = await numbersCollection.get();
   const busy = new Set<string>();
 
   // Mark already used/reserved numbers as busy (excluding expired reservations)
@@ -104,20 +104,20 @@ export async function allocatePromotionalBonus(
   const existingNums = orderData.nums || [];
   const mergedNums = Array.from(new Set([...existingNums, ...selectedBonus]));
 
-  batch.update(doc(db, "orders", orderId), {
+  batch.update(db.collection("orders").doc(orderId), {
     nums: mergedNums,
     bonusNums: mergedBonus,
     raffleId: targetRaffleId
   });
 
-  batch.update(doc(db, "reservations", orderId), {
+  batch.update(db.collection("reservations").doc(orderId), {
     nums: mergedNums,
     bonusNums: mergedBonus
   });
 
   // Assign individual bonus cota markers
   selectedBonus.forEach((num) => {
-    const numDocRef = doc(db, "raffles", targetRaffleId, "numbers", num);
+    const numDocRef = db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
     batch.set(numDocRef, {
       id: num,
       status: "paid",

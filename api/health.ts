@@ -1,23 +1,14 @@
 import "dotenv/config";
+import { isAdminInitialized } from "./_firebaseAdmin.js";
 import path from "path";
 import fs from "fs";
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, setLogLevel } from "firebase/firestore";
 
-setLogLevel("silent");
+
+
+
 
 // Initialize Firebase
-let db: any = null;
-try {
-  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-  if (fs.existsSync(configPath)) {
-    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
-  }
-} catch (err) {
-  console.error("❌ [Firebase Serverless] Init error:", err);
-}
+
 
 export default async function handler(req: any, res: any) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -43,7 +34,7 @@ export default async function handler(req: any, res: any) {
 
   return res.status(200).json({
     status: "healthy",
-    db: !!db,
+    db: isAdminInitialized(),
     mp: !!process.env.MP_ACCESS_TOKEN
   });
 }

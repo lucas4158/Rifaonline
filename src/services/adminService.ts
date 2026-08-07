@@ -1,19 +1,27 @@
 import { RaffleConfig } from "../types";
 import { localStorage } from "../utils/storage";
+import { auth } from "./firebase";
 
-const getActiveToken = (token: string): string => {
+const getActiveToken = async (token: string): Promise<string> => {
   if (token && token.trim() !== "") return token;
+  if (auth.currentUser) {
+    try {
+      return await auth.currentUser.getIdToken();
+    } catch (e) {
+      console.warn("Failed to get Firebase Auth ID token", e);
+    }
+  }
   if (typeof window !== "undefined") {
     return localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
   }
   return "";
 };
 
-const getActiveHeaders = (token: string, contentType: string = "application/json"): Record<string, string> => {
+const getActiveHeaders = async (token: string, contentType: string = "application/json"): Promise<Record<string, string>> => {
   const headers: Record<string, string> = {
     "Content-Type": contentType,
   };
-  const activeToken = getActiveToken(token).trim();
+  const activeToken = (await getActiveToken(token)).trim();
   if (activeToken) {
     if (/^[A-Za-z0-9\-_./+=]+$/.test(activeToken)) {
       headers["Authorization"] = `Bearer ${activeToken}`;
@@ -30,7 +38,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({ action: "verify" }),
         credentials: "include",
       });
@@ -78,7 +86,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({
           action: "order-action",
           orderId,
@@ -100,6 +108,34 @@ export const adminService = {
     }
   },
 
+  async deleteOrder(
+    token: string,
+    orderId: string
+  ): Promise<any> {
+    console.log(`[ADMIN_ACTION_START] Action: delete-order for orderId: ${orderId}`);
+    try {
+      const res = await fetch("/api/admin-action", {
+        method: "POST",
+        headers: await getActiveHeaders(token),
+        body: JSON.stringify({
+          action: "delete-order",
+          orderId,
+        }),
+        credentials: "include",
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao excluir o pedido.");
+      }
+      console.log(`[ADMIN_ACTION_SUCCESS] Action: delete-order completed for orderId: ${orderId}`);
+      return data;
+    } catch (err: any) {
+      console.error("[ADMIN_ACTION_ERROR] Action: delete-order failed:", err);
+      throw err;
+    }
+  },
+
   async releaseCota(
     token: string,
     orderId: string,
@@ -111,7 +147,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({
           action: "release-cota",
           orderId,
@@ -140,7 +176,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({ action: "reset", raffleId: raffleId || "current" }),
         credentials: "include",
       });
@@ -158,7 +194,7 @@ export const adminService = {
           errorName: err.name,
           errorMessage: err.message,
           errorStack: err.stack,
-          activeHeaders: getActiveHeaders(token)
+          activeHeaders: await getActiveHeaders(token)
         });
         throw new Error(`Erro de Requisição de Reinício: "${err.message}".`);
       }
@@ -173,7 +209,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({ 
           action: "draw", 
           raffleId: raffleId || "current",
@@ -207,7 +243,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({
           action: "publish-draw",
           drawId,
@@ -235,7 +271,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({
           action: "import-backup",
           backup: backupData,
@@ -287,7 +323,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({
           action: "save-config",
           config: configToSend,
@@ -318,7 +354,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({
           action: "update-global-pix",
           ...payload,
@@ -343,7 +379,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({
           action: "toggle-raffle-status",
           isRaffleActive,
@@ -369,7 +405,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({ action: "list-raffles" }),
         credentials: "include",
       });
@@ -387,7 +423,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({ action: "create-raffle", config }),
         credentials: "include",
       });
@@ -405,7 +441,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({ action: "duplicate-raffle", sourceRaffleId }),
         credentials: "include",
       });
@@ -423,7 +459,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({ action: "archive-raffle", raffleId }),
         credentials: "include",
       });
@@ -441,7 +477,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({ action: "end-raffle", raffleId }),
         credentials: "include",
       });
@@ -459,7 +495,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({ action: "delete-raffle", raffleId }),
         credentials: "include",
       });
@@ -481,7 +517,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({
           action: "reallocate-expired",
           orderId,
@@ -509,7 +545,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({
           action: "refund-expired",
           orderId,
@@ -532,7 +568,7 @@ export const adminService = {
     console.log("[ADMIN_ACTION_START] Action: create-manual-draw");
     const res = await fetch("/api/admin-action", {
       method: "POST",
-      headers: getActiveHeaders(token),
+      headers: await getActiveHeaders(token),
       body: JSON.stringify({ action: "create-manual-draw", ...payload }),
       credentials: "include",
     });
@@ -545,7 +581,7 @@ export const adminService = {
     console.log("[ADMIN_ACTION_START] Action: update-manual-draw");
     const res = await fetch("/api/admin-action", {
       method: "POST",
-      headers: getActiveHeaders(token),
+      headers: await getActiveHeaders(token),
       body: JSON.stringify({ action: "update-manual-draw", ...payload }),
       credentials: "include",
     });
@@ -558,7 +594,7 @@ export const adminService = {
     console.log("[ADMIN_ACTION_START] Action: delete-manual-draw");
     const res = await fetch("/api/admin-action", {
       method: "POST",
-      headers: getActiveHeaders(token),
+      headers: await getActiveHeaders(token),
       body: JSON.stringify({ action: "delete-manual-draw", drawId }),
       credentials: "include",
     });
@@ -572,7 +608,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({ action: "update-winner", winnerId, data }),
         credentials: "include",
       });
@@ -590,7 +626,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({ action: "add-winner-history", winnerData }),
         credentials: "include",
       });
@@ -608,7 +644,7 @@ export const adminService = {
     try {
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: getActiveHeaders(token),
+        headers: await getActiveHeaders(token),
         body: JSON.stringify({ action: "delete-winner-history", winnerId }),
         credentials: "include",
       });

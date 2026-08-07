@@ -1,4 +1,4 @@
-import { doc, collection, onSnapshot } from "firebase/firestore";
+import { doc, collection, onSnapshot, query, where, orderBy, limit } from "firebase/firestore";
 import { OperationType, RaffleConfig } from "../types";
 import { handleFirestoreError } from "../utils/helpers";
 
@@ -81,15 +81,22 @@ export const realtimeService = {
       numsCount: number;
       raffleTitle?: string;
       raffleId?: string;
-    }) => void
+    }) => void,
+    options?: { limitCount?: number; raffleId?: string }
   ) {
     if (!isAdminAuthenticated) return () => {};
 
+    const limitCount = options?.limitCount || 50;
+    const targetRaffleId = options?.raffleId;
     const colRef = collection(db, "orders");
+    const q = (targetRaffleId && targetRaffleId !== "all")
+      ? query(colRef, where("raffleId", "==", targetRaffleId), limit(limitCount))
+      : query(colRef, orderBy("createdAt", "desc"), limit(limitCount));
+
     let isInitialLoad = true;
 
     const unsub = onSnapshot(
-      colRef,
+      q,
       (querySnap) => {
         if (!isInitialLoad && onPaidOrderNotification) {
           querySnap.docChanges().forEach((change) => {
@@ -106,7 +113,7 @@ export const realtimeService = {
                 onPaidOrderNotification({
                   orderId: change.doc.id,
                   name: data.name || data.customerName || "Cliente",
-                  total: Number(data.total || data.totalValue || data.amount || 0),
+                  total: Number(data.total || data.totalValue || data.val || data.amount || 0),
                   numsCount: Array.isArray(data.nums) ? data.nums.length : 0,
                   raffleTitle: data.raffleTitle || "",
                   raffleId: data.raffleId || "current",
@@ -138,16 +145,10 @@ export const realtimeService = {
           }
           ordersList.push({ ...data, id: doc.id, status });
         });
-        ordersList.sort((a, b) => {
-          const tA = a.createdAt || "";
-          const tB = b.createdAt || "";
-          if (tA && tB) {
-            return tB.localeCompare(tA);
-          }
-          return b.id.localeCompare(a.id);
-        });
+
+        ordersList.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
         onSync(ordersList);
-        console.log(`[REALTIME_SYNC] Syncing administrative orders list. Total orders count: ${querySnap.size}`);
+        console.log(`[REALTIME_SYNC] Syncing administrative orders list (limit ${limitCount}). Count: ${querySnap.size}`);
       },
       (error) => {
         try {
@@ -162,23 +163,31 @@ export const realtimeService = {
 
   subscribeLocks(
     db: any,
-    onSyncThrottled: (locks: any) => void
+    onSyncThrottled: (locks: any) => void,
+    raffleId?: string
   ) {
     const colRef = collection(db, "locks");
+    const q = raffleId && raffleId !== "all" 
+      ? query(colRef, where("raffleId", "==", raffleId)) 
+      : colRef;
     const unsub = onSnapshot(
-      colRef,
+      q,
       (querySnap) => {
         const activeLocks: {
-          [numberId: string]: { sessionId: string; expiresAt: number };
+          [numberId: string]: { sessionId: string; expiresAt: number; raffleId?: string };
         } = {};
         const currentNow = Date.now();
         querySnap.forEach((docSnap) => {
           const data = docSnap.data() as any;
           if (data && data.expiresAt > currentNow) {
-            activeLocks[docSnap.id] = {
-              sessionId: data.sessionId,
-              expiresAt: data.expiresAt,
-            };
+            // Filter by raffleId if provided to isolate multi-raffle locks
+            if (!raffleId || !data.raffleId || data.raffleId === raffleId) {
+              activeLocks[docSnap.id] = {
+                sessionId: data.sessionId,
+                expiresAt: data.expiresAt,
+                raffleId: data.raffleId,
+              };
+            }
           }
         });
         onSyncThrottled(activeLocks);

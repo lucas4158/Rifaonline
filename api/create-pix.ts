@@ -1,11 +1,11 @@
 import "dotenv/config";
 import path from "path";
 import fs from "fs";
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, doc, getDoc, collection, writeBatch, runTransaction, setLogLevel } from "firebase/firestore";
+
+
+
 import { getAdminFirestore, isAdminInitialized } from "./_firebaseAdmin.js";
 
-setLogLevel("silent");
 import { MercadoPagoConfig, Payment } from "mercadopago";
 
 // Initialize Mercado Pago
@@ -19,22 +19,7 @@ if (process.env.MP_ACCESS_TOKEN) {
   }
 }
 
-// Initialize Firebase
-let db: any = null;
-try {
-  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-  if (fs.existsSync(configPath)) {
-    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    const dbId =
-      firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)"
-        ? firebaseConfig.firestoreDatabaseId
-        : undefined;
-    db = dbId ? getFirestore(firebaseApp, dbId) : getFirestore(firebaseApp);
-  }
-} catch (err) {
-  console.error("❌ [Firebase Serverless] Init error:", err);
-}
+
 
 // Simple memory rate-limiter map for anti-flood / security protection
 const requestTimestamps = new Map<string, number>();
@@ -43,7 +28,6 @@ const FLOOD_COOLDOWN_MS = 4000; // 4 seconds request lock cooldown
 export default async function handler(req: any, res: any) {
   const tStart = Date.now();
   let tRaffle = 0;
-  let raffleReadSDK = "Admin";
   let tValAndTrans = 0;
   let tMercadoPago = 0;
   let tFinalSave = 0;
@@ -103,44 +87,15 @@ export default async function handler(req: any, res: any) {
   let raffleTitle = "Rifa";
 
   // Atomic Double Check and Immediate Lock Reservation using Firestore runTransaction
-  if (db) {
+  if (true) {
     try {
-      // 1. Fetch config using Admin SDK for lowest latency (with Web SDK fallback)
+      // 1. Fetch config (single document getDoc, eliminating getDocs scan)
       const tRaffleStart = Date.now();
-      let configData: any = {};
-      raffleReadSDK = "Admin";
-      try {
-        const wasInitializedBefore = isAdminInitialized();
-
-        const tAdminInitStart = Date.now();
-        const adminDb = getAdminFirestore();
-        const tAdminInit = Date.now() - tAdminInitStart;
-
-        const tFirestoreGetStart = Date.now();
-        const configSnap = await adminDb.collection("raffles").doc(targetRaffleId).get();
-        const tFirestoreGet = Date.now() - tFirestoreGetStart;
-
-        if (configSnap.exists) {
-          configData = configSnap.data() || {};
-        }
-
-        const vercelRegion = process.env.VERCEL_REGION || process.env.AWS_REGION || "unknown";
-        const tRaffleTotal = Date.now() - tRaffleStart;
-
-        console.log(
-          `⏱️ [PERF_RAFFLE_READ] AdminInit: ${tAdminInit}ms | FirestoreGet: ${tFirestoreGet}ms | Total: ${tRaffleTotal}ms | WasInitialized: ${wasInitializedBefore} | Region: ${vercelRegion}`
-        );
-      } catch (adminErr) {
-        console.warn("⚠️ [RaffleRead] Admin SDK failed - using WebFallback:", adminErr);
-        raffleReadSDK = "WebFallback";
-        const configRef = doc(db, "raffles", targetRaffleId);
-        const configSnap = await getDoc(configRef);
-        if (configSnap.exists()) {
-          configData = configSnap.data() || {};
-        }
-      }
+      const configRef = getAdminFirestore().collection("raffles").doc(targetRaffleId);
+      const configSnap = await configRef.get();
       tRaffle = Date.now() - tRaffleStart;
 
+      const configData = configSnap.exists ? configSnap.data() : {};
       if (configData.title) {
         raffleTitle = configData.title;
       }
@@ -187,10 +142,10 @@ export default async function handler(req: any, res: any) {
 
       // 2. Execute parallelized read-before-write transaction
       const tTransStart = Date.now();
-      const transactionResult = await runTransaction(db, async (transaction) => {
+      const transactionResult = await getAdminFirestore().runTransaction(async (transaction: any) => {
         // Parallel reads for all lock and number documents
-        const lockRefs = allCheckNumbers.map((n) => doc(db, "locks", n));
-        const numRefs = allCheckNumbers.map((n) => doc(db, "raffles", targetRaffleId, "numbers", n));
+        const lockRefs = allCheckNumbers.map((n) => getAdminFirestore().collection("locks").doc(n));
+        const numRefs = allCheckNumbers.map((n) => getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(n));
 
         const [lockSnaps, numSnaps] = await Promise.all([
           Promise.all(lockRefs.map((ref) => transaction.get(ref))),
@@ -200,14 +155,14 @@ export default async function handler(req: any, res: any) {
         // Map snapshots by number for fast evaluation
         const lockMap = new Map<string, any>();
         lockSnaps.forEach((snap, idx) => {
-          if (snap.exists()) {
+          if (snap.exists) {
             lockMap.set(allCheckNumbers[idx], snap.data());
           }
         });
 
         const numMap = new Map<string, any>();
         numSnaps.forEach((snap, idx) => {
-          if (snap.exists()) {
+          if (snap.exists) {
             numMap.set(allCheckNumbers[idx], snap.data());
           }
         });
@@ -304,7 +259,7 @@ export default async function handler(req: any, res: any) {
 
         // All numbers validated! Reserve atomically inside transaction
         for (const num of allNums) {
-          const numDocRef = doc(db, "raffles", targetRaffleId, "numbers", num);
+          const numDocRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
           transaction.set(numDocRef, {
             id: num,
             status: "reserved",
@@ -320,7 +275,7 @@ export default async function handler(req: any, res: any) {
 
         // Delete selection locks for requested numbers
         for (const num of nums) {
-          const lockDocRef = doc(db, "locks", num);
+          const lockDocRef = getAdminFirestore().collection("locks").doc(num);
           transaction.delete(lockDocRef);
         }
 
@@ -336,14 +291,8 @@ export default async function handler(req: any, res: any) {
         });
       }
     } catch (dbErr: any) {
-      const errStr = String(dbErr || "") + " " + String(dbErr?.message || "");
-      if (errStr.includes("RESOURCE_EXHAUSTED") || errStr.includes("Quota exceeded") || dbErr?.code === 8) {
-        console.warn("⚠️ [Create-Pix] Firestore quota limit reached (RESOURCE_EXHAUSTED). Bypassing atomic lock check to generate Pix payment!");
-        allNums = [...nums];
-      } else {
-        console.error("❌ [Firestore Serverless] Error checking/locking numbers atomically:", dbErr);
-        return res.status(500).json({ error: "Erro ao processar as cotas no banco de dados." });
-      }
+      console.error("❌ [Firestore Serverless] Error checking/locking numbers atomically:", dbErr);
+      return res.status(500).json({ error: "Erro ao processar as cotas em lote de transação atômica no banco de dados." });
     }
   }
 
@@ -353,11 +302,11 @@ export default async function handler(req: any, res: any) {
   // Block simulated payments when running on Vercel if Mercado Pago is not configured
   if (!hasMP && process.env.VERCEL === "1") {
     console.warn("⚠️ [Mercado Pago Unconfigured] Simulated payment mode is blocked on Vercel environment.");
-    if (db) {
+    if (true) {
       try {
-        const cleanupBatch = writeBatch(db);
+        const cleanupBatch = getAdminFirestore().batch();
         allNums.forEach((num: string) => {
-          cleanupBatch.delete(doc(db, "raffles", targetRaffleId, "numbers", num));
+          cleanupBatch.delete(getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num));
         });
         await cleanupBatch.commit();
         console.log(`🧹 [Simulated Mode Blocked Rollback] Cleaned up reservation holds for cotas: ${allNums.join(", ")} in raffle ${targetRaffleId}`);
@@ -478,11 +427,11 @@ export default async function handler(req: any, res: any) {
       console.error("❌ [MercadoPago Serverless] API creation failed:", mpError);
 
       // Clean up / rollback the reserved numbers we created in the transaction
-      if (db) {
+      if (true) {
         try {
-          const cleanupBatch = writeBatch(db);
+          const cleanupBatch = getAdminFirestore().batch();
           allNums.forEach((num: string) => {
-            cleanupBatch.delete(doc(db, "raffles", targetRaffleId, "numbers", num));
+            cleanupBatch.delete(getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num));
           });
           await cleanupBatch.commit();
           console.log(`🧹 [MercadoPago Failure Rollback] Cleaned up reservation holds for cotas: ${allNums.join(", ")} in raffle ${targetRaffleId}`);
@@ -527,11 +476,11 @@ export default async function handler(req: any, res: any) {
   // Create order and all associated documents in Firestore using high performance Batch Writes
   try {
     const tSaveStart = Date.now();
-    if (db) {
-      const batch = writeBatch(db);
+    if (true) {
+      const batch = getAdminFirestore().batch();
 
       // 1. Setup legacy/compatibility Order document
-      const orderRef = doc(db, "orders", orderId);
+      const orderRef = getAdminFirestore().collection("orders").doc(orderId);
       const newOrder = {
         id: orderId,
         raffleId: targetRaffleId,
@@ -552,7 +501,7 @@ export default async function handler(req: any, res: any) {
       batch.set(orderRef, newOrder);
 
       // 2. Setup scalable Reservation document
-      const reservationRef = doc(db, "reservations", orderId);
+      const reservationRef = getAdminFirestore().collection("reservations").doc(orderId);
       const newReservation = {
         id: orderId,
         raffleId: targetRaffleId,
@@ -568,7 +517,7 @@ export default async function handler(req: any, res: any) {
       batch.set(reservationRef, newReservation);
 
       // 3. Setup scalable Payment logs document
-      const paymentRef = doc(db, "payments", paymentId);
+      const paymentRef = getAdminFirestore().collection("payments").doc(paymentId);
       const newPayment = {
         id: paymentId,
         orderId: orderId,
@@ -585,7 +534,7 @@ export default async function handler(req: any, res: any) {
 
       const tTotal = Date.now() - tStart;
       console.log(
-        `⏱️ [PERF_METRICS] Total: ${tTotal}ms | RaffleRead: ${tRaffle}ms (${raffleReadSDK}) | Val&Trans: ${tValAndTrans}ms | MP: ${tMercadoPago}ms | Save: ${tFinalSave}ms`
+        `⏱️ [PERF_METRICS] Total: ${tTotal}ms | RaffleRead: ${tRaffle}ms | Val&Trans: ${tValAndTrans}ms | MP: ${tMercadoPago}ms | Save: ${tFinalSave}ms`
       );
     } else {
       console.error("❌ [Firestore Serverless] Connection not initialized!");
@@ -609,21 +558,6 @@ export default async function handler(req: any, res: any) {
       },
     });
   } catch (err: any) {
-    const errStr = String(err || "") + " " + String(err?.message || "");
-    if (errStr.includes("RESOURCE_EXHAUSTED") || errStr.includes("Quota exceeded") || err?.code === 8) {
-      console.warn("⚠️ [Create-Pix] Firestore quota limit reached during batch commit. Returning generated Pix QR code to user anyway!");
-      return res.status(200).json({
-        success: true,
-        orderId,
-        paymentId,
-        qrCode,
-        qrCodeBase64,
-        isSimulated,
-        expiresAt,
-        bonusNums,
-        quotaNotice: "Daily Firestore quota exceeded. Payment code generated successfully.",
-      });
-    }
     console.error("❌ [Serverless] Error committing batch in database:", err);
     return res.status(500).json({ error: "Erro ao criar reserva no banco de dados." });
   }

@@ -47,6 +47,9 @@ export default async function handler(req: any, res: any) {
 
   try {
     const adminDb = getAdminFirestore();
+    if (!sessionToken.startsWith("SES_")) {
+       return res.status(401).json({ authenticated: false, error: "Token format error." });
+    }
     const sessionDoc = await adminDb.collection("admin_sessions").doc(sessionToken).get();
 
     if (!sessionDoc.exists) {

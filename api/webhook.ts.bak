@@ -1,18 +1,41 @@
 import "dotenv/config";
 import path from "path";
 import fs from "fs";
-
-
+import crypto from "crypto";
+import { initializeApp, getApps, getApp } from "firebase/app";
+import { getFirestore, doc, getDoc, collection, query, where, getDocs, writeBatch, setLogLevel, runTransaction, increment } from "firebase/firestore";
 import { allocatePromotionalBonus } from "./promo-helper.js";
 import { serverSupabaseSync } from "./_supabaseSync.js";
 
-import admin from "firebase-admin";
-import { getAdminFirestore } from "./_firebaseAdmin.js";
+setLogLevel("silent");
+import { MercadoPagoConfig, Payment } from "mercadopago";
 
+// Initialize Mercado Pago
+let mpPayment: any = null;
+if (process.env.MP_ACCESS_TOKEN) {
+  try {
+    const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
+    mpPayment = new Payment(mpClient);
+  } catch (err) {
+    console.error("❌ [Mercado Pago Serverless] Init error:", err);
+  }
+}
 
-
+// Initialize Firebase
+let db: any = null;
+try {
+  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
+  if (fs.existsSync(configPath)) {
+    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+    const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+    db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
+  }
+} catch (err) {
+  console.error("❌ [Firebase Serverless] Init error:", err);
+}
 
 export default async function handler(req: any, res: any) {
+  // CORS configuration
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -26,21 +49,109 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
   }
 
-  const { paymentId } = req.body;
-  if (!paymentId) {
-    return res.status(400).json({ error: "paymentId is required" });
-  }
+  try {
+    console.log("📥 [Webhook Serverless] Received from Mercado Pago:", JSON.stringify(req.body));
+    
+    if (process.env.MP_WEBHOOK_SECRET) {
+      console.log(`🔒 [Webhook Serverless] Webhook secret signature key configured! X-Signature header:`, req.headers['x-signature'] || 'None');
+    }
 
-  console.log(`🧪 [Simulator Serverless] Webhook simulation request for ID: ${paymentId}`);
+    // Capture paymentId from query string or body
+    let paymentId = req.query?.["data.id"] || req.body?.data?.id || req.body?.id || req.query?.id;
 
-  if (true) {
-    try {
-      const ordersRef = getAdminFirestore().collection("orders");
-      const q = ordersRef.where("paymentId", "==", String(paymentId));
-      const querySnapshot = await q.get();
+    if (req.query?.topic === "payment" && req.query?.id) {
+      paymentId = req.query.id;
+    }
+
+    if (!paymentId) {
+      return res.status(200).json({ status: "ignored", message: "No paymentId found." });
+    }
+
+    console.log(`🔍 [Webhook Serverless] Processing payment ID: ${paymentId}`);
+
+    if (process.env.MP_WEBHOOK_SECRET) {
+      const xSignature = req.headers["x-signature"];
+      const xRequestId = req.headers["x-request-id"] || "";
+
+      if (!xSignature) {
+        console.warn("⚠️ [Webhook] Assinatura x-signature ausente!");
+        console.log("[SIGNATURE_CHECK]", "INVALID");
+      } else {
+        let ts = "";
+        let v1 = "";
+        String(xSignature).split(",").forEach((part) => {
+          const [key, val] = part.split("=").map((s) => s.trim());
+          if (key === "ts") ts = val;
+          if (key === "v1") v1 = val;
+        });
+
+        if (!ts || !v1) {
+          console.warn("⚠️ [Webhook] Formato inválido no cabeçalho x-signature!");
+          console.log("[SIGNATURE_CHECK]", "INVALID");
+        } else {
+          const manifest = `id:${paymentId};request-id:${xRequestId};ts:${ts};`;
+          const hmac = crypto.createHmac("sha256", process.env.MP_WEBHOOK_SECRET);
+          hmac.update(manifest);
+          const calculatedHash = hmac.digest("hex");
+
+          let isSignatureValid = false;
+          if (v1.length === calculatedHash.length) {
+            isSignatureValid = crypto.timingSafeEqual(
+              Buffer.from(calculatedHash),
+              Buffer.from(v1)
+            );
+          } else {
+            console.error("❌ [Webhook] Assinatura com tamanho inválido!");
+          }
+
+          console.log("[SIGNATURE_CHECK]", isSignatureValid ? "VALID" : "INVALID");
+
+          if (!isSignatureValid) {
+            console.error("❌ [Webhook] Assinatura HMAC inválida do Mercado Pago!");
+          } else {
+            console.log("✅ [Webhook] Assinatura do Mercado Pago validada com sucesso!");
+          }
+        }
+      }
+    } else {
+      console.log("ℹ️ [Webhook] MP_WEBHOOK_SECRET não configurado. Validação de assinatura ignorada.");
+    }
+
+    const isProduction = process.env.VERCEL === "1" || process.env.VERCEL_ENV === "production" || process.env.NODE_ENV === "production";
+    const hasMP = !!process.env.MP_ACCESS_TOKEN && mpPayment;
+    let paymentIsApproved = false;
+
+    if (String(paymentId).startsWith("SIM_")) {
+      if (isProduction) {
+        console.warn(`⚠️ [Webhook Serverless] Simulated payment ID (${paymentId}) rejected in production environment!`);
+        paymentIsApproved = false;
+      } else {
+        paymentIsApproved = true;
+        console.log("🧪 [Webhook Serverless] Processing SIMULATED payment approval (non-production environment)!");
+      }
+    } else if (hasMP && mpPayment) {
+      try {
+        const paymentInfo = await mpPayment.get({ id: Number(paymentId) });
+        if (paymentInfo && paymentInfo.status === "approved") {
+          paymentIsApproved = true;
+          console.log(`💰 [Webhook Serverless] MercadoPago verified payment ${paymentId} is APPROVED!`);
+        } else {
+          console.log(`⏳ [Webhook Serverless] MercadoPago payment ${paymentId} status: ${paymentInfo ? paymentInfo.status : "unknown"}`);
+        }
+      } catch (mpErr) {
+        console.error(`❌ [Webhook Serverless] Error fetching payment info:`, mpErr);
+      }
+    } else {
+      console.log(`⚠️ [Webhook Serverless] No access token or SDK configuration to verify real payment ID: ${paymentId}`);
+    }
+
+    // If approved, update Firestore Documents atomically
+    if (paymentIsApproved && db) {
+      const ordersRef = collection(db, "orders");
+      const q = query(ordersRef, where("paymentId", "==", String(paymentId)));
+      const querySnapshot = await getDocs(q);
 
       if (!querySnapshot.empty) {
-        let anyCollision = false;
         const currentNow = Date.now();
         const promises = querySnapshot.docs.map(async (docSnap) => {
           const orderId = docSnap.id;
@@ -51,13 +162,13 @@ export default async function handler(req: any, res: any) {
           let orderDataSnapshot: any = null;
           
           try {
-            await getAdminFirestore().runTransaction(async (transaction: any) => {
-              const orderRef = getAdminFirestore().collection("orders").doc(orderId);
-              const reservationRef = getAdminFirestore().collection("reservations").doc(orderId);
-              const paymentRef = getAdminFirestore().collection("payments").doc(paymentId);
+            await runTransaction(db, async (transaction) => {
+              const orderRef = doc(db, "orders", orderId);
+              const reservationRef = doc(db, "reservations", orderId);
+              const paymentRef = doc(db, "payments", paymentId);
               
               const currentOrderSnap = await transaction.get(orderRef);
-              if (!currentOrderSnap.exists) {
+              if (!currentOrderSnap.exists()) {
                  throw new Error("ORDER_NOT_FOUND");
               }
               const order = currentOrderSnap.data();
@@ -96,12 +207,12 @@ export default async function handler(req: any, res: any) {
               // Collision check inside transaction
               let hasCollision = false;
               const conflictingDocuments: string[] = [];
-              const numRefs = orderNums.map((num: string) => getAdminFirestore().collection("raffles").doc(orderRaffleId).collection("numbers").doc(num));
+              const numRefs = orderNums.map((num: string) => doc(db, "raffles", orderRaffleId, "numbers", num));
               const numSnaps = await Promise.all(numRefs.map((ref: any) => transaction.get(ref)));
               
               for (let i = 0; i < orderNums.length; i++) {
                 const numSnap = numSnaps[i];
-                if (numSnap.exists) {
+                if (numSnap.exists()) {
                   const numData = numSnap.data();
                   if (numData && numData.orderId !== orderId) {
                     const statusClean = (numData.status || "").toLowerCase().trim();
@@ -119,7 +230,7 @@ export default async function handler(req: any, res: any) {
                 // Remove our own reserved numbers
                 for (let i = 0; i < orderNums.length; i++) {
                   const numSnap = numSnaps[i];
-                  if (numSnap.exists && numSnap.data()?.orderId === orderId) {
+                  if (numSnap.exists() && numSnap.data()?.orderId === orderId) {
                     transaction.delete(numRefs[i]);
                   }
                 }
@@ -175,9 +286,9 @@ export default async function handler(req: any, res: any) {
                 }
                 
                 // Atomically increment soldCount on the raffle
-                const raffleRef = getAdminFirestore().collection("raffles").doc(orderRaffleId);
+                const raffleRef = doc(db, "raffles", orderRaffleId);
                 transaction.update(raffleRef, {
-                  soldCount: admin.firestore.FieldValue.increment(mainPaidCount)
+                  soldCount: increment(mainPaidCount)
                 });
                 
                 paymentConfirmedEvent = true;
@@ -200,8 +311,8 @@ export default async function handler(req: any, res: any) {
           
           if (transactionSuccess && needsPromoAllocation) {
              try {
-                const batch = getAdminFirestore().batch();
-                await allocatePromotionalBonus(getAdminFirestore(), orderId, orderDataSnapshot, batch);
+                const batch = writeBatch(db);
+                await allocatePromotionalBonus(db, orderId, orderDataSnapshot, batch);
                 await batch.commit();
              } catch (bonusErr) {
                 console.error(`❌ [Webhook Bonus] Failed to allocate bonus after successful transaction for ${orderId}:`, bonusErr);
@@ -225,19 +336,14 @@ export default async function handler(req: any, res: any) {
         });
         await Promise.all(promises);
 
-        
-        if (anyCollision) {
-          return res.status(200).json({ success: true, message: "Aprovação simulada, porém conflito de cotas detectado! O pedido foi mantido como cancelado e com flag de erro." });
-        }
-        return res.status(200).json({ success: true, message: "Aprovação simulada com sucesso!" });
       } else {
-        return res.status(404).json({ error: "Ordem correspondente não encontrada." });
+        console.log(`⚠️ [Webhook Serverless] No order found matching paymentId: ${paymentId}`);
       }
-    } catch (dbErr: any) {
-      console.error("❌ [Simulator Serverless] Error updating doc:", dbErr);
-      return res.status(500).json({ error: dbErr.message || "Erro no banco de dados." });
     }
-  }
 
-  return res.status(500).json({ error: "Banco de dados não disponível." });
+    return res.status(200).json({ status: "success" });
+  } catch (err: any) {
+    console.error("❌ [Webhook Serverless] Exception in webhook handler:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 }

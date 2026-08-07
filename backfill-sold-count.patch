@@ -1,0 +1,55 @@
+--- api/admin-action.ts
++++ api/admin-action.ts
+@@ -2318,6 +2318,48 @@
+         } else {
+           return res.status(404).json({ error: "Pedido não encontrado." });
+         }
+       }
++
++      case "backfill-sold-count": {
++        const { targetRaffleId, forceOverride } = req.body;
++        if (!targetRaffleId) {
++          return res.status(400).json({ error: "targetRaffleId is required" });
++        }
++
++        const adminDb = getAdminFirestore();
++        if (!adminDb) {
++           return res.status(500).json({ error: "Admin Firestore not available" });
++        }
++
++        const raffleRef = adminDb.collection("raffles").doc(targetRaffleId);
++        
++        return await adminDb.runTransaction(async (transaction) => {
++          const raffleSnap = await transaction.get(raffleRef);
++          if (!raffleSnap.exists) {
++            return res.status(404).json({ error: "Rifa não encontrada" });
++          }
++
++          const raffleData = raffleSnap.data() || {};
++          
++          if (raffleData.soldCount !== undefined && raffleData.soldCount !== null && !forceOverride) {
++             return res.status(400).json({ error: "Rifa já possui soldCount inicializado.", soldCount: raffleData.soldCount });
++          }
++
++          const ordersSnap = await adminDb.collection("orders")
++            .where("raffleId", "==", targetRaffleId)
++            .where("status", "in", ["paid", "Pago", "approved", "confirmed"])
++            .get();
++
++          let totalSoldCount = 0;
++          ordersSnap.forEach((doc) => {
++            const data = doc.data();
++            const totalNumsCount = Array.isArray(data.nums) ? data.nums.length : 0;
++            const bonusNumsCount = Array.isArray(data.bonusNums) ? data.bonusNums.length : 0;
++            
++            const effectivelyPaidCount = Math.max(0, totalNumsCount - bonusNumsCount);
++            totalSoldCount += effectivelyPaidCount;
++          });
++          
++          transaction.update(raffleRef, { soldCount: totalSoldCount });
++          
++          return res.status(200).json({ success: true, calculatedSoldCount: totalSoldCount, previousSoldCount: raffleData.soldCount });
++        });
++      }
++
+       default:

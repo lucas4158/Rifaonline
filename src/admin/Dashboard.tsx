@@ -4,19 +4,28 @@ import {
   ChevronDown, Search, Filter, ShieldAlert, Download, Upload,
   DollarSign, Check, Calendar, Phone, ArrowLeft, LogOut, MessageCircle, CheckCircle2,
   Image as ImageIcon, Loader2, Play, LayoutDashboard, ClipboardList, PlusCircle, Award, Settings,
-  Copy, Edit3, Archive, Power, Sparkles, Eye, CheckCircle, Pause, ShoppingBag, Ticket, Save
+  Copy, Edit3, Archive, Power, Sparkles, Eye, CheckCircle, Pause, ShoppingBag, Ticket, Save, FolderOpen,
+  Calculator
 } from "lucide-react";
 import { db } from "../services/firebase";
 import { adminService } from "../services/adminService";
 import { performRobustImageUpload } from "../services/uploadService";
 import { realtimeService } from "../realtime/realtimeService";
 import { RaffleConfig } from "../types";
-import { collection, getDocs, onSnapshot, doc, updateDoc, getDoc } from "firebase/firestore";
+import { collection, getDocs, onSnapshot, doc, updateDoc, getDoc, query, where } from "firebase/firestore";
 import { useAuth } from "./AuthContext";
 import { useRaffleConfig } from "./RaffleConfigContext";
 import { AdminProducts } from "./AdminProducts";
+import { storeService } from "../services/storeService";
 import { slugify } from "../utils/slug";
 import { safeCopyToClipboard } from "../utils/helpers";
+import { localStorage } from "../utils/storage";
+
+// Supabase Views
+import { PurchasesView } from "./views/PurchasesView";
+import { NotificationsView } from "./views/NotificationsView";
+import { AuditView } from "./views/AuditView";
+import { DrawsView } from "./views/DrawsView";
 
 // ... [rest of the file imports/state/etc]
 // Need to find where to add `winnersList` and `editingWinner` state
@@ -59,6 +68,12 @@ function normalizeFederalRuleId(rule: string): string {
 
 export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }: DashboardProps) {
   const { logout, navigate } = useAuth();
+  const getAdminToken = () => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
+    }
+    return "";
+  };
   const {
     raffleConfig,
     setRaffleConfig,
@@ -72,6 +87,16 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   // Mode: "list" (Minhas Rifas screen) or "detail" (Dashboard of a specific raffle)
   const [viewMode, setViewMode] = useState<"list" | "detail">("list");
   const [mainAdminSection, setMainAdminSection] = useState<"rifas" | "loja" | "winners_hall">("rifas");
+  const [currentAdminTab, setCurrentAdminTab] = useState<"overview" | "rifas" | "orders" | "customers" | "cotas" | "winners" | "audit" | "store" | "settings" | "planning" | "notifications">("rifas");
+
+  const AUDIT_LOGS = [
+    { id: 1, date: "06/08/2026", time: "14:32:15", user: "Admin", action: "Atualização Pix", ip: "189.120.45.12", details: "Chave Pix Global alterada para CNPJ oficial", status: "success" },
+    { id: 2, date: "06/08/2026", time: "13:10:42", user: "System", action: "Apuração Sorteio", ip: "CronJob", details: "Cota vencedora calculada via regra do concurso Loteria Federal", status: "success" },
+    { id: 3, date: "06/08/2026", time: "11:55:01", user: "Admin", action: "Estoque Loja", ip: "189.120.45.12", details: "Produto 'Molinete Marine Sports' adicionado ao catálogo", status: "success" },
+    { id: 4, date: "06/08/2026", time: "10:22:19", user: "Admin", action: "Confirmar Pagamento", ip: "189.120.45.12", details: "Manual de cota aprovado para telefone (11) 99876-5432", status: "success" },
+    { id: 5, date: "05/08/2026", time: "18:40:00", user: "Admin", action: "Alterar Rifa", ip: "189.120.45.12", details: "Status de 'Molinete Shimano Stella' alterado para ATIVO", status: "success" },
+    { id: 6, date: "05/08/2026", time: "15:05:12", user: "Admin", action: "Configuração Loja", ip: "189.120.45.12", details: "Loja Premium foi ativada e disponibilizada ao público", status: "success" },
+  ];
 
   // Tabs inside detail view
   const [activeTab, setActiveTab] = useState<"dashboard" | "orders" | "new_raffle" | "winners" | "draw" | "settings">("dashboard");
@@ -134,11 +159,154 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   const [orders, setOrders] = useState<any[]>([]);
   const [paidToasts, setPaidToasts] = useState<any[]>([]);
   const [unreadPaidCount, setUnreadPaidCount] = useState<number>(0);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState<number>(0);
+
+  useEffect(() => {
+    import("../services/supabase/supabaseClient").then(({ getSupabaseClient }) => {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      supabase
+        .from("admin_notifications")
+        .select("id", { count: "exact" })
+        .eq("read", false)
+        .then(({ count, error }) => {
+          if (error) console.error(error);
+          else if (count !== null) setUnreadNotificationsCount(count);
+        });
+    }).catch(console.error);
+  }, [currentAdminTab]);
   const [winnersList, setWinnersList] = useState<any[]>([]);
   const [editingWinner, setEditingWinner] = useState<any | null>(null);
   const [addingWinner, setAddingWinner] = useState<boolean>(false);
   const [winnerSearch, setWinnerSearch] = useState<string>("");
   const [winnerFilter, setWinnerFilter] = useState<"all" | "featured" | "month" | "year">("all");
+
+  // Unarchive & Manual Draw State Variables
+  const [markingAsDrawnRaffle, setMarkingAsDrawnRaffle] = useState<RaffleConfig | null>(null);
+  const [manualWinnerNumberInput, setManualWinnerNumberInput] = useState<string>("");
+  const [manualWinnerNameInput, setManualWinnerNameInput] = useState<string>("");
+  const [manualWinnerPhoneInput, setManualWinnerPhoneInput] = useState<string>("");
+  const [isSubmittingManualDraw, setIsSubmittingManualDraw] = useState<boolean>(false);
+
+  const [isStoreEnabledGlobally, setIsStoreEnabledGlobally] = useState<boolean>(() => {
+    return storeService.getLocalStoreConfig().isEnabled;
+  });
+  const [isSavingStoreEnabled, setIsSavingStoreEnabled] = useState<boolean>(false);
+
+  useEffect(() => {
+    const unsub = storeService.subscribeStoreConfig((cfg) => {
+      setIsStoreEnabledGlobally(Boolean(cfg.isEnabled));
+    });
+    return () => {
+      if (typeof unsub === "function") unsub();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (viewMode === "list") {
+      if (mainAdminSection === "rifas") {
+        setCurrentAdminTab("rifas");
+      } else if (mainAdminSection === "winners_hall") {
+        setCurrentAdminTab("winners");
+      } else if (mainAdminSection === "loja") {
+        setCurrentAdminTab("store");
+      }
+    } else {
+      if (activeTab === "dashboard") {
+        if (currentAdminTab !== "cotas") {
+          setCurrentAdminTab("overview");
+        }
+      } else if (activeTab === "orders") {
+        setCurrentAdminTab("orders");
+      } else if (activeTab === "customers") {
+        setCurrentAdminTab("customers");
+      } else if (activeTab === "settings") {
+        setCurrentAdminTab("settings");
+      }
+    }
+  }, [viewMode, mainAdminSection, activeTab]);
+
+  // Customers & Filters states
+  const [customerSearch, setCustomerSearch] = useState<string>("");
+  const [customerSort, setCustomerSort] = useState<"spent" | "cotas" | "orders" | "ticket">("spent");
+  const [selectedCustomerDetail, setSelectedCustomerDetail] = useState<any | null>(null);
+  const [orderPeriodFilter, setOrderPeriodFilter] = useState<string>("all");
+  const [orderRaffleFilter, setOrderRaffleFilter] = useState<string>("all");
+
+  const aggregatedCustomers = useMemo(() => {
+    const map: Record<string, {
+      phone: string;
+      name: string;
+      ordersCount: number;
+      totalCotas: number;
+      totalSpent: number;
+      lastOrderTimestamp: number;
+      lastOrderDateStr: string;
+      orders: any[];
+    }> = {};
+
+    orders.forEach((ord) => {
+      const rawPhone = String(ord.phone || "").replace(/\D/g, "");
+      if (!rawPhone) return;
+      const key = rawPhone;
+      const name = String(ord.name || "Cliente sem Nome").trim();
+      const isPaid = (ord.status || "").toLowerCase() === "pago" || (ord.status || "").toLowerCase() === "paid" || (ord.status || "").toLowerCase() === "approved";
+      const numsCount = Array.isArray(ord.nums) ? ord.nums.length : 0;
+      const val = Number(ord.val || ord.totalValue || ord.totalAmount || 0) || 0;
+      const orderTime = ord.createdAt ? new Date(ord.createdAt).getTime() : Date.now();
+
+      if (!map[key]) {
+        map[key] = {
+          phone: rawPhone,
+          name,
+          ordersCount: 0,
+          totalCotas: 0,
+          totalSpent: 0,
+          lastOrderTimestamp: orderTime,
+          lastOrderDateStr: ord.createdAt ? new Date(ord.createdAt).toLocaleString("pt-BR") : "Recentemente",
+          orders: []
+        };
+      }
+
+      map[key].ordersCount += 1;
+      map[key].orders.push(ord);
+
+      if (name && name !== "Cliente sem Nome") {
+        map[key].name = name;
+      }
+
+      if (isPaid) {
+        map[key].totalCotas += numsCount;
+        map[key].totalSpent += val;
+      }
+
+      if (orderTime > map[key].lastOrderTimestamp) {
+        map[key].lastOrderTimestamp = orderTime;
+        map[key].lastOrderDateStr = ord.createdAt ? new Date(ord.createdAt).toLocaleString("pt-BR") : "Recentemente";
+      }
+    });
+
+    let list = Object.values(map);
+
+    if (customerSearch.trim()) {
+      const q = customerSearch.toLowerCase().trim();
+      list = list.filter(c => c.name.toLowerCase().includes(q) || c.phone.includes(q));
+    }
+
+    list.sort((a, b) => {
+      if (customerSort === "spent") return b.totalSpent - a.totalSpent;
+      if (customerSort === "cotas") return b.totalCotas - a.totalCotas;
+      if (customerSort === "orders") return b.ordersCount - a.ordersCount;
+      if (customerSort === "ticket") {
+        const ticketA = a.ordersCount > 0 ? a.totalSpent / a.ordersCount : 0;
+        const ticketB = b.ordersCount > 0 ? b.totalSpent / b.ordersCount : 0;
+        return ticketB - ticketA;
+      }
+      return b.totalSpent - a.totalSpent;
+    });
+
+    return list;
+  }, [orders, customerSearch, customerSort]);
   const [newWinnerData, setNewWinnerData] = useState<any>({
     winnerName: "",
     winnerNumber: "",
@@ -237,6 +405,15 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     if (raffleConfig.totalNumbers !== undefined) setTotalNumbersInput(String(raffleConfig.totalNumbers));
     setEditedConfig({ ...raffleConfig });
 
+    // Sync planning states
+    setLucroDesejadoInput(String(raffleConfig.lucroDesejado || "5000"));
+    setCustoPremioInput(String(raffleConfig.custoPremio || "1500"));
+    setTaxaMPInput(String(raffleConfig.taxaMP || "4.99"));
+    setValorCotaPlanejadoInput(String(raffleConfig.price || "10"));
+    setPromoAtivaInput(Boolean(raffleConfig.promotionEnabled));
+    setPromoBuyInput(String(raffleConfig.promotionBuy || "5"));
+    setPromoBonusInput(String(raffleConfig.promotionBonus || "1"));
+
     // Sync intelligent sweepstakes states
     setLocalDrawMode((raffleConfig.drawMode as any) || "automatico");
     setFederalRegra(normalizeFederalRuleId(raffleConfig.federalRegra || "ultimo_digito_1"));
@@ -293,7 +470,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         };
         setPaidToasts((prev) => [toastItem, ...prev].slice(0, 5));
         setUnreadPaidCount((prev) => prev + 1);
-      }
+      },
+      { limitCount: 50, raffleId: selectedRaffleId }
     );
 
     return () => {
@@ -607,11 +785,11 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
 
       if (editingRaffleItem) {
         // Update existing raffle
-        await adminService.saveConfig("", { ...editingRaffleItem, ...payload } as RaffleConfig, true, editingRaffleItem.id);
+        await adminService.saveConfig(getAdminToken(), { ...editingRaffleItem, ...payload } as RaffleConfig, true, editingRaffleItem.id);
         alert("Rifa atualizada com sucesso!");
       } else {
         // Create new raffle
-        const res = await adminService.createRaffle("", payload);
+        const res = await adminService.createRaffle(getAdminToken(), payload);
         alert("Sua nova rifa foi criada com sucesso!");
         if (res.raffleId) {
           setSelectedRaffleId(res.raffleId);
@@ -629,7 +807,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
 
   const handleActivateRaffle = async (raffleId: string) => {
     try {
-      await adminService.toggleRaffleStatus("", true, raffleId);
+      await adminService.toggleRaffleStatus(getAdminToken(), true, raffleId);
       if (selectedRaffleId === raffleId) {
         setRaffleConfig((prev) => ({ ...prev, isRaffleActive: true, isActive: true, status: "ativa" }));
       }
@@ -641,7 +819,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
 
   const handlePauseRaffle = async (raffleId: string) => {
     try {
-      await adminService.toggleRaffleStatus("", false, raffleId);
+      await adminService.toggleRaffleStatus(getAdminToken(), false, raffleId);
       if (selectedRaffleId === raffleId) {
         setRaffleConfig((prev) => ({ ...prev, isRaffleActive: false, isActive: false, status: "pausada" }));
       }
@@ -652,30 +830,117 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   };
 
   const handleArchiveRaffle = async (raffleId: string) => {
-    if (!window.confirm("Deseja arquivar esta rifa? Ela deixará de aparecer no site.")) return;
+    setConfirmAction({
+      message: "Deseja arquivar esta rifa? Ela deixará de aparecer no site.",
+      onConfirm: async () => {
+        try {
+          setConfirmAction(null);
+          await adminService.archiveRaffle(getAdminToken(), raffleId);
+          await fetchRaffles();
+        } catch (err: any) {
+          alert("Erro ao arquivar rifa: " + err.message);
+        }
+      }
+    });
+  };
+
+  const handleUnarchiveRaffle = async (raffleId: string) => {
+    setConfirmAction({
+      message: "Deseja desarquivar esta rifa? Ela voltará a ficar como pausada.",
+      onConfirm: async () => {
+        try {
+          setConfirmAction(null);
+          await adminService.saveConfig(getAdminToken(), { id: raffleId, status: "pausada", isRaffleActive: false, isActive: false } as any, false, raffleId);
+          alert("Rifa desarquivada com sucesso!");
+          await fetchRaffles();
+        } catch (err: any) {
+          alert("Erro ao desarquivar rifa: " + err.message);
+        }
+      }
+    });
+  };
+  const handleOpenMarkAsDrawn = (raffle: RaffleConfig) => {
+    setMarkingAsDrawnRaffle(raffle);
+    setManualWinnerNumberInput("");
+    setManualWinnerNameInput("");
+    setManualWinnerPhoneInput("");
+  };
+
+  const handleSubmitManualDraw = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!markingAsDrawnRaffle) return;
+    if (!manualWinnerNumberInput.trim()) {
+      alert("Por favor, informe o número da cota sorteada.");
+      return;
+    }
+    if (!manualWinnerNameInput.trim()) {
+      alert("Por favor, informe o nome do ganhador.");
+      return;
+    }
+
+    setIsSubmittingManualDraw(true);
     try {
-      await adminService.archiveRaffle("", raffleId);
-      await fetchRaffles();
+      const token = getAdminToken();
+      const updatedConfig = {
+        ...markingAsDrawnRaffle,
+        winnerNumber: manualWinnerNumberInput.trim(),
+        winnerName: manualWinnerNameInput.trim(),
+        winnerPhone: manualWinnerPhoneInput.trim() || "N/A",
+        status: "encerrada" as const,
+        isRaffleActive: false,
+        isActive: false,
+        drawDate: new Date().toLocaleDateString("pt-BR"),
+        drawTime: new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+      };
+
+      await adminService.saveConfig(token, updatedConfig, false, markingAsDrawnRaffle.id);
+      
+      setConfirmAction({
+        message: "Deseja também publicar este ganhador automaticamente no Hall da Fama?",
+        onConfirm: async () => {
+          try {
+            setConfirmAction(null);
+            await adminService.publishDraw(token, "DRAW_" + Date.now(), updatedConfig, markingAsDrawnRaffle.id);
+            alert("Sorteio registrado e ganhador publicado no Hall da Fama com sucesso!");
+          } catch (pubErr: any) {
+            console.error("Erro ao publicar ganhador:", pubErr);
+            alert("Sorteio registrado, mas houve um erro ao publicar no Hall da Fama: " + pubErr.message);
+          } finally {
+            setMarkingAsDrawnRaffle(null);
+            await fetchRaffles();
+          }
+        }
+      });
+
     } catch (err: any) {
-      alert("Erro ao arquivar rifa: " + err.message);
+      alert("Erro ao registrar sorteio manual: " + err.message);
+    } finally {
+      setIsSubmittingManualDraw(false);
     }
   };
 
   const handleEndRaffle = async (raffleId: string) => {
-    if (window.confirm("Deseja realmente encerrar esta rifa? Ela deixará de receber novas apostas.")) {
-      try {
-        await adminService.endRaffle("", raffleId);
-        alert("Rifa encerrada com sucesso!");
-        await fetchRaffles();
-      } catch (err: any) {
-        alert("Erro ao encerrar rifa: " + err.message);
+    setConfirmAction({
+      message: "Deseja realmente encerrar esta rifa? Ela deixará de receber novas apostas.",
+      onConfirm: async () => {
+        try {
+          setConfirmAction(null);
+          await adminService.endRaffle(getAdminToken(), raffleId);
+          alert("Rifa encerrada com sucesso!");
+          if (selectedRaffleId === raffleId) {
+            setRaffleConfig((prev) => ({ ...prev, isRaffleActive: false, isActive: false, status: "encerrada" }));
+          }
+          await fetchRaffles();
+        } catch (err: any) {
+          alert("Erro ao encerrar rifa: " + err.message);
+        }
       }
-    }
+    });
   };
 
   const handleDuplicateRaffle = async (raffleId: string) => {
     try {
-      const res = await adminService.duplicateRaffle("", raffleId);
+      const res = await adminService.duplicateRaffle(getAdminToken(), raffleId);
       alert("Rifa duplicada com sucesso!");
       await fetchRaffles();
       if (res.raffleId) {
@@ -694,7 +959,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         try {
           setConfirmAction(null);
           setIsClearing(true);
-          const data = await adminService.clearRaffle("", raffleId);
+          const data = await adminService.clearRaffle(getAdminToken(), raffleId);
           if (selectedRaffleId === raffleId) {
             const updated = data.resetConfig || { ...raffleConfig, winnerNumber: "", winnerName: "" };
             setRaffleConfig(updated);
@@ -717,7 +982,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
       onConfirm: async () => {
         try {
           setConfirmAction(null);
-          await adminService.deleteRaffle("", raffleId);
+          await adminService.deleteRaffle(getAdminToken(), raffleId);
           alert("Rifa excluída com sucesso!");
           setViewMode("list");
           if (selectedRaffleId === raffleId) {
@@ -829,7 +1094,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
       // Fetch the latest orders in real-time from Firestore to ensure no sync latency
       let currentOrders = orders;
       try {
-        const ordersSnap = await getDocs(collection(db, "orders"));
+        const ordersQuery = query(collection(db, "orders"), where("raffleId", "==", selectedRaffleId || "current"));
+        const ordersSnap = await getDocs(ordersQuery);
         const freshOrders: any[] = [];
         ordersSnap.forEach((doc) => {
           const data = doc.data() as any;
@@ -1037,7 +1303,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     try {
       setIsTogglingStatus(true);
       const newStatus = raffleConfig.isRaffleActive !== false ? false : true;
-      await adminService.toggleRaffleStatus("", newStatus, selectedRaffleId);
+      await adminService.toggleRaffleStatus(getAdminToken(), newStatus, selectedRaffleId);
       setRaffleConfig((prev) => ({ ...prev, isRaffleActive: newStatus, isActive: newStatus }));
       await fetchRaffles();
     } catch (err: any) {
@@ -1058,12 +1324,38 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         totalNumbers: parseInt(totalNumbersInput) || 100,
       };
 
-      await adminService.saveConfig("", finalConfig, finalConfig.isActive, selectedRaffleId);
+      await adminService.saveConfig(getAdminToken(), finalConfig, finalConfig.isActive, selectedRaffleId);
       setRaffleConfig(finalConfig);
       await fetchRaffles();
       alert("Configurações salvas com sucesso!");
     } catch (err: any) {
       alert(err.message || "Erro ao salvar as configurações.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleApplyPlanning = async () => {
+    try {
+      setIsSaving(true);
+      const finalConfig = {
+        ...raffleConfig,
+        price: parseFloat(valorCotaPlanejadoInput.replace(",", ".")) || 10,
+        totalNumbers: parseInt(totalNumbersInput) || 1000,
+        custoPremio: parseFloat(custoPremioInput.replace(",", ".")) || 0,
+        lucroDesejado: parseFloat(lucroDesejadoInput.replace(",", ".")) || 0,
+        taxaMP: parseFloat(taxaMPInput.replace(",", ".")) || 0,
+        promotionEnabled: promoAtivaInput,
+        promotionBuy: parseInt(promoBuyInput) || 5,
+        promotionBonus: parseInt(promoBonusInput) || 1
+      };
+
+      await adminService.saveConfig(getAdminToken(), finalConfig, finalConfig.isActive !== false, selectedRaffleId);
+      setRaffleConfig(finalConfig);
+      await fetchRaffles();
+      alert("Planejamento financeiro e regras de bônus aplicados com sucesso na campanha ativa!");
+    } catch (err: any) {
+      alert("Erro ao aplicar planejamento: " + err.message);
     } finally {
       setIsSaving(false);
     }
@@ -1076,7 +1368,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
           message: "Deseja estornar o valor e liberar as cotas de volta para compra pública?",
           onConfirm: async () => {
             try {
-              await adminService.orderAction("", orderId, "refund", selectedRaffleId);
+              await adminService.orderAction(getAdminToken(), orderId, "refund", selectedRaffleId);
               alert("Pedido reembolsado!");
               setConfirmAction(null);
             } catch (err: any) {
@@ -1087,7 +1379,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         });
         return;
       }
-      await adminService.orderAction("", orderId, action, selectedRaffleId);
+      await adminService.orderAction(getAdminToken(), orderId, action, selectedRaffleId);
       alert("Sucesso!");
     } catch (err: any) {
       alert(err.message);
@@ -1101,7 +1393,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         try {
           setConfirmAction(null);
           setIsClearing(true);
-          const data = await adminService.clearRaffle("", selectedRaffleId);
+          const data = await adminService.clearRaffle(getAdminToken(), selectedRaffleId);
           const updated = data.resetConfig || { ...raffleConfig, winnerNumber: "", winnerName: "", isRaffleActive: true, isActive: true };
           setRaffleConfig(updated);
           setEditedConfig(updated);
@@ -1234,7 +1526,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                           setIsPublishing(true);
                           setIsDrawing(true);
                           try {
-                            const token = localStorage.getItem("admin_token") || "";
+                            const token = getAdminToken();
                             
                             // Let's call our save endpoint using publish-draw action
                             const configToPublish = {
@@ -1314,30 +1606,34 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   {/* ACTION OPTIONS */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-center">
                     <button
-                      onClick={async () => {
-                        if (window.confirm(`Deseja aprovar e confirmar manualmente o pagamento deste pedido de ${foundBuyer.name} agora para elegê-lo como ganhador?`)) {
-                          setIsDrawing(true);
-                          try {
-                            const token = localStorage.getItem("admin_token") || "";
-                            // Approve order
-                            await adminService.orderAction(token, foundBuyer.id, "confirm", selectedRaffleId);
-                            
-                            // Re-check order status in local view state
-                            const updatedOrders = [...orders];
-                            const idx = updatedOrders.findIndex(o => o.id === foundBuyer.id);
-                            if (idx !== -1) {
-                              updatedOrders[idx] = { ...updatedOrders[idx], status: "Pago" };
-                              setOrders(updatedOrders);
+                      onClick={() => {
+                        setConfirmAction({
+                          message: `Deseja aprovar e confirmar manualmente o pagamento deste pedido de ${foundBuyer.name} agora para elegê-lo como ganhador?`,
+                          onConfirm: async () => {
+                            setConfirmAction(null);
+                            setIsDrawing(true);
+                            try {
+                              const token = getAdminToken();
+                              // Approve order
+                              await adminService.orderAction(token, foundBuyer.id, "confirm", selectedRaffleId);
+                              
+                              // Re-check order status in local view state
+                              const updatedOrders = [...orders];
+                              const idx = updatedOrders.findIndex(o => o.id === foundBuyer.id);
+                              if (idx !== -1) {
+                                updatedOrders[idx] = { ...updatedOrders[idx], status: "Pago" };
+                                setOrders(updatedOrders);
+                              }
+                              
+                              setBuyerStatus("pago");
+                              alert(`Pagamento de ${foundBuyer.name} aprovado com sucesso! Agora você pode confirmar o vencedor.`);
+                            } catch (err: any) {
+                              alert("Erro ao aprovar pagamento: " + err.message);
+                            } finally {
+                              setIsDrawing(false);
                             }
-                            
-                            setBuyerStatus("pago");
-                            alert(`Pagamento de ${foundBuyer.name} aprovado com sucesso! Agora você pode confirmar o vencedor.`);
-                          } catch (err: any) {
-                            alert("Erro ao aprovar pagamento: " + err.message);
-                          } finally {
-                            setIsDrawing(false);
                           }
-                        }
+                        });
                       }}
                       disabled={isDrawing}
                       className="py-3 bg-emerald-600 hover:bg-emerald-500 text-black font-black text-xs uppercase rounded-xl cursor-pointer tracking-wider flex items-center justify-center gap-1 transition-all"
@@ -1403,6 +1699,34 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 <Trophy className="w-5 h-5 text-amber-500" /> Registrar Ganhador Manual
               </h3>
               <p className="text-xs text-zinc-500 mt-1">Insira os detalhes do vencedor para registrar no Hall da Fama.</p>
+
+              {/* SELECTOR FOR DESIRED RAFFLE */}
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase text-zinc-500">Auto-preencher Rifa:</span>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const targetRaffle = raffles.find(r => r.id === e.target.value);
+                    if (targetRaffle) {
+                      setNewWinnerData((prev: any) => ({
+                        ...prev,
+                        raffleTitle: targetRaffle.title || "",
+                        prizeTitle: targetRaffle.title || "",
+                        prizeImageUrl: targetRaffle.imageUrl || "",
+                        prizeDescription: targetRaffle.description || "",
+                      }));
+                    }
+                  }}
+                  className="bg-zinc-900 border border-zinc-850 text-[10px] font-black uppercase text-white rounded-xl px-2.5 py-1.5 outline-none cursor-pointer focus:border-violet-500"
+                >
+                  <option value="">-- SELECIONAR RIFA --</option>
+                  {raffles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.title || "Sem Título"}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               <div className="space-y-4 mt-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1673,7 +1997,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                         return;
                       }
                       try {
-                        await adminService.addWinnerHistory("", {
+                        await adminService.addWinnerHistory(getAdminToken(), {
                           winnerName: newWinnerData.winnerName,
                           winnerNumber: newWinnerData.winnerNumber,
                           raffleTitle: newWinnerData.raffleTitle || "Rifa",
@@ -1714,6 +2038,34 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 <Edit3 className="w-5 h-5 text-orange-400" /> Editar Ganhador
               </h3>
               <p className="text-xs text-zinc-500 mt-1">Atualize os dados do ganhador no Hall da Fama.</p>
+
+              {/* SELECTOR FOR DESIRED RAFFLE */}
+              <div className="mt-3 flex items-center gap-2">
+                <span className="text-[10px] font-black uppercase text-zinc-500">Auto-preencher Rifa:</span>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const targetRaffle = raffles.find(r => r.id === e.target.value);
+                    if (targetRaffle) {
+                      setEditingWinner((prev: any) => ({
+                        ...prev,
+                        raffleTitle: targetRaffle.title || "",
+                        prizeTitle: targetRaffle.title || "",
+                        prizeImageUrl: targetRaffle.imageUrl || "",
+                        prizeDescription: targetRaffle.description || "",
+                      }));
+                    }
+                  }}
+                  className="bg-zinc-900 border border-zinc-850 text-[10px] font-black uppercase text-white rounded-xl px-2.5 py-1.5 outline-none cursor-pointer focus:border-violet-500"
+                >
+                  <option value="">-- SELECIONAR RIFA --</option>
+                  {raffles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.title || "Sem Título"}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               <div className="space-y-4 mt-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1980,7 +2332,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   <button
                     onClick={async () => {
                       try {
-                        await adminService.updateWinner("", editingWinner.id, {
+                        await adminService.updateWinner(getAdminToken(), editingWinner.id, {
                           winnerName: editingWinner.winnerName,
                           winnerNumber: editingWinner.winnerNumber,
                           raffleTitle: editingWinner.raffleTitle || "Rifa",
@@ -2115,83 +2467,648 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     );
   };
 
-  // ==========================================
-  // VIEW MODE 1: "MINHAS RIFAS" (LIST SCREEN)
-  // ==========================================
-  if (viewMode === "list") {
+  const renderPlanningSection = () => {
+    const custo = parseFloat(custoPremioInput.replace(",", ".")) || 0;
+    const lucro = parseFloat(lucroDesejadoInput.replace(",", ".")) || 0;
+    const taxa = parseFloat(taxaMPInput.replace(",", ".")) || 0;
+    const totalCotas = parseInt(totalNumbersInput) || 1000;
+    const pricePlan = parseFloat(valorCotaPlanejadoInput.replace(",", ".")) || 10;
+
+    const buyNum = parseFloat(promoBuyInput) || 5;
+    const bonusNum = parseFloat(promoBonusInput) || 1;
+
+    // Faturamento líquido necessário para cobrir o prêmio e dar o lucro desejado
+    const faturamentoLiquidoNecessario = custo + lucro;
+    // Faturamento bruto necessário considerando as taxas
+    const divisor = 1 - (taxa / 100);
+    const faturamentoBrutoNecessario = divisor > 0 ? (faturamentoLiquidoNecessario / divisor) : 0;
+    const cotaIdeal = totalCotas > 0 ? (faturamentoBrutoNecessario / totalCotas) : 0;
+
+    // Cenário planejado com os dados fornecidos pelo usuário
+    let totalCotasPagas = totalCotas;
+    if (promoAtivaInput && buyNum > 0 && bonusNum > 0) {
+      // Regra de compre X ganhe Y de bônus
+      totalCotasPagas = totalCotas * (buyNum / (buyNum + bonusNum));
+    }
+
+    const faturamentoBrutoPlanejado = totalCotasPagas * pricePlan;
+    const taxaTotalPlanejada = faturamentoBrutoPlanejado * (taxa / 100);
+    const faturamentoLiquidoPlanejado = faturamentoBrutoPlanejado - taxaTotalPlanejada;
+    const lucroLiquidoPlanejado = faturamentoLiquidoPlanejado - custo;
+    const margemLucro = faturamentoBrutoPlanejado > 0 ? (lucroLiquidoPlanejado / faturamentoBrutoPlanejado) * 100 : 0;
+
     return (
-      <div id="minhas-rifas-root" className="min-h-screen bg-black text-white pb-32">
+      <div className="space-y-6">
         {/* HEADER */}
-        <header className="border-b border-zinc-900 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-30 px-4 py-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <ShieldCheck className="w-6 h-6 text-violet-500" />
-            <div>
-              <h1 className="text-base font-black uppercase tracking-tight">RifaMaster Admin</h1>
-              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Painel Administrativo Geral</p>
+        <div className="bg-zinc-950 border border-zinc-900 rounded-[2rem] p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-violet-400 font-bebas">Inteligência Financeira</span>
+            <h2 className="text-2xl font-black uppercase tracking-tight text-white mt-0.5 font-bebas">🧮 Planejamento e Cálculos da Rifa</h2>
+            <p className="text-xs text-zinc-500 mt-1">
+              Simule custos, configure bônus e calcule o valor ideal da cota para atingir sua meta financeira com precisão.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-400">Rifa Selecionada:</span>
+            <span className="px-3 py-1.5 bg-violet-950/40 text-violet-300 border border-violet-850 rounded-xl text-xs font-bold uppercase font-bebas">
+              {raffleConfig.title || "Sem Título"}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          {/* COLUNA 1: INPUTS (7 cols) */}
+          <div className="lg:col-span-7 space-y-6">
+            <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-6 space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400 pb-3 border-b border-zinc-900 flex items-center gap-2 font-bebas">
+                <Settings className="w-4 h-4 text-violet-400" /> Parâmetros de Simulação
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase text-zinc-500 font-bebas">Custo do Prêmio (R$)</label>
+                  <input
+                    type="text"
+                    value={custoPremioInput}
+                    onChange={(e) => setCustoPremioInput(e.target.value)}
+                    placeholder="Ex: 1500"
+                    className="w-full bg-black border border-zinc-900 rounded-2xl px-4 py-3 text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
+                  />
+                  <span className="text-[9px] text-zinc-500">Valor que você pagou no prêmio a ser sorteado.</span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase text-zinc-500 font-bebas">Lucro Desejado (R$)</label>
+                  <input
+                    type="text"
+                    value={lucroDesejadoInput}
+                    onChange={(e) => setLucroDesejadoInput(e.target.value)}
+                    placeholder="Ex: 5000"
+                    className="w-full bg-black border border-zinc-900 rounded-2xl px-4 py-3 text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
+                  />
+                  <span className="text-[9px] text-zinc-500">Quanto você quer colocar limpo no bolso.</span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase text-zinc-500 font-bebas">Taxa do Gateway (%)</label>
+                  <input
+                    type="text"
+                    value={taxaMPInput}
+                    onChange={(e) => setTaxaMPInput(e.target.value)}
+                    placeholder="Ex: 4.99"
+                    className="w-full bg-black border border-zinc-900 rounded-2xl px-4 py-3 text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
+                  />
+                  <span className="text-[9px] text-zinc-500">Taxa média do Mercado Pago / PIX.</span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase text-zinc-500 font-bebas">Total de Cotas</label>
+                  <input
+                    type="text"
+                    value={totalNumbersInput}
+                    onChange={(e) => setTotalNumbersInput(e.target.value)}
+                    placeholder="Ex: 1000"
+                    className="w-full bg-black border border-zinc-900 rounded-2xl px-4 py-3 text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
+                  />
+                  <span className="text-[9px] text-zinc-500">Número de cotas totais da rifa.</span>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase text-zinc-500 font-bebas">Valor Planejado da Cota (R$)</label>
+                  <input
+                    type="text"
+                    value={valorCotaPlanejadoInput}
+                    onChange={(e) => setValorCotaPlanejadoInput(e.target.value)}
+                    placeholder="Ex: 10"
+                    className="w-full bg-black border border-zinc-900 rounded-2xl px-4 py-3 text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
+                  />
+                  <span className="text-[9px] text-zinc-500">Preço real que planeja vender.</span>
+                </div>
+              </div>
+            </div>
+
+            {/* BONUS NUMBER OPTIONS CARD */}
+            <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-6 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-900">
+                <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400 flex items-center gap-2 font-bebas">
+                  <Zap className="w-4 h-4 text-[#A3E635]" /> Números Bônus (Promoção Automática)
+                </h3>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={promoAtivaInput}
+                    onChange={(e) => setPromoAtivaInput(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#A3E635]"></div>
+                </label>
+              </div>
+
+              {promoAtivaInput ? (
+                <div className="space-y-4">
+                  <p className="text-[11px] text-zinc-400">
+                    Defina o método de bônus compre e ganhe (compre X cotas, ganhe Y cotas de bônus adicionais automaticamente).
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase text-zinc-500 font-bebas">Compre (Quantidade de Cotas)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={promoBuyInput}
+                        onChange={(e) => setPromoBuyInput(e.target.value)}
+                        placeholder="Ex: 5"
+                        className="w-full bg-black border border-zinc-900 rounded-2xl px-4 py-3 text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase text-zinc-500 font-bebas">Ganhe de Bônus (Cotas Extra)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={promoBonusInput}
+                        onChange={(e) => setPromoBonusInput(e.target.value)}
+                        placeholder="Ex: 1"
+                        className="w-full bg-black border border-zinc-900 rounded-2xl px-4 py-3 text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-[#A3E635]/10 border border-[#A3E635]/20 p-4 rounded-2xl text-xs text-[#A3E635] space-y-1.5">
+                    <p className="font-bold">✨ Resumo da Promoção:</p>
+                    <p className="text-zinc-300 leading-relaxed">
+                      A cada <strong>{promoBuyInput}</strong> cotas compradas no mesmo pedido, o sistema presentará o cliente com mais <strong>{promoBonusInput}</strong> cota(s) de bônus, totalmente de graça!
+                    </p>
+                    <p className="text-[10px] text-zinc-400 font-mono">
+                      Isto equivale a uma redução de <strong>{((bonusNum / (buyNum + bonusNum)) * 100).toFixed(1)}%</strong> no ticket médio pago por cota se o cliente usar a promoção máxima.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-zinc-500">
+                  Promoção desativada. Todas as cotas vendidas serão cobradas pelo preço cheio planejado (R$ {pricePlan.toFixed(2)} cada).
+                </p>
+              )}
             </div>
           </div>
 
-          {/* MAIN SECTION SWITCHER */}
-          <div className="flex bg-black p-1 rounded-xl border border-zinc-800 gap-1 w-full sm:w-auto">
-            <button
-              onClick={() => setMainAdminSection("rifas")}
-              className={`flex-1 sm:flex-none px-4 py-2 text-xs font-black uppercase tracking-wider rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                mainAdminSection === "rifas"
-                  ? "bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md"
-                  : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              <Ticket className="w-4 h-4" />
-              <span>Minhas Rifas</span>
-            </button>
+          {/* COLUNA 2: RESULTADOS DOS CÁLCULOS (5 cols) */}
+          <div className="lg:col-span-5 space-y-6">
+            {/* CARD METAS */}
+            <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-6 space-y-6">
+              <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400 pb-3 border-b border-zinc-900 font-bebas">
+                🎯 Metas e Preço Recomendado
+              </h3>
 
-            <button
-              onClick={() => setMainAdminSection("winners_hall")}
-              className={`flex-1 sm:flex-none px-4 py-2 text-xs font-black uppercase tracking-wider rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                mainAdminSection === "winners_hall"
-                  ? "bg-gradient-to-r from-yellow-500 to-amber-600 text-[#070709] font-black shadow-md"
-                  : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              <Trophy className="w-4 h-4" />
-              <span>Hall da Fama</span>
-            </button>
+              <div className="space-y-4">
+                <div>
+                  <span className="text-[10px] uppercase font-black tracking-wider text-zinc-500 font-bebas">Faturamento Bruto Necessário</span>
+                  <div className="text-2xl font-black text-white mt-1 font-mono">
+                    R$ {faturamentoBrutoNecessario.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">
+                    Arrecadação total necessária para cobrir as taxas do gateway (R$ {(faturamentoBrutoNecessario - faturamentoLiquidoNecessario).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}) e o prêmio, garantindo o lucro líquido desejado.
+                  </p>
+                </div>
 
-            <button
-              onClick={() => setMainAdminSection("loja")}
-              className={`flex-1 sm:flex-none px-4 py-2 text-xs font-black uppercase tracking-wider rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                mainAdminSection === "loja"
-                  ? "bg-gradient-to-r from-[#FF8A00] to-[#FF6200] text-[#070709] font-montserrat shadow-md"
-                  : "text-zinc-400 hover:text-white"
+                <div>
+                  <span className="text-[10px] uppercase font-black tracking-wider text-violet-400 font-bebas">Preço Ideal Recomendado por Cota</span>
+                  <div className="text-2xl font-black text-violet-400 mt-1 font-mono">
+                    R$ {cotaIdeal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">
+                    Se você vender todas as {totalCotas} cotas, este é o preço unitário necessário para atingir sua meta.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* CARD PROJEÇÃO REAL */}
+            <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-6 space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400 pb-3 border-b border-zinc-900 flex items-center justify-between font-bebas">
+                <span>📊 Projeção do Seu Cenário</span>
+                <span className="px-2 py-0.5 bg-zinc-900 border border-zinc-850 text-zinc-400 text-[9px] font-bold rounded-lg uppercase">
+                  {promoAtivaInput ? "Com Bônus" : "Sem Bônus"}
+                </span>
+              </h3>
+
+              <div className="space-y-3.5 text-xs">
+                <div className="flex justify-between items-center pb-2 border-b border-zinc-900/50">
+                  <span className="text-zinc-400">Total de Cotas Disponíveis</span>
+                  <span className="font-bold text-white font-mono">{totalCotas}</span>
+                </div>
+
+                {promoAtivaInput && (
+                  <>
+                    <div className="flex justify-between items-center pb-2 border-b border-zinc-900/50">
+                      <span className="text-zinc-400">Cotas Pagas Estimadas</span>
+                      <span className="font-bold text-[#A3E635] font-mono">{Math.round(totalCotasPagas)}</span>
+                    </div>
+                    <div className="flex justify-between items-center pb-2 border-b border-zinc-900/50">
+                      <span className="text-zinc-400">Cotas Bônus (Dadas de Graça)</span>
+                      <span className="font-bold text-zinc-400 font-mono">{Math.round(totalCotas - totalCotasPagas)}</span>
+                    </div>
+                  </>
+                )}
+
+                <div className="flex justify-between items-center pb-2 border-b border-zinc-900/50">
+                  <span className="text-zinc-400">Faturamento Bruto Estimado</span>
+                  <span className="font-black text-white font-mono">
+                    R$ {faturamentoBrutoPlanejado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center pb-2 border-b border-zinc-900/50">
+                  <span className="text-zinc-400">Taxas Gateway MP ({taxa}%)</span>
+                  <span className="font-bold text-red-400 font-mono">
+                    - R$ {taxaTotalPlanejada.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center pb-2 border-b border-zinc-900/50">
+                  <span className="text-zinc-400">Faturamento Líquido Estimado</span>
+                  <span className="font-bold text-zinc-300 font-mono">
+                    R$ {faturamentoLiquidoPlanejado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center pb-2 border-b border-zinc-900/50">
+                  <span className="text-zinc-400">Custo do Prêmio</span>
+                  <span className="font-bold text-red-500 font-mono">
+                    - R$ {custo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center pt-1">
+                  <span className="text-zinc-300 font-bold">Lucro Líquido Real</span>
+                  <span className={`font-black text-lg font-mono ${lucroLiquidoPlanejado >= lucro ? "text-[#A3E635]" : lucroLiquidoPlanejado > 0 ? "text-amber-400" : "text-red-500"}`}>
+                    R$ {lucroLiquidoPlanejado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-center text-[10px] text-zinc-500">
+                  <span>Margem Líquida</span>
+                  <span className="font-bold font-mono">{margemLucro.toFixed(1)}%</span>
+                </div>
+              </div>
+
+              {/* ACTION TO SAVE ON THE LIVE CAMPAIGN */}
+              <button
+                onClick={handleApplyPlanning}
+                disabled={isSaving}
+                className="w-full py-4 mt-4 bg-gradient-to-r from-[#A3E635] to-emerald-500 hover:from-[#bbf255] hover:to-emerald-400 text-black rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg shadow-[#A3E635]/15 cursor-pointer flex items-center justify-center gap-2 transition-all"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    APLICANDO...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 text-black" />
+                    APLICAR NA RIFA ATIVA
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderCotasGrid = () => {
+    const total = raffleConfig.totalNumbers || 100;
+    const cotaMap: Record<string, "pago" | "pendente"> = {};
+    orders.forEach((o) => {
+      const s = (o.status || "").toLowerCase();
+      const isPaid = s === "pago" || s === "paid" || s === "approved";
+      const isPending = s === "pending_payment" || s === "aguardando" || s === "reserved";
+      if (isPaid || isPending) {
+        (o.nums || []).forEach((n: string) => {
+          cotaMap[String(parseInt(n, 10))] = isPaid ? "pago" : "pendente";
+        });
+      }
+    });
+
+    const items = [];
+    const padSize = String(total).length;
+    for (let i = 1; i <= total; i++) {
+      const status = cotaMap[String(i)] || "disponivel";
+      items.push({ num: String(i).padStart(padSize, "0"), status });
+    }
+
+    return (
+      <div className="bg-[#111513] border border-[#1A1F1B] rounded-[2rem] p-6 space-y-6 font-inter">
+        <div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-[#A3E635]">Painel de Controle de Cotas</span>
+          <h2 className="text-2xl font-black uppercase tracking-tight text-white font-bebas mt-0.5">Visualizador em Tempo Real</h2>
+          <p className="text-xs text-zinc-500 mt-1">
+            Status atual das cotas para a campanha <strong className="text-white">{raffleConfig.title || "Rifa Selecionada"}</strong>.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-4 text-xs font-bold uppercase font-bebas tracking-wider border-b border-[#1A1F1B] pb-4">
+          <div className="flex items-center gap-2">
+            <div className="w-3.5 h-3.5 rounded bg-[#1A1F1B] border border-zinc-800" />
+            <span className="text-zinc-500">Disponível</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3.5 h-3.5 rounded bg-[#A3E635] border border-[#A3E635]/20" />
+            <span className="text-[#A3E635]">Pago</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-3.5 h-3.5 rounded bg-[#F5C542] border border-[#F5C542]/20" />
+            <span className="text-[#F5C542]">Reservado (Pendente)</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-12 lg:grid-cols-15 gap-2 max-h-[450px] overflow-y-auto pr-2 custom-scrollbar">
+          {items.map((item) => (
+            <div
+              key={item.num}
+              className={`p-2 rounded-xl text-center font-mono text-xs font-extrabold select-none transition-all border ${
+                item.status === "pago"
+                  ? "bg-[#A3E635] text-black border-[#A3E635]/20 shadow-md shadow-[#A3E635]/10"
+                  : item.status === "pendente"
+                  ? "bg-[#F5C542] text-black border-[#F5C542]/20 shadow-md shadow-[#F5C542]/10"
+                  : "bg-[#1A1F1B] text-zinc-400 border-[#1A1F1B] hover:text-white hover:border-zinc-700"
               }`}
             >
-              <ShoppingBag className="w-4 h-4" />
-              <span>Loja Premium</span>
-            </button>
+              {item.num}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderAuditLogs = () => {
+    return (
+      <div className="bg-[#111513] border border-[#1A1F1B] rounded-[2rem] p-6 space-y-6 font-inter">
+        <div>
+          <span className="text-[10px] font-black uppercase tracking-widest text-[#A3E635]">Auditoria de Segurança</span>
+          <h2 className="text-2xl font-black uppercase tracking-tight text-white font-bebas mt-0.5">Logs de Ações Administrativas</h2>
+          <p className="text-xs text-zinc-500 mt-1">
+            Registro em tempo real de todas as ações de configuração, vendas, e apuração efetuadas no painel administrativo para segurança da plataforma.
+          </p>
+        </div>
+
+        <div className="overflow-x-auto rounded-2xl border border-[#1A1F1B]">
+          <table className="w-full text-left text-xs bg-[#111513]">
+            <thead>
+              <tr className="bg-[#1A1F1B] text-[10px] text-zinc-400 uppercase font-black tracking-widest border-b border-[#1A1F1B]">
+                <th className="p-4 font-bebas tracking-wider text-sm">Data / Hora</th>
+                <th className="p-4 font-bebas tracking-wider text-sm">Usuário</th>
+                <th className="p-4 font-bebas tracking-wider text-sm">Ação</th>
+                <th className="p-4 font-bebas tracking-wider text-sm">Detalhes do Evento</th>
+                <th className="p-4 font-bebas tracking-wider text-sm">Endereço IP</th>
+                <th className="p-4 text-center font-bebas tracking-wider text-sm">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#1A1F1B]/50 font-medium">
+              {AUDIT_LOGS.map((log) => (
+                <tr key={log.id} className="hover:bg-zinc-900/30 transition-colors">
+                  <td className="p-4 text-zinc-400 font-mono text-[10px] whitespace-nowrap">
+                    {log.date} <span className="text-zinc-600">{log.time}</span>
+                  </td>
+                  <td className="p-4 text-white font-bold font-bebas uppercase tracking-wide">
+                    {log.user}
+                  </td>
+                  <td className="p-4">
+                    <span className="px-2.5 py-1 bg-[#A3E635]/15 border border-[#A3E635]/20 text-[#A3E635] text-[10px] font-bold uppercase tracking-wider rounded-lg font-bebas">
+                      {log.action}
+                    </span>
+                  </td>
+                  <td className="p-4 text-zinc-300 max-w-sm truncate">
+                    {log.details}
+                  </td>
+                  <td className="p-4 text-zinc-500 font-mono text-[10px]">
+                    {log.ip}
+                  </td>
+                  <td className="p-4 text-center">
+                    <span className="px-2 py-0.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] rounded font-semibold font-bebas">
+                      SUCCESS
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  const renderSidebarLayout = (children: React.ReactNode) => {
+    return (
+      <div className="min-h-screen bg-[#0B0F0C] text-white flex flex-col md:flex-row font-inter">
+        {/* Left Sidebar on Desktop */}
+        <aside className="w-64 bg-[#111513] border-r border-[#1A1F1B] flex-shrink-0 hidden md:flex flex-col justify-between sticky top-0 h-screen z-20">
+          <div className="p-6 space-y-6">
+            {/* Brand logo */}
+            <div className="flex items-center gap-3">
+              <div className="bg-[#1A1F1B] p-2 rounded-xl border border-[#A3E635]/20">
+                <ShieldCheck className="w-6 h-6 text-[#A3E635]" />
+              </div>
+              <div>
+                <h1 className="text-sm font-black uppercase tracking-wider text-white font-bebas">RifaMaster</h1>
+                <p className="text-[9px] text-[#A3E635] font-bold uppercase tracking-widest font-bebas">Command Center</p>
+              </div>
+            </div>
+
+            {/* Campaign Selection Selector Dropdown */}
+            <div className="space-y-1">
+              <label className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider font-bebas">Campanha Ativa</label>
+              <div className="relative">
+                <select
+                  value={selectedRaffleId}
+                  onChange={(e) => {
+                    setSelectedRaffleId(e.target.value);
+                    setViewMode("detail");
+                    setActiveTab("dashboard");
+                  }}
+                  className="w-full bg-[#1A1F1B] border border-[#1A1F1B] text-white text-xs font-black uppercase rounded-xl px-3 py-2.5 pr-8 appearance-none outline-none cursor-pointer focus:border-[#A3E635] font-bebas"
+                >
+                  {raffles.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.title || "Rifa Sem Título"}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-zinc-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Menu list */}
+            <nav className="space-y-1">
+              {[
+                { id: "overview", label: "Dashboard", icon: LayoutDashboard },
+                { id: "rifas", label: "Minhas Rifas", icon: Ticket },
+                { id: "orders", label: "Compras", icon: ClipboardList },
+                { id: "notifications", label: "Notificações", icon: MessageCircle, badge: unreadNotificationsCount },
+                { id: "winners", label: "Sorteios", icon: Trophy },
+                { id: "audit", label: "Auditoria", icon: ShieldCheck },
+                { id: "settings", label: "Configurações", icon: Settings },
+              ].map((item) => {
+                const IconComponent = item.icon;
+                const isActive = currentAdminTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      if (item.id === "overview") {
+                        setCurrentAdminTab("overview");
+                        setViewMode("detail");
+                        setActiveTab("dashboard");
+                      } else if (item.id === "rifas") {
+                        setCurrentAdminTab("rifas");
+                        setViewMode("list");
+                        setMainAdminSection("rifas");
+                      } else {
+                        setCurrentAdminTab(item.id as any);
+                        setViewMode("detail");
+                      }
+                    }}
+                    className={`w-full flex justify-between items-center px-3.5 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer font-bebas ${
+                      isActive
+                        ? "bg-[#A3E635] text-black shadow-md shadow-[#A3E635]/15 font-extrabold"
+                        : "text-zinc-400 hover:text-white hover:bg-[#1A1F1B]"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <IconComponent className="w-4 h-4 shrink-0" />
+                      <span>{item.label}</span>
+                    </div>
+                    {item.badge ? (
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] flex items-center justify-center ${isActive ? 'bg-black text-[#A3E635]' : 'bg-[#A3E635] text-black'}`}>
+                        {item.badge}
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </nav>
           </div>
 
-          <div className="flex gap-2">
-            <button
-              onClick={() => navigate("/")}
-              className="px-3.5 py-2 bg-zinc-900 hover:bg-zinc-850 rounded-xl text-[10px] font-black uppercase tracking-widest border border-zinc-800 flex items-center gap-1.5"
-            >
-              <Eye className="w-3.5 h-3.5 text-zinc-400" />
-              Acessar Site
-            </button>
+          {/* User Profile / Logout */}
+          <div className="p-6 border-t border-[#1A1F1B] flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-full bg-[#1A1F1B] border border-[#A3E635]/20 flex items-center justify-center font-bebas text-xs font-extrabold text-[#A3E635]">
+                AD
+              </div>
+              <div>
+                <p className="text-xs font-bold text-white uppercase font-bebas leading-none mb-0.5">Administrador</p>
+                <span className="text-[9px] text-[#A3E635] uppercase font-black tracking-widest leading-none">Online</span>
+              </div>
+            </div>
             <button
               onClick={logout}
-              className="p-2 bg-red-500/10 hover:bg-red-500/20 rounded-xl text-red-400 border border-red-500/20"
+              className="p-2 text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
             </button>
           </div>
-        </header>
+        </aside>
 
-        <main className="max-w-6xl mx-auto px-4 py-8 space-y-8">
-          {mainAdminSection === "loja" ? (
-            <AdminProducts />
-          ) : mainAdminSection === "winners_hall" ? (
-            <div className="space-y-6">
+        {/* Mobile Header Menu */}
+        <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+          <header className="md:hidden border-b border-[#1A1F1B] bg-[#111513] sticky top-0 z-30 px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-[#A3E635]" />
+              <h1 className="text-sm font-black uppercase tracking-wider text-white font-bebas">RifaMaster</h1>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                value={currentAdminTab}
+                onChange={(e) => {
+                  const val = e.target.value as any;
+                  if (val === "overview") {
+                    setCurrentAdminTab("overview");
+                    setViewMode("detail");
+                    setActiveTab("dashboard");
+                  } else if (val === "rifas") {
+                    setCurrentAdminTab("rifas");
+                    setViewMode("list");
+                    setMainAdminSection("rifas");
+                  } else if (val === "orders") {
+                    setCurrentAdminTab("orders");
+                    setViewMode("detail");
+                    setActiveTab("orders");
+                  } else if (val === "customers") {
+                    setCurrentAdminTab("customers");
+                    setViewMode("detail");
+                    setActiveTab("customers");
+                  } else if (val === "cotas") {
+                    setCurrentAdminTab("cotas");
+                    setViewMode("detail");
+                    setActiveTab("dashboard");
+                  } else if (val === "winners") {
+                    setCurrentAdminTab("winners");
+                    setViewMode("list");
+                    setMainAdminSection("winners_hall");
+                  } else if (val === "planning") {
+                    setCurrentAdminTab("planning");
+                    setViewMode("detail");
+                    setActiveTab("dashboard");
+                  } else if (val === "audit") {
+                    setCurrentAdminTab("audit");
+                  } else if (val === "store") {
+                    setCurrentAdminTab("store");
+                    setViewMode("list");
+                    setMainAdminSection("loja");
+                  } else if (val === "settings") {
+                    setCurrentAdminTab("settings");
+                    setViewMode("detail");
+                    setActiveTab("settings");
+                  }
+                }}
+                className="bg-[#1A1F1B] border border-[#1A1F1B] text-xs font-black uppercase text-white rounded-xl px-3 py-2 outline-none cursor-pointer font-bebas"
+              >
+                <option value="overview">Visão Geral</option>
+                <option value="rifas">Minhas Rifas</option>
+                <option value="orders">Pedidos</option>
+                <option value="customers">Top Clientes</option>
+                <option value="cotas">Cotas</option>
+                <option value="winners">Resultados</option>
+                <option value="planning">Planejamento</option>
+                <option value="audit">Auditoria</option>
+                <option value="store">Loja Premium</option>
+                <option value="settings">Configurações</option>
+              </select>
+              <button
+                onClick={logout}
+                className="p-2 bg-red-500/10 text-red-400 rounded-xl"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </header>
+
+          <div className="flex-1 overflow-y-auto">
+            {children}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ==========================================
+  // VIEW MODE 1: "MINHAS RIFAS" (LIST SCREEN)
+  // ==========================================
+  if (viewMode === "list") {
+    return renderSidebarLayout(
+      <div className="space-y-8 pb-32">
+        <main className="max-w-6xl mx-auto px-4 sm:px-8 py-8 space-y-8">
+          {currentAdminTab === "audit" ? (
+          renderAuditLogs()
+        ) : mainAdminSection === "loja" ? (
+          <AdminProducts />
+        ) : mainAdminSection === "winners_hall" ? (
+          <div className="space-y-6">
               {/* HEADER AREA */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-zinc-950 border border-zinc-900 rounded-[2rem] p-6">
                 <div>
@@ -2363,7 +3280,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                                 onClick={async () => {
                                   const newStatus = w.status === "Destaque" ? "Normal" : "Destaque";
                                   try {
-                                    await adminService.updateWinner("", w.id, { status: newStatus });
+                                    await adminService.updateWinner(getAdminToken(), w.id, { status: newStatus });
                                   } catch (err: any) {
                                     alert("Erro ao alternar status: " + err.message);
                                   }
@@ -2393,7 +3310,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                                       message: `Deseja realmente remover ${w.winnerName} do Hall da Fama? Esta ação é irreversível.`,
                                       onConfirm: async () => {
                                         try {
-                                          await adminService.deleteWinnerHistory("", w.id);
+                                          await adminService.deleteWinnerHistory(getAdminToken(), w.id);
                                           setConfirmAction(null);
                                           alert("Ganhador removido do Hall da Fama!");
                                         } catch (err: any) {
@@ -2659,14 +3576,47 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                           Resetar
                         </button>
 
-                        <button
-                          onClick={() => handleArchiveRaffle(raffle.id)}
-                          className="py-2.5 px-2 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-zinc-400 rounded-xl text-[10px] font-bold uppercase flex items-center justify-center gap-1 cursor-pointer transition-all"
-                          title="Arquivar Rifa"
-                        >
-                          <Archive className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                          Arquivar
-                        </button>
+                        {raffle.status === "arquivada" ? (
+                          <button
+                            onClick={() => handleUnarchiveRaffle(raffle.id)}
+                            className="py-2.5 px-2 bg-violet-600/20 hover:bg-violet-600/30 border border-violet-500/40 text-violet-300 rounded-xl text-[10px] font-bold uppercase flex items-center justify-center gap-1 cursor-pointer transition-all"
+                            title="Desarquivar Rifa"
+                          >
+                            <FolderOpen className="w-3.5 h-3.5 text-violet-400 shrink-0" />
+                            Desarquivar
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleArchiveRaffle(raffle.id)}
+                            className="py-2.5 px-2 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-zinc-400 rounded-xl text-[10px] font-bold uppercase flex items-center justify-center gap-1 cursor-pointer transition-all"
+                            title="Arquivar Rifa"
+                          >
+                            <Archive className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                            Arquivar
+                          </button>
+                        )}
+
+                        {(!raffle.winnerNumber) && (
+                          <button
+                            onClick={() => handleOpenMarkAsDrawn(raffle)}
+                            className="py-2.5 px-2 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-xl text-[10px] font-bold uppercase flex items-center justify-center gap-1 cursor-pointer transition-all"
+                            title="Colocar Sorteio Realizado"
+                          >
+                            <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            Sorteio
+                          </button>
+                        )}
+
+                        {raffle.status !== "encerrada" && raffle.status !== "arquivada" && (
+                          <button
+                            onClick={() => handleEndRaffle(raffle.id)}
+                            className="py-2.5 px-2 bg-red-950/30 hover:bg-red-900/40 border border-red-500/40 text-red-400 rounded-xl text-[10px] font-bold uppercase flex items-center justify-center gap-1 cursor-pointer transition-all"
+                            title="Encerrar Rifa Manualmente"
+                          >
+                            <Power className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                            Encerrar
+                          </button>
+                        )}
 
                         <button
                           onClick={() => handleDeleteRaffle(raffle.id, raffle.title)}
@@ -2699,6 +3649,66 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   <p className="text-xs text-zinc-500">
                     {editingRaffleItem ? "Atualize as configurações da rifa." : "Preencha os dados da sua nova campanha."}
                   </p>
+                  
+                  {/* SWITCH RAFFLE SELECTOR */}
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase text-zinc-500">Editar outra:</span>
+                    <select
+                      value={editingRaffleItem ? editingRaffleItem.id : ""}
+                      onChange={(e) => {
+                        const targetRaffle = raffles.find(r => r.id === e.target.value);
+                        if (targetRaffle) {
+                          setEditingRaffleItem(targetRaffle);
+                          setModalTitle(targetRaffle.title || "");
+                          setModalDescription(targetRaffle.description || "");
+                          setModalPrice(String(targetRaffle.price || 10));
+                          setModalTotalNumbers(String(targetRaffle.totalNumbers || 100));
+                          setModalImageUrl(targetRaffle.imageUrl || "");
+                          setModalPixKey(targetRaffle.pixKey || "");
+                          setModalPixReceiver(targetRaffle.pixReceiver || "");
+                          setModalPixBank(targetRaffle.pixBank || "");
+                          setModalPixPhone(targetRaffle.pixPhone || "");
+                          setModalPromoEnabled(Boolean(targetRaffle.promotionEnabled));
+                          setModalPromoBuy(String(targetRaffle.promotionBuy || 5));
+                          setModalPromoBonus(String(targetRaffle.promotionBonus || 1));
+                          setModalPurchaseMode(targetRaffle.purchaseMode || "manual");
+                          setModalDrawMode(targetRaffle.drawMode || "automatico");
+                          setModalFederalConcurso(targetRaffle.federalConcurso || "");
+                          setModalFederalData(targetRaffle.federalData || "");
+                          setModalFederalRegra(targetRaffle.federalRegra || "Último dígito do 1º prêmio");
+                        } else {
+                          // Switching back to creation mode
+                          setEditingRaffleItem(null);
+                          setModalTitle("");
+                          setModalDescription("");
+                          setModalPrice("10");
+                          setModalTotalNumbers("100");
+                          setModalImageUrl("");
+                          // Keep default pix key configurations if available
+                          const defaultRaffle = raffles[0];
+                          if (defaultRaffle) {
+                            setModalPixKey(defaultRaffle.pixKey || "");
+                            setModalPixReceiver(defaultRaffle.pixReceiver || "");
+                            setModalPixBank(defaultRaffle.pixBank || "");
+                            setModalPixPhone(defaultRaffle.pixPhone || "");
+                          }
+                          setModalPromoEnabled(false);
+                          setModalPromoBuy("5");
+                          setModalPromoBonus("1");
+                          setModalPurchaseMode("manual");
+                          setModalDrawMode("automatico");
+                        }
+                      }}
+                      className="bg-zinc-900 border border-zinc-850 text-[10px] font-black uppercase text-white rounded-xl px-2.5 py-1.5 outline-none cursor-pointer focus:border-violet-500"
+                    >
+                      <option value="">-- CRIAR NOVA RIFA --</option>
+                      {raffles.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.title || "Sem Título"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <button
                   onClick={() => setShowRaffleModal(false)}
@@ -2899,6 +3909,61 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   )}
                 </div>
 
+                {/* PROMOÇÃO E NÚMEROS BÔNUS */}
+                <div className="space-y-4 pt-2 border-t border-zinc-900">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-violet-400 block font-bebas">⚡ Regras de Números Bônus</span>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={modalPromoEnabled}
+                        onChange={(e) => setModalPromoEnabled(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-zinc-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#A3E635]"></div>
+                    </label>
+                  </div>
+
+                  {modalPromoEnabled ? (
+                    <div className="space-y-3 bg-zinc-900/50 p-4 rounded-2xl border border-zinc-850">
+                      <p className="text-[10px] text-zinc-400">
+                        Configure o método "compre X ganhe Y" (exemplo: compre 2 ganhe 1 de bônus).
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black uppercase text-zinc-500 font-bebas">Compre (Quantas cotas)</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={modalPromoBuy}
+                            onChange={(e) => setModalPromoBuy(e.target.value)}
+                            placeholder="Ex: 2"
+                            className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-[11px] text-white font-mono outline-none focus:border-violet-500"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black uppercase text-zinc-500 font-bebas">Ganhe (Bônus grátis)</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={modalPromoBonus}
+                            onChange={(e) => setModalPromoBonus(e.target.value)}
+                            placeholder="Ex: 1"
+                            className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-[11px] text-white font-mono outline-none focus:border-violet-500"
+                          />
+                        </div>
+                      </div>
+                      <p className="text-[9px] text-zinc-500 italic mt-1 text-center bg-black/40 py-1 rounded">
+                        Método Ativo: Compre {modalPromoBuy} ganhe {modalPromoBonus} de bônus
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-zinc-500 leading-normal">
+                      Esta rifa não terá números bônus promocionais.
+                    </p>
+                  )}
+                </div>
+
                 <button
                   type="submit"
                   disabled={isSubmittingRaffleModal}
@@ -2930,6 +3995,24 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   <p className="text-xs text-zinc-500 mt-0.5">
                     Atualize os dados e propague para todas as rifas ativas.
                   </p>
+                  
+                  {/* SELECTOR FOR DESIRED RAFFLE */}
+                  <div className="mt-3 flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase text-zinc-500">Selecionar Rifa Ativa:</span>
+                    <select
+                      value={selectedRaffleId}
+                      onChange={(e) => {
+                        setSelectedRaffleId(e.target.value);
+                      }}
+                      className="bg-zinc-900 border border-zinc-800 text-[10px] font-black uppercase text-white rounded-xl px-2.5 py-1.5 outline-none cursor-pointer focus:border-violet-500"
+                    >
+                      {raffles.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.title || "Sem Título"}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <button
                   onClick={() => setShowGlobalPixModal(false)}
@@ -3026,57 +4109,45 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   // ==========================================
   // VIEW MODE 2: SPECIFIC RAFFLE DASHBOARD
   // ==========================================
-  return (
-    <div id="dashboard-layout-root" className="min-h-screen bg-black text-white pb-32">
-      {/* HEADER */}
-      <header className="border-b border-zinc-900 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-30 px-4 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
+  return renderSidebarLayout(
+    <div className="space-y-6 pb-32">
+      <main className="max-w-5xl mx-auto px-4 sm:px-8 py-6 space-y-6">
+        <div className="flex items-center justify-between">
           <button
-            onClick={() => setViewMode("list")}
-            className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-zinc-300 rounded-xl text-xs font-bold uppercase flex items-center gap-1.5 cursor-pointer transition-all"
+            onClick={() => {
+              setCurrentAdminTab("rifas");
+              setViewMode("list");
+              setMainAdminSection("rifas");
+            }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-[#111513] hover:bg-[#1A1F1B] border border-[#1A1F1B] text-zinc-300 hover:text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer font-bebas"
           >
-            <ArrowLeft className="w-4 h-4 text-violet-400" />
-            <span className="hidden sm:inline">Minhas Rifas</span>
-          </button>
-
-          <div className="h-6 w-px bg-zinc-850" />
-
-          {/* RAFFLE SELECTOR DROPDOWN */}
-          <div className="relative">
-            <select
-              value={selectedRaffleId}
-              onChange={(e) => setSelectedRaffleId(e.target.value)}
-              className="bg-zinc-900 border border-zinc-800 text-white text-xs font-black uppercase rounded-xl px-3 py-2 pr-8 appearance-none outline-none cursor-pointer"
-            >
-              {raffles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.title || "Rifa Sem Título"} ({r.id})
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 text-zinc-400 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={() => navigate("/")}
-            className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-850 rounded-lg text-[10px] font-black uppercase tracking-widest border border-zinc-800"
-          >
-            Acessar Site
-          </button>
-          <button
-            onClick={logout}
-            className="p-1.5 bg-red-500/10 hover:bg-red-500/20 rounded-lg text-red-400"
-          >
-            <LogOut className="w-4 h-4" />
+            <ArrowLeft className="w-4 h-4 text-[#A3E635]" />
+            Voltar para Lista de Campanhas
           </button>
         </div>
-      </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
-        {/* TAB CONDITIONAL RENDERING */}
-        {activeTab === "dashboard" && (
+
+
+      {/* If currentAdminTab is audit, show audit logs */}
+      {currentAdminTab === "audit" && <AuditView selectedRaffleId={selectedRaffleId} />}
+
+      {/* If currentAdminTab is notifications, show notifications */}
+      {currentAdminTab === "notifications" && <NotificationsView />}
+
+      {/* If currentAdminTab is cotas, show cotas grid */}
+      {currentAdminTab === "cotas" && renderCotasGrid()}
+
+      {/* If currentAdminTab is planning, show planning calculations */}
+      {currentAdminTab === "planning" && renderPlanningSection()}
+
+      {/* If currentAdminTab is store, show AdminProducts */}
+      {currentAdminTab === "store" && <AdminProducts />}
+
+      {/* If currentAdminTab is winners (Sorteios), show draws */}
+      {currentAdminTab === "winners" && <DrawsView selectedRaffleId={selectedRaffleId} raffleConfig={raffleConfig} />}
+
+      {/* TAB CONDITIONAL RENDERING */}
+      {currentAdminTab === "overview" && activeTab === "dashboard" && (
           <div className="space-y-6">
             <div className="bg-gradient-to-r from-violet-950/40 via-zinc-950 to-zinc-950 border border-violet-500/10 rounded-3xl p-6 flex flex-col md:flex-row items-center justify-between gap-4">
               <div>
@@ -3119,6 +4190,16 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   )}
                 </button>
 
+                {raffleConfig.status !== "encerrada" && (
+                  <button
+                    onClick={() => handleEndRaffle(selectedRaffleId)}
+                    className="px-4 py-2.5 bg-red-950/30 hover:bg-red-900/40 border border-red-500/30 text-red-400 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all flex items-center gap-1.5"
+                  >
+                    <Power className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                    Encerrar Rifa
+                  </button>
+                )}
+
                 <button
                   onClick={() => handleResetRaffle(selectedRaffleId, raffleConfig.title)}
                   disabled={isClearing}
@@ -3138,12 +4219,13 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4">
               {[
-                { label: "Arrecadado", val: `R$ ${stats.arrecadado.toFixed(2).replace(".", ",")}`, color: "text-emerald-400" },
-                { label: "Pendente", val: `R$ ${stats.aEntrar.toFixed(2).replace(".", ",")}`, color: "text-amber-400" },
-                { label: "Pagas", val: `${stats.countPaid} un`, color: "text-white" },
+                { label: "Cotas Vendidas", val: `${stats.countPaid} un`, color: "text-white" },
+                { label: "Receita Obtida", val: `R$ ${stats.arrecadado.toFixed(2).replace(".", ",")}`, color: "text-emerald-400" },
+                { label: "Reservadas", val: `${stats.countReserved} un`, color: "text-amber-500" },
                 { label: "Disponíveis", val: `${stats.countAvailable} un`, color: "text-zinc-500" },
+                { label: "Receita Pendente", val: `R$ ${stats.aEntrar.toFixed(2).replace(".", ",")}`, color: "text-amber-400" },
               ].map((s, i) => (
                 <div key={i} className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex flex-col justify-between h-20">
                   <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500">{s.label}</span>
@@ -3205,91 +4287,146 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 </div>
               </div>
             </div>
+
+            <PurchasesView selectedRaffleId={selectedRaffleId} limit={5} compact />
           </div>
         )}
 
-        {activeTab === "orders" && (
+        {/* ORDERS TAB WITH SUPABASE PURCHASES */}
+        {currentAdminTab === "orders" && <PurchasesView selectedRaffleId={selectedRaffleId} />}
+
+        {/* CUSTOMERS TAB (NEW) */}
+        {currentAdminTab === "customers" && (
           <div className="space-y-6">
-            <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-4.5 flex flex-col sm:flex-row items-center gap-4 justify-between">
-              <div className="relative w-full sm:max-w-xs">
-                <Search className="w-3.5 h-3.5 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Pesquisar pedido..."
-                  value={adminSearch}
-                  onChange={(e) => setAdminSearch(e.target.value)}
-                  className="w-full bg-black border border-zinc-900 rounded-xl pl-9 pr-3 py-2 text-xs text-white outline-none"
-                />
+            {/* CLIENTS SUMMARY KPIS */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex flex-col justify-between">
+                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Total de Clientes</span>
+                <span className="text-xl font-black text-lime-400 font-mono mt-1">{aggregatedCustomers.length}</span>
               </div>
-              <div className="flex bg-black p-1 rounded-xl gap-1 w-full sm:w-auto">
-                {["Todos", "Pago", "Pendente", "Cancelado"].map((o) => (
-                  <button
-                    key={o}
-                    onClick={() => setAdminStatusFilter(o)}
-                    className={`flex-1 sm:flex-none px-3 py-1.5 text-[9px] font-black uppercase rounded-lg ${
-                      adminStatusFilter === o ? "bg-violet-600 text-white" : "text-zinc-400"
-                    }`}
-                  >
-                    {o}
-                  </button>
-                ))}
+              <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex flex-col justify-between">
+                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Maior Comprador</span>
+                <span className="text-sm font-black text-white truncate mt-1">
+                  {aggregatedCustomers[0] ? `${aggregatedCustomers[0].name} (R$ ${aggregatedCustomers[0].totalSpent.toFixed(2)})` : "Nenhum"}
+                </span>
+              </div>
+              <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex flex-col justify-between">
+                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Ticket Médio Geral</span>
+                <span className="text-xl font-black text-emerald-400 font-mono mt-1">
+                  R$ {(
+                    aggregatedCustomers.length > 0
+                      ? aggregatedCustomers.reduce((acc, c) => acc + (c.ordersCount > 0 ? c.totalSpent / c.ordersCount : 0), 0) / aggregatedCustomers.length
+                      : 0
+                  ).toFixed(2).replace(".", ",")}
+                </span>
+              </div>
+              <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-4 flex flex-col justify-between">
+                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Total Cotas Clientes</span>
+                <span className="text-xl font-black text-amber-400 font-mono mt-1">
+                  {aggregatedCustomers.reduce((acc, c) => acc + c.totalCotas, 0)} cotas
+                </span>
               </div>
             </div>
 
-            <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-5">
+            {/* RANKING & SEARCH FILTERS */}
+            <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-4 flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="relative w-full md:w-80">
+                <Search className="w-4 h-4 text-zinc-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Buscar cliente por nome ou WhatsApp..."
+                  value={customerSearch}
+                  onChange={(e) => setCustomerSearch(e.target.value)}
+                  className="w-full bg-black border border-zinc-800 rounded-xl pl-10 pr-3 py-2 text-xs text-white outline-none focus:border-lime-400"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
+                <span className="text-[10px] font-black uppercase text-zinc-500 shrink-0">Ordenar por:</span>
+                <select
+                  value={customerSort}
+                  onChange={(e) => setCustomerSort(e.target.value as any)}
+                  className="bg-black border border-zinc-800 text-lime-400 text-xs font-bold rounded-xl px-3 py-2 outline-none cursor-pointer"
+                >
+                  <option value="spent">Maior Valor Gasto (R$)</option>
+                  <option value="cotas">Maior Qtd. de Cotas</option>
+                  <option value="orders">Maior Qtd. de Compras</option>
+                  <option value="ticket">Maior Ticket Médio</option>
+                </select>
+              </div>
+            </div>
+
+            {/* CUSTOMERS TABLE */}
+            <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-5 overflow-hidden">
               <div className="overflow-x-auto rounded-2xl border border-zinc-900">
-                <table className="w-full text-left text-xs bg-black/20">
+                <table className="w-full text-left text-xs bg-black/30">
                   <thead>
-                    <tr className="bg-zinc-950 text-[10px] text-zinc-500 uppercase font-black tracking-widest border-b border-zinc-900">
-                      <th className="p-3">Comprador</th>
-                      <th className="p-3 text-center">Cotas</th>
-                      <th className="p-3 text-center">Valor</th>
-                      <th className="p-3 text-right">Ações</th>
+                    <tr className="bg-zinc-900/80 text-[10px] text-zinc-400 uppercase font-black tracking-wider border-b border-zinc-850">
+                      <th className="p-3.5 text-center">Pos.</th>
+                      <th className="p-3.5">Cliente</th>
+                      <th className="p-3.5">Telefone / WhatsApp</th>
+                      <th className="p-3.5 text-center">Compras</th>
+                      <th className="p-3.5 text-center">Total Cotas</th>
+                      <th className="p-3.5 text-right">Valor Comprado</th>
+                      <th className="p-3.5 text-right">Ticket Médio</th>
+                      <th className="p-3.5 text-center">Ação</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-900/50">
-                    {filteredOrders.length === 0 ? (
+                  <tbody className="divide-y divide-zinc-900">
+                    {aggregatedCustomers.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="p-8 text-center text-zinc-500 text-xs font-bold uppercase">
-                          Nenhum pedido encontrado para esta rifa.
+                        <td colSpan={8} className="p-10 text-center text-zinc-500 text-xs font-bold uppercase">
+                          Nenhum cliente registrado ainda.
                         </td>
                       </tr>
                     ) : (
-                      filteredOrders.slice(0, 100).map((o) => {
-                        const s = (o.status || "").toLowerCase();
-                        const isPaid = s === "pago" || s === "paid" || s === "approved";
-                        const isPending = s === "pending_payment" || s === "aguardando" || s === "reserved";
+                      aggregatedCustomers.map((cust, idx) => {
+                        const ticketAvg = cust.ordersCount > 0 ? cust.totalSpent / cust.ordersCount : 0;
+                        const cleanPhone = cust.phone.replace(/\D/g, "");
+                        const waLink = `https://wa.me/55${cleanPhone}`;
+
                         return (
-                          <tr key={o.id} className="hover:bg-zinc-900/10">
-                            <td className="p-3">
-                              <span className="font-extrabold text-white block uppercase">{o.name}</span>
-                              <span className="text-[10px] font-mono text-zinc-500">{o.phone}</span>
+                          <tr
+                            key={cust.phone}
+                            onClick={() => setSelectedCustomerDetail(cust)}
+                            className="hover:bg-zinc-900/50 cursor-pointer transition-colors"
+                          >
+                            <td className="p-3.5 text-center font-mono font-black text-zinc-500">
+                              {idx === 0 ? "🥇 #1" : idx === 1 ? "🥈 #2" : idx === 2 ? "🥉 #3" : `#${idx + 1}`}
                             </td>
-                            <td className="p-3 text-center font-mono text-[10px] text-zinc-400">
-                              {(o.nums || []).join(", ")}
+                            <td className="p-3.5 font-bold text-white uppercase">
+                              {cust.name}
                             </td>
-                            <td className="p-3 text-center font-bold font-mono text-emerald-400">
-                              R$ {Number(o.val || 0).toFixed(2)}
+                            <td className="p-3.5" onClick={(e) => e.stopPropagation()}>
+                              <a
+                                href={waLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-lg font-mono text-[11px] font-bold transition-all"
+                              >
+                                <MessageCircle className="w-3 h-3" />
+                                {cust.phone}
+                              </a>
                             </td>
-                            <td className="p-3 text-right">
-                              <div className="flex justify-end gap-1.5">
-                                {isPending && (
-                                  <button
-                                    onClick={() => handleAction(o.id, "confirm")}
-                                    className="px-2.5 py-1 bg-emerald-500 text-black text-[9px] font-black uppercase rounded"
-                                  >
-                                    Aprovar
-                                  </button>
-                                )}
-                                {isPaid && (
-                                  <button
-                                    onClick={() => handleAction(o.id, "refund")}
-                                    className="px-2.5 py-1 bg-zinc-900 hover:bg-red-500/10 border border-zinc-800 text-red-400 text-[9px] font-black uppercase rounded"
-                                  >
-                                    Estorno
-                                  </button>
-                                )}
-                              </div>
+                            <td className="p-3.5 text-center font-mono font-bold text-zinc-300">
+                              {cust.ordersCount}x
+                            </td>
+                            <td className="p-3.5 text-center font-mono font-bold text-amber-400">
+                              {cust.totalCotas} cotas
+                            </td>
+                            <td className="p-3.5 text-right font-mono font-black text-lime-400">
+                              R$ {cust.totalSpent.toFixed(2).replace(".", ",")}
+                            </td>
+                            <td className="p-3.5 text-right font-mono font-bold text-zinc-400">
+                              R$ {ticketAvg.toFixed(2).replace(".", ",")}
+                            </td>
+                            <td className="p-3.5 text-center" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                onClick={() => setSelectedCustomerDetail(cust)}
+                                className="px-3 py-1 bg-zinc-900 hover:bg-lime-400 hover:text-black border border-zinc-800 text-zinc-300 rounded-lg text-[10px] font-black uppercase transition-all cursor-pointer"
+                              >
+                                Detalhes
+                              </button>
                             </td>
                           </tr>
                         );
@@ -3299,10 +4436,91 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 </table>
               </div>
             </div>
+
+            {/* CUSTOMER DETAIL MODAL / DRAWER */}
+            {selectedCustomerDetail && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+                <div className="bg-zinc-950 border border-zinc-800 w-full max-w-2xl rounded-[2.5rem] p-6 sm:p-8 space-y-6 shadow-2xl relative">
+                  <div className="flex justify-between items-start border-b border-zinc-900 pb-4">
+                    <div>
+                      <span className="text-[10px] font-black uppercase text-lime-400 tracking-widest">Relatório de Cliente</span>
+                      <h3 className="text-xl font-black text-white uppercase mt-0.5">{selectedCustomerDetail.name}</h3>
+                      <p className="text-xs text-zinc-400 font-mono mt-1 flex items-center gap-2">
+                        <span>📱 WhatsApp: {selectedCustomerDetail.phone}</span>
+                        <a
+                          href={`https://wa.me/55${selectedCustomerDetail.phone.replace(/\D/g, "")}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-emerald-400 hover:underline font-bold text-[10px]"
+                        >
+                          (Abrir WhatsApp)
+                        </a>
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setSelectedCustomerDetail(null)}
+                      className="p-2 text-zinc-500 hover:text-white bg-zinc-900 rounded-xl cursor-pointer"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-black p-4 rounded-2xl border border-zinc-900">
+                    <div>
+                      <span className="text-[9px] font-black uppercase text-zinc-500 block">Total Gasto</span>
+                      <span className="text-sm font-black text-lime-400 font-mono">R$ {selectedCustomerDetail.totalSpent.toFixed(2).replace(".", ",")}</span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-black uppercase text-zinc-500 block">Total Cotas</span>
+                      <span className="text-sm font-black text-amber-400 font-mono">{selectedCustomerDetail.totalCotas} un</span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-black uppercase text-zinc-500 block">Qtd Compras</span>
+                      <span className="text-sm font-black text-white font-mono">{selectedCustomerDetail.ordersCount} pedidos</span>
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-black uppercase text-zinc-500 block">Ticket Médio</span>
+                      <span className="text-sm font-black text-emerald-400 font-mono">
+                        R$ {(selectedCustomerDetail.ordersCount > 0 ? selectedCustomerDetail.totalSpent / selectedCustomerDetail.ordersCount : 0).toFixed(2).replace(".", ",")}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="text-xs font-black uppercase text-zinc-400 tracking-wider">Histórico de Pedidos do Cliente</h4>
+                    <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                      {selectedCustomerDetail.orders.map((ord: any) => {
+                        const s = (ord.status || "").toLowerCase();
+                        const isPaid = s === "pago" || s === "paid" || s === "approved";
+                        const isPending = s === "pending_payment" || s === "aguardando" || s === "reserved";
+                        return (
+                          <div key={ord.id} className="bg-black/60 border border-zinc-900 rounded-2xl p-3 flex items-center justify-between gap-3 text-xs">
+                            <div>
+                              <div className="font-bold text-white uppercase line-clamp-1">{ord.raffleTitle || "Rifa"}</div>
+                              <div className="text-[10px] font-mono text-zinc-500 mt-0.5">
+                                Cotas: {(ord.nums || []).join(", ")} | {ord.createdAt ? new Date(ord.createdAt).toLocaleString("pt-BR") : ""}
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="font-mono font-black text-lime-400">R$ {Number(ord.val || 0).toFixed(2)}</div>
+                              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md inline-block mt-1 ${
+                                isPaid ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : isPending ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" : "bg-red-500/10 text-red-400 border border-red-500/20"
+                              }`}>
+                                {isPaid ? "Pago" : isPending ? "Pendente" : "Cancelado"}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {activeTab === "draw" && (
+        {currentAdminTab === "settings" && activeTab === "draw" && (
           <div className="space-y-6">
             <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-6 space-y-6">
               <div className="text-center space-y-2 border-b border-zinc-900 pb-4">
@@ -3331,7 +4549,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                       setIsSavingDrawMode(true);
                       try {
                         const token = localStorage.getItem("admin_token") || "";
-                        await adminService.saveConfig("", { ...raffleConfig, drawMode: newMode }, raffleConfig.isActive, selectedRaffleId);
+                        await adminService.saveConfig(getAdminToken(), { ...raffleConfig, drawMode: newMode }, raffleConfig.isActive, selectedRaffleId);
                         if (fetchRaffles) await fetchRaffles();
                       } catch (err) {
                         console.error("Erro ao salvar modo de sorteio:", err);
@@ -3359,15 +4577,18 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   </div>
 
                   <button
-                    onClick={async () => {
+                    onClick={() => {
                       if (calculatingRef.current) return;
-                      if (window.confirm("Deseja realmente iniciar o sorteio eletrônico RifaMaster?")) {
-                        calculatingRef.current = true;
-                        setIsCalculating(true);
-                        setIsDrawing(true);
-                        try {
-                          const token = localStorage.getItem("admin_token") || "";
-                          const res = await adminService.draw(token, selectedRaffleId);
+                      setConfirmAction({
+                        message: "Deseja realmente iniciar o sorteio eletrônico RifaMaster?",
+                        onConfirm: async () => {
+                          setConfirmAction(null);
+                          calculatingRef.current = true;
+                          setIsCalculating(true);
+                          setIsDrawing(true);
+                          try {
+                            const token = getAdminToken();
+                            const res = await adminService.draw(token, selectedRaffleId);
                           
                           // Set up states for confirmation modal
                           const padSize = String(raffleConfig.totalNumbers || 100).length;
@@ -3380,7 +4601,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                           // Fetch latest orders in real-time from Firestore to ensure no sync latency
                           let currentOrders = orders;
                           try {
-                            const ordersSnap = await getDocs(collection(db, "orders"));
+                            const ordersQuery = query(collection(db, "orders"), where("raffleId", "==", selectedRaffleId || "current"));
+                            const ordersSnap = await getDocs(ordersQuery);
                             const freshOrders: any[] = [];
                             ordersSnap.forEach((docSnap) => {
                               const data = docSnap.data() as any;
@@ -3465,7 +4687,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                           calculatingRef.current = false;
                         }
                       }
-                    }}
+                    });
+                  }}
                     disabled={isDrawing || isCalculating || isSavingDrawMode}
                     className="w-full py-4 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest cursor-pointer shadow-lg shadow-violet-600/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -3503,7 +4726,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                           setIsSavingDrawMode(true);
                           try {
                             const token = localStorage.getItem("admin_token") || "";
-                            await adminService.saveConfig("", { ...raffleConfig, federalRegra: newRegra }, raffleConfig.isActive, selectedRaffleId);
+                            await adminService.saveConfig(getAdminToken(), { ...raffleConfig, federalRegra: newRegra }, raffleConfig.isActive, selectedRaffleId);
                             if (fetchRaffles) await fetchRaffles();
                           } catch (err) {
                             console.error("Erro ao salvar regra de sorteio:", err);
@@ -3762,15 +4985,19 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
                               <button 
-                                onClick={async () => {
-                                  if (window.confirm(`Tem certeza que deseja excluir ${w.winnerName} do Hall da Fama?`)) {
-                                    try {
-                                      await adminService.deleteWinnerHistory("", w.id);
-                                      alert("Ganhador removido do Hall da Fama!");
-                                    } catch (err: any) {
-                                      alert("Erro ao excluir: " + err.message);
+                                onClick={() => {
+                                  setConfirmAction({
+                                    message: `Tem certeza que deseja excluir ${w.winnerName} do Hall da Fama?`,
+                                    onConfirm: async () => {
+                                      try {
+                                        setConfirmAction(null);
+                                        await adminService.deleteWinnerHistory(getAdminToken(), w.id);
+                                        alert("Ganhador removido do Hall da Fama!");
+                                      } catch (err: any) {
+                                        alert("Erro ao excluir: " + err.message);
+                                      }
                                     }
-                                  }
+                                  });
                                 }} 
                                 className="p-2 bg-zinc-900 hover:bg-red-500/20 border border-zinc-800 text-red-400 rounded-lg transition-colors"
                                 title="Excluir Ganhador"
@@ -3872,7 +5099,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                       <button 
                         onClick={async () => {
                           try {
-                            await adminService.updateWinner("", editingWinner.id, {
+                            await adminService.updateWinner(getAdminToken(), editingWinner.id, {
                               winnerName: editingWinner.winnerName,
                               winnerNumber: editingWinner.winnerNumber,
                               prizeTitle: editingWinner.prizeTitle,
@@ -3991,7 +5218,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                             return;
                           }
                           try {
-                            await adminService.addWinnerHistory("", {
+                            await adminService.addWinnerHistory(getAdminToken(), {
                               winnerName: newWinnerData.winnerName,
                               winnerNumber: newWinnerData.winnerNumber,
                               prizeTitle: newWinnerData.prizeTitle,
@@ -4021,12 +5248,31 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
 
 
 
-        {activeTab === "settings" && (
+        {currentAdminTab === "settings" && (
           <div className="space-y-6">
             <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-6 space-y-6">
-              <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400 pb-3 border-b border-zinc-900">
-                Configurações da Rifa ({selectedRaffleId})
-              </h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-zinc-900">
+                <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400">
+                  Configurações da Rifa ({selectedRaffleId})
+                </h3>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase text-zinc-500">Selecionar Rifa:</span>
+                  <select
+                    value={selectedRaffleId}
+                    onChange={(e) => {
+                      const newId = e.target.value;
+                      setSelectedRaffleId(newId);
+                    }}
+                    className="bg-zinc-900 border border-zinc-800 text-xs font-black uppercase text-white rounded-xl px-3 py-2 outline-none cursor-pointer focus:border-violet-500"
+                  >
+                    {raffles.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.title || "Sem Título"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
               <form onSubmit={handleSaveConfig} className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black uppercase text-zinc-500">Título da Rifa</label>
@@ -4142,6 +5388,62 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
               </form>
             </div>
 
+            {/* LOJA PREMIUM CONFIGURATION */}
+            <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-6 space-y-4">
+              <div className="flex items-center gap-2">
+                <ShoppingBag className="w-5 h-5 text-orange-500" />
+                <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400">
+                  LOJA PREMIUM
+                </h3>
+              </div>
+              <p className="text-xs text-zinc-500">
+                Ative ou desative o módulo opcional da Loja RifaMaster. Quando desativado, o menu público e a página /loja serão ocultados.
+              </p>
+              
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    try {
+                      setIsSavingStoreEnabled(true);
+                      await storeService.setStoreEnabled(true);
+                    } catch (e: any) {
+                      console.error("Erro ao ativar loja: ", e);
+                    } finally {
+                      setIsSavingStoreEnabled(false);
+                    }
+                  }}
+                  disabled={isSavingStoreEnabled}
+                  className={`flex-1 py-3.5 rounded-xl text-xs font-black uppercase border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    isStoreEnabledGlobally
+                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 font-black"
+                      : "bg-black text-zinc-500 border-zinc-900 hover:text-zinc-400"
+                  }`}
+                >
+                  <Check className="w-4 h-4" /> Ativada
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      setIsSavingStoreEnabled(true);
+                      await storeService.setStoreEnabled(false);
+                    } catch (e: any) {
+                      console.error("Erro ao desativar loja: ", e);
+                    } finally {
+                      setIsSavingStoreEnabled(false);
+                    }
+                  }}
+                  disabled={isSavingStoreEnabled}
+                  className={`flex-1 py-3.5 rounded-xl text-xs font-black uppercase border transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    !isStoreEnabledGlobally
+                      ? "bg-red-500/10 text-red-400 border-red-500/30 font-black"
+                      : "bg-black text-zinc-500 border-zinc-900 hover:text-zinc-400"
+                  }`}
+                >
+                  <X className="w-4 h-4" /> Desativada
+                </button>
+              </div>
+            </div>
+
             <div className="bg-amber-500/5 border border-amber-500/10 rounded-3xl p-6 space-y-4">
               <h3 className="text-xs font-black uppercase tracking-wider text-amber-400">Resetar Cotas Desta Rifa</h3>
               <p className="text-xs text-zinc-500">Apaga todas as cotas vendidas, reservadas e pedidos associados apenas à rifa selecionada ({selectedRaffleId}). As configurações da rifa e o histórico global de ganhadores serão mantidos.</p>
@@ -4158,55 +5460,95 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         )}
       </main>
 
-      {/* BOTTOM NAV */}
-      <div className="fixed bottom-0 left-0 right-0 bg-zinc-950/95 border-t border-zinc-900/90 backdrop-blur-xl px-2 py-2 flex items-center justify-around z-40">
-        {[
-          { id: "dashboard", label: "Geral", icon: LayoutDashboard },
-          { id: "orders", label: "Pedidos", icon: ClipboardList, badge: unreadPaidCount },
-          { id: "draw", label: "Sortear", icon: Play },
-          { id: "settings", label: "Ajustes", icon: Settings },
-        ].map((tab) => {
-          const Icon = tab.icon;
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => {
-                setActiveTab(tab.id as any);
-                if (tab.id === "orders") {
-                  setUnreadPaidCount(0);
-                }
-              }}
-              className="relative flex flex-col items-center justify-center py-1 flex-1 cursor-pointer"
-            >
-              <div
-                className={`p-1.5 rounded-xl transition-all relative ${
-                  isActive ? "bg-violet-600/10 text-violet-400 scale-105" : "text-zinc-500 hover:text-zinc-300"
-                }`}
-              >
-                <Icon className="w-4.5 h-4.5" />
-                {tab.badge && tab.badge > 0 ? (
-                  <span className="absolute -top-1 -right-1 bg-emerald-500 text-zinc-950 font-black text-[9px] w-4 h-4 rounded-full flex items-center justify-center border-2 border-zinc-950 animate-bounce shadow-lg shadow-emerald-500/50">
-                    {tab.badge > 9 ? "9+" : tab.badge}
-                  </span>
-                ) : null}
-              </div>
-              <span
-                className={`text-[9px] mt-0.5 font-bold uppercase tracking-tight ${
-                  isActive ? "text-violet-400 font-extrabold" : "text-zinc-500"
-                }`}
-              >
-                {tab.label}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
       {/* DRAW CONFIRMATION & SHARED WINNERS HALL MODALS */}
       {renderDrawConfirmationModal()}
       {renderSharedWinnersHallModals()}
       {renderPaidToastsContainer()}
+
+      {markingAsDrawnRaffle && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto" onClick={() => setMarkingAsDrawnRaffle(null)}>
+          <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="text-lg font-black text-white flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-amber-500" /> Registrar Sorteio Realizado
+                </h3>
+                <p className="text-xs text-zinc-500 mt-1">Defina o ganhador e conclua esta rifa definitivamente.</p>
+              </div>
+              <button onClick={() => setMarkingAsDrawnRaffle(null)} className="p-1.5 text-zinc-500 hover:text-white bg-zinc-900 rounded-lg cursor-pointer">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* SELECTOR TO SWITCH RAFFLE WITHIN THE DRAW MODAL */}
+            <div className="mt-3 bg-zinc-900/40 border border-zinc-900 p-3.5 rounded-2xl flex items-center justify-between gap-4">
+              <span className="text-[10px] font-black uppercase text-zinc-400">Rifa Ativa:</span>
+              <select
+                value={markingAsDrawnRaffle.id}
+                onChange={(e) => {
+                  const r = raffles.find((x) => x.id === e.target.value);
+                  if (r) {
+                    setMarkingAsDrawnRaffle(r);
+                  }
+                }}
+                className="bg-zinc-950 border border-zinc-800 text-[10px] font-black uppercase text-white rounded-xl px-2.5 py-1.5 outline-none cursor-pointer focus:border-violet-500 max-w-[200px]"
+              >
+                {raffles.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.title || "Sem Título"}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <form onSubmit={handleSubmitManualDraw} className="space-y-4 mt-4">
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Número da Cota Ganhadora</label>
+                <input
+                  type="text"
+                  placeholder="Ex: 42 ou 057"
+                  value={manualWinnerNumberInput}
+                  onChange={(e) => setManualWinnerNumberInput(e.target.value)}
+                  className="w-full bg-black border border-zinc-900 rounded-xl p-3 text-white text-xs mt-1 outline-none focus:border-amber-500/50 font-mono text-center text-lg font-black tracking-widest"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Nome Completo do Ganhador</label>
+                <input
+                  type="text"
+                  placeholder="Ex: Carlos Silva"
+                  value={manualWinnerNameInput}
+                  onChange={(e) => setManualWinnerNameInput(e.target.value)}
+                  className="w-full bg-black border border-zinc-900 rounded-xl p-3 text-white text-xs mt-1 outline-none focus:border-amber-500/50 font-bold"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Telefone do Ganhador (Opcional)</label>
+                <input
+                  type="text"
+                  placeholder="Ex: (11) 99999-9999"
+                  value={manualWinnerPhoneInput}
+                  onChange={(e) => setManualWinnerPhoneInput(e.target.value)}
+                  className="w-full bg-black border border-zinc-900 rounded-xl p-3 text-white text-xs mt-1 outline-none focus:border-amber-500/50"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmittingManualDraw}
+                className="w-full py-3 bg-amber-500 hover:bg-amber-400 disabled:bg-zinc-800 disabled:text-zinc-500 text-black font-black text-xs uppercase rounded-xl cursor-pointer tracking-wider flex items-center justify-center gap-1 transition-all"
+              >
+                {isSubmittingManualDraw ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4 stroke-[2.5]" />}
+                CONFIRMAR SORTEIO E ENCERRAR RIFA
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

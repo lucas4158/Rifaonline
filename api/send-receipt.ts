@@ -1,23 +1,13 @@
 import "dotenv/config";
 import path from "path";
 import fs from "fs";
-import { initializeApp, getApps, getApp } from "firebase/app";
-import { getFirestore, doc, setDoc, setLogLevel } from "firebase/firestore";
 
-setLogLevel("silent");
+import { getAdminFirestore, isAdminInitialized } from "./_firebaseAdmin.js";
+
+
 
 // Initialize Firebase
-let db: any = null;
-try {
-  const configPath = path.join(process.cwd(), "firebase-applet-config.json");
-  if (fs.existsSync(configPath)) {
-    const firebaseConfig = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-    const firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-    db = getFirestore(firebaseApp, firebaseConfig.firestoreDatabaseId);
-  }
-} catch (err) {
-  console.error("❌ [Firebase Receipt] Init error:", err);
-}
+
 
 export default async function handler(req: any, res: any) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -42,9 +32,9 @@ export default async function handler(req: any, res: any) {
   console.log(`📠 [Receipt API] Received receipt for Order ID: ${orderId} (Client: ${name})`);
 
   // Write receipt details to a central Firestore receipts collection for tracking
-  if (db) {
+  if (isAdminInitialized()) {
     try {
-      await setDoc(doc(db, "receipts", orderId), {
+      await getAdminFirestore().collection("receipts").doc(orderId).set({
         orderId,
         name,
         phone,

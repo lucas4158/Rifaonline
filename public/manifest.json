@@ -1,6 +1,6 @@
 {
-  "name": "RifaMaster",
-  "short_name": "RifaMaster",
+  "name": "Rifa Master",
+  "short_name": "Rifa Master",
   "description": "Sistema de rifas 100% automatizado. Pagamento, reserva e confirmação instantânea.",
   "start_url": "/",
   "display": "standalone",

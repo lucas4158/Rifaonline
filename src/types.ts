@@ -3,7 +3,9 @@ export type Status =
   | "paid"
   | "reserved"
   | "selected"
-  | "pending_payment";
+  | "pending_payment"
+  | "expired"
+  | "cancelled";
 
 export interface NumberItem {
   id: string;
@@ -44,6 +46,7 @@ export interface UploadCallbacks {
 }
 
 export interface RaffleConfig {
+  soldCount?: number;
   id?: string;
   slug?: string;
   title: string;

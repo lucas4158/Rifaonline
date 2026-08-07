@@ -106,19 +106,13 @@ export const AdminProducts: React.FC<AdminProductsProps> = () => {
 
   const handleToggleStoreActivation = async () => {
     const newStatus = !storeConfig.isEnabled;
-    const confirmMsg = newStatus
-      ? "Deseja ATIVAR a Loja Virtual para os clientes?\n\nA aba 'Loja Premium' passará a ser exibida publicamente no site."
-      : "Deseja DESATIVAR a Loja Virtual?\n\nA aba 'Loja Premium' será oculta de todos os clientes, economizando recursos e banco de dados.";
-
-    if (window.confirm(confirmMsg)) {
-      try {
-        setTogglingStore(true);
-        await storeService.setStoreEnabled(newStatus);
-      } catch (err: any) {
-        alert("Erro ao alterar status da loja: " + err.message);
-      } finally {
-        setTogglingStore(false);
-      }
+    try {
+      setTogglingStore(true);
+      await storeService.setStoreEnabled(newStatus);
+    } catch (err: any) {
+      console.error("Erro ao alterar status da loja: ", err);
+    } finally {
+      setTogglingStore(false);
     }
   };
 
