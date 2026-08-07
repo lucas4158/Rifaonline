@@ -3498,7 +3498,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                         <div className="space-y-2 bg-black/40 p-3.5 rounded-2xl border border-zinc-900">
                           <div className="flex justify-between items-center text-[10px]">
                             <span className="font-bold text-zinc-400 uppercase">Vendas Realizadas</span>
-                            <span className="font-mono font-bold text-white">{soldN} / {totalN} cotas ({percentSold}%)</span>
+                            <span className="font-mono font-bold text-white">{percentSold}%</span>
                           </div>
 
                           <div className="w-full h-2 bg-zinc-900 rounded-full overflow-hidden">

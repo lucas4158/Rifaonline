@@ -3223,7 +3223,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               {/* Progress details */}
                               <div className="flex justify-between items-end text-xs">
                                 <span className="text-zinc-500 font-semibold uppercase tracking-wider text-[10px]">
-                                  {stats.soldCount} de {raffle.totalNumbers || 100} cotas
+                                  Progresso
                                 </span>
                                 <span className="text-[#a3e635] font-black text-sm">{stats.percentSold.toFixed(1)}%</span>
                               </div>
