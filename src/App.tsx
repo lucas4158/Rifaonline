@@ -1533,7 +1533,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       }
     }
 
-    const targets = numsToClear || selectedNumbers;
+    const targets = numsToClear || Array.from(new Set([...selectedNumbers, ...submittedNumbers]));
     if (targets.length === 0) return;
     try {
       const promises = targets.map(async (numId) => {
@@ -6658,7 +6658,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                 
                 <button
                   onClick={async () => {
-                    setShowExitConfirm(false);
+                    const targetsToRelease = Array.from(new Set([...selectedNumbers, ...submittedNumbers]));
                     if (mpPaymentInfo?.orderId) {
                       try {
                         const orderDocRef = doc(db, "orders", mpPaymentInfo.orderId);
@@ -6669,6 +6669,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                             console.log("🛑 Order is already Pago/paid. Aborting exit cancellation.");
                             setPaymentStep("finished");
                             alert("Seu pagamento já foi aprovado e seu pedido está confirmado! Suas cotas estão garantidas.");
+                            setShowExitConfirm(false);
                             return;
                           }
                         }
@@ -6678,14 +6679,15 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         console.error("Error canceling order remotely on desist:", err);
                       }
                     }
-                    await clearMyLocks();
+                    await clearMyLocks(targetsToRelease);
                     recentlyToggledRef.current = {};
                     setSelectedNumbers([]);
                     setSubmittedNumbers([]);
-                    setPaymentStep("data");
                     setMpPaymentInfo(null);
                     setPaymentExpiresAt(null);
                     setLastBonusNums([]);
+                    setShowExitConfirm(false);
+                    setPaymentStep("data");
                   }}
                   className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-400 font-bold py-3 rounded-xl transition-all active:scale-95 text-sm hover:text-white"
                 >

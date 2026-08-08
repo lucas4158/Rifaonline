@@ -94,10 +94,13 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
     setSearched(true);
 
     try {
-      // Etapa 4 - Otimização: Query indexada, eliminando full scan de 'orders'
-      // Assumindo que no `create-pix.ts` foi gravado exatamente o `phone` do input (não mascarado ou formatado do mesmo jeito).
-      // Se necessário, uma dupla query ou `in` poderia ser feita. Faremos a busca exata pela string fornecida.
-      const q = query(collection(db, "orders"), where("phone", "==", phoneDigits.trim()));
+      const canonicalPhone = phoneDigits.replace(/\D/g, "");
+      if (!canonicalPhone) {
+        setOrders([]);
+        return;
+      }
+
+      const q = query(collection(db, "orders"), where("phone", "==", canonicalPhone));
       const snap = await getDocs(q);
       
       const found: any[] = [];

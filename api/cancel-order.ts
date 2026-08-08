@@ -136,6 +136,16 @@ export default async function handler(req: any, res: any) {
           // Let it degrade gracefully
         })
       );
+
+      // 6. Delete temporary root lock documents in /locks/{num}
+      const lockDocRef = getAdminFirestore().collection("locks").doc(num);
+      promises.push(
+        lockDocRef.delete().then(() => {
+          console.log(`✅ [CancelOrder API] Success deleting root lock doc for number ${num}`);
+        }).catch(err => {
+          console.error(`❌ [CancelOrder API] Failed to delete root lock doc for number ${num}:`, err);
+        })
+      );
     });
 
     await Promise.all(promises);
