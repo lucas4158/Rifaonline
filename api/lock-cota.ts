@@ -45,13 +45,12 @@ export default async function handler(req: any, res: any) {
       }
 
       const resultArr = await db.runTransaction(async (transaction: any) => {
-        // Read locks
-        const readPromises = idsToProcess.map((num: string) => transaction.get(db.collection("locks").doc(num)));
-        // Read actual raffle numbers to prevent booking already paid items
-        const numReadPromises = idsToProcess.map((num: string) => transaction.get(db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num)));
+        const lockRefs = idsToProcess.map((num: string) => db.collection("locks").doc(num));
+        const numRefs = idsToProcess.map((num: string) => db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num));
         
-        const reads = await Promise.all(readPromises);
-        const numReads = await Promise.all(numReadPromises);
+        const allSnaps = await transaction.getAll(...lockRefs, ...numRefs);
+        const reads = allSnaps.slice(0, lockRefs.length);
+        const numReads = allSnaps.slice(lockRefs.length);
         
         const failures: string[] = [];
         const successIds: string[] = [];
@@ -122,10 +121,12 @@ export default async function handler(req: any, res: any) {
 
     } else if (action === "unlock") {
         await db.runTransaction(async (transaction: any) => {
-            const reads = await Promise.all(idsToProcess.map((num: string) => transaction.get(db.collection("locks").doc(num))));
+            const lockRefs = idsToProcess.map((num: string) => db.collection("locks").doc(num));
+            const numRefs = idsToProcess.map((num: string) => db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num));
             
-            // To ensure deletes of the nested tracking documents as well
-            const numReads = await Promise.all(idsToProcess.map((num: string) => transaction.get(db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num))));
+            const allSnaps = await transaction.getAll(...lockRefs, ...numRefs);
+            const reads = allSnaps.slice(0, lockRefs.length);
+            const numReads = allSnaps.slice(lockRefs.length);
 
             reads.forEach((lockSnap: any, index: number) => {
                 const num = idsToProcess[index];

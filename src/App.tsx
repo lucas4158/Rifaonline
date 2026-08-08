@@ -1536,16 +1536,14 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
     const targets = numsToClear || Array.from(new Set([...selectedNumbers, ...submittedNumbers]));
     if (targets.length === 0) return;
     try {
-      const promises = targets.map(async (numId) => {
-        try {
-          await pixService.lockCota({ numberId: numId, sessionId, action: "unlock", raffleId: selectedCustomerRaffleId || raffleConfig.id || "current" });
-        } catch (err) {
-          console.error(`Status error unlocking ${numId}:`, err);
-        }
+      await pixService.lockCota({
+        numbers: targets,
+        sessionId,
+        action: "unlock",
+        raffleId: selectedCustomerRaffleId || raffleConfig.id || "current"
       });
-      await Promise.all(promises);
     } catch (err) {
-      console.error("Error clearing locks:", err);
+      console.error("Error clearing locks in batch:", err);
     }
   };
   // Removed global auto-cleanup of expired locks to prevent 600 concurrent users from spamming the backend/Firestore.
@@ -6685,9 +6683,16 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                     setSubmittedNumbers([]);
                     setMpPaymentInfo(null);
                     setPaymentExpiresAt(null);
+                    setSelectionExpiresAt(null);
                     setLastBonusNums([]);
+                    try {
+                      localStorage.removeItem("raffle_selected_numbers_v1");
+                      localStorage.removeItem("raffle_submitted_numbers_v1");
+                      localStorage.removeItem("raffle_payment_step_v1");
+                    } catch (e) {}
                     setShowExitConfirm(false);
                     setPaymentStep("data");
+                    window.scrollTo({ top: 0, behavior: "smooth" });
                   }}
                   className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-400 font-bold py-3 rounded-xl transition-all active:scale-95 text-sm hover:text-white"
                 >

@@ -124,8 +124,9 @@ export default async function handler(req: any, res: any) {
         const excludedSet = new Set([...nums, ...retainedBonus]);
         let attempts = 0;
         const maxAttempts = totalRaffleNumbers * 2;
+        const maxNeededCandidates = predictedBonus + 2;
         while (
-          retainedBonus.length + candidateBonusPool.length < predictedBonus + 10 &&
+          retainedBonus.length + candidateBonusPool.length < maxNeededCandidates &&
           attempts < maxAttempts
         ) {
           attempts++;
@@ -143,25 +144,24 @@ export default async function handler(req: any, res: any) {
       // 2. Execute parallelized read-before-write transaction
       const tTransStart = Date.now();
       const transactionResult = await getAdminFirestore().runTransaction(async (transaction: any) => {
-        // Parallel reads for all lock and number documents
+        // Single batch read for all lock and number documents using transaction.getAll
         const lockRefs = allCheckNumbers.map((n) => getAdminFirestore().collection("locks").doc(n));
         const numRefs = allCheckNumbers.map((n) => getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(n));
 
-        const [lockSnaps, numSnaps] = await Promise.all([
-          Promise.all(lockRefs.map((ref) => transaction.get(ref))),
-          Promise.all(numRefs.map((ref) => transaction.get(ref))),
-        ]);
+        const allSnaps = await transaction.getAll(...lockRefs, ...numRefs);
+        const lockSnaps = allSnaps.slice(0, lockRefs.length);
+        const numSnaps = allSnaps.slice(lockRefs.length);
 
         // Map snapshots by number for fast evaluation
         const lockMap = new Map<string, any>();
-        lockSnaps.forEach((snap, idx) => {
+        lockSnaps.forEach((snap: any, idx: number) => {
           if (snap.exists) {
             lockMap.set(allCheckNumbers[idx], snap.data());
           }
         });
 
         const numMap = new Map<string, any>();
-        numSnaps.forEach((snap, idx) => {
+        numSnaps.forEach((snap: any, idx: number) => {
           if (snap.exists) {
             numMap.set(allCheckNumbers[idx], snap.data());
           }
@@ -266,7 +266,7 @@ export default async function handler(req: any, res: any) {
             orderId: orderId,
             sessionId: sessionId,
             name: name,
-            phone: phone,
+            phone: dNormPhone,
             expiresAt: expiresAt,
             isBonus: bonusNums.includes(num),
             updatedAt: new Date().toISOString(),
@@ -292,7 +292,13 @@ export default async function handler(req: any, res: any) {
       }
     } catch (dbErr: any) {
       console.error("❌ [Firestore Serverless] Error checking/locking numbers atomically:", dbErr);
-      return res.status(500).json({ error: "Erro ao processar as cotas em lote de transação atômica no banco de dados." });
+      const errStr = String(dbErr) + " " + String(dbErr?.message || "");
+      if (errStr.includes("RESOURCE_EXHAUSTED") || errStr.includes("Quota exceeded") || dbErr?.code === 8) {
+        return res.status(429).json({
+          error: "O sistema está com alta demanda de reservas no momento. Por favor, tente novamente em alguns segundos."
+        });
+      }
+      return res.status(500).json({ error: "Erro ao processar as cotas em lote no banco de dados. Por favor, tente novamente." });
     }
   }
 
@@ -485,7 +491,7 @@ export default async function handler(req: any, res: any) {
         id: orderId,
         raffleId: targetRaffleId,
         name,
-        phone,
+        phone: dNormPhone,
         nums: allNums,
         bonusNums: bonusNums,
         val: Number(totalAmount),
@@ -506,7 +512,7 @@ export default async function handler(req: any, res: any) {
         id: orderId,
         raffleId: targetRaffleId,
         name,
-        phone,
+        phone: dNormPhone,
         nums: allNums,
         bonusNums: bonusNums,
         val: Number(totalAmount),
