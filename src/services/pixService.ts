@@ -102,15 +102,41 @@ export const pixService = {
     }
   },
 
-  async cancelOrder(orderId: string, keepalive?: boolean): Promise<any> {
-    console.log(`[ORDER_CANCEL_START] Requesting backend to completely cancel order: ${orderId}`);
+  async cancelOrder(
+    param1?: string | { orderId?: string; sessionId?: string; raffleId?: string; keepalive?: boolean },
+    param2?: string | boolean,
+    param3?: string
+  ): Promise<any> {
+    let orderId: string | undefined;
+    let sessionId: string | undefined;
+    let raffleId: string | undefined;
+    let keepalive = false;
+
+    if (typeof param1 === "object" && param1 !== null) {
+      orderId = param1.orderId;
+      sessionId = param1.sessionId;
+      raffleId = param1.raffleId;
+      keepalive = !!param1.keepalive;
+    } else if (typeof param1 === "string") {
+      orderId = param1;
+      if (typeof param2 === "string") {
+        sessionId = param2;
+      } else if (typeof param2 === "boolean") {
+        keepalive = param2;
+      }
+      if (typeof param3 === "string") {
+        raffleId = param3;
+      }
+    }
+
+    console.log(`[ORDER_CANCEL_START] Requesting backend to cancel order: ${orderId || "N/A"}, session: ${sessionId || "N/A"}`);
     try {
       const response = await fetch("/api/cancel-order", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ orderId }),
+        body: JSON.stringify({ orderId, sessionId, raffleId: raffleId || "current" }),
         ...(keepalive ? { keepalive: true } : {})
       });
 
@@ -118,11 +144,12 @@ export const pixService = {
         const error = await response.json().catch(() => ({}));
         throw new Error(error.error || "Failed to cancel order remotely");
       }
+
       const data = await response.json();
-      console.log(`[ORDER_CANCEL_SUCCESS] Successfully cancelled order: ${orderId}`);
+      console.log(`[ORDER_CANCEL_SUCCESS] Successfully cancelled order / released session: ${orderId || sessionId}`);
       return data;
     } catch (err: any) {
-      console.error(`[ORDER_CANCEL_ERROR] error while cancelling order ${orderId}:`, err);
+      console.error(`[ORDER_CANCEL_ERROR] error while cancelling order/session ${orderId || sessionId}:`, err);
       throw err;
     }
   },

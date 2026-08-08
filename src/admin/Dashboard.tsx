@@ -94,7 +94,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     { id: 2, date: "06/08/2026", time: "13:10:42", user: "System", action: "Apuração Sorteio", ip: "CronJob", details: "Cota vencedora calculada via regra do concurso Loteria Federal", status: "success" },
     { id: 3, date: "06/08/2026", time: "11:55:01", user: "Admin", action: "Estoque Loja", ip: "189.120.45.12", details: "Produto 'Molinete Marine Sports' adicionado ao catálogo", status: "success" },
     { id: 4, date: "06/08/2026", time: "10:22:19", user: "Admin", action: "Confirmar Pagamento", ip: "189.120.45.12", details: "Manual de cota aprovado para telefone (11) 99876-5432", status: "success" },
-    { id: 5, date: "05/08/2026", time: "18:40:00", user: "Admin", action: "Alterar Rifa", ip: "189.120.45.12", details: "Status de 'Molinete Shimano Stella' alterado para ATIVO", status: "success" },
+    { id: 5, date: "05/08/2026", time: "18:40:00", user: "Admin", action: "Alterar Rifa", ip: "189.120.45.12", details: "Status de 'Equipamento Premium' alterado para ATIVO", status: "success" },
     { id: 6, date: "05/08/2026", time: "15:05:12", user: "Admin", action: "Configuração Loja", ip: "189.120.45.12", details: "Loja Premium foi ativada e disponibilizada ao público", status: "success" },
   ];
 

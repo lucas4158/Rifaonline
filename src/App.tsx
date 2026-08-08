@@ -797,6 +797,14 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
     }
   });
 
+  // Featured raffle helper for Hero banner & highlights
+  const featuredRaffle = useMemo(() => {
+    if (activeRaffles && activeRaffles.length > 0) {
+      return activeRaffles[0];
+    }
+    return raffleConfig;
+  }, [activeRaffles, raffleConfig]);
+
   // Carousel slider refs & states for premium active raffle gallery selection
   const customerCarouselRef = useRef<HTMLDivElement>(null);
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
@@ -869,7 +877,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
   const sampleWinnersList = useMemo(() => [
     {
       id: "sample-w1",
-      prizeTitle: "Carretilha Shimano Stella SW 6000XG",
+      prizeTitle: "Molinete de Alta Performance Premium",
       prizeImageUrl: "https://images.unsplash.com/photo-1515263487990-61b07816b324?q=80&w=800&auto=format&fit=crop",
       prizeDescription: "Conjunto japonês de altíssima performance para pesca oceânica e rios.",
       prizeValue: "11.800,00",
@@ -1537,7 +1545,20 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       }
     }
 
-    const targets = numsToClear || Array.from(new Set([...selectedNumbers, ...submittedNumbers]));
+    const sessionNumsFromDb = Object.keys(dbNumbers).filter(
+      (num) => dbNumbers[num]?.sessionId === sessionId && dbNumbers[num]?.status !== "paid" && dbNumbers[num]?.status !== "Pago"
+    );
+    const sessionNumsFromLocks = Object.keys(locks).filter(
+      (num) => locks[num]?.sessionId === sessionId
+    );
+
+    const targets = numsToClear || Array.from(new Set([
+      ...selectedNumbers,
+      ...submittedNumbers,
+      ...sessionNumsFromDb,
+      ...sessionNumsFromLocks
+    ]));
+
     if (targets.length === 0) return;
     try {
       await pixService.lockCota({
@@ -2207,7 +2228,10 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         ) {
           const hasExpired = dbNum.expiresAt ? dbNum.expiresAt < now : false;
           if (!hasExpired) {
-            status = "pending_payment";
+            // Only block for OTHER sessions
+            if (dbNum.sessionId !== sessionId) {
+              status = "pending_payment";
+            }
           }
         }
       } else {
@@ -2237,7 +2261,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       console.log(`[MOBILE_RENDER_TIME] Synthesized status map for ${raffleConfig.totalNumbers} numbers in ${duration.toFixed(2)}ms`);
     }
     return result;
-  }, [raffleConfig.totalNumbers, dbNumbers, locks, sessionId, slowNow]);
+  }, [raffleConfig.totalNumbers, dbNumbers, locks, sessionId, slowNow, now]);
 
   // Derived state to compute valid selections from local basket + real-time status
   const validSelectedNumbers = useMemo(() => {
@@ -2613,20 +2637,20 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       const currentSelected = selectedNumbersRef.current;
       const currentPaymentStep = paymentStepRef.current;
 
-      // Safety Collision Check: check active real-time locks
+      const dbNum = dbNumbers[id];
       const activeLock = currentLocks[id];
-      if (
-        activeLock &&
-        activeLock.expiresAt > Date.now() &&
-        activeLock.sessionId !== sessionId
-      ) {
-        alert(
-          "Desculpe, este número acabou de ser reservado por outro usuário!",
-        );
+
+      // Safety Collision Check: check if locked/reserved by ANOTHER session
+      const isLockedByOther =
+        (activeLock && activeLock.expiresAt > Date.now() && activeLock.sessionId !== sessionId) ||
+        (dbNum && dbNum.sessionId !== sessionId && (dbNum.status === "reserved" || dbNum.status === "pending_payment" || dbNum.status === "Aguardando") && dbNum.expiresAt > Date.now());
+
+      if (isLockedByOther) {
+        alert("Desculpe, este número acabou de ser reservado por outro usuário!");
         return;
       }
 
-      if (status !== "available" && !currentSelected.includes(id)) return;
+      const isSelected = currentSelected.includes(id) || submittedNumbers.includes(id);
 
       if (currentPaymentStep === "finished") {
         setPaymentStep("data");
@@ -2635,10 +2659,22 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
       pendingLocksRef.current.add(id);
 
-      if (currentSelected.includes(id)) {
-        // Optimistic locally
+      if (isSelected) {
+        // Deselect number
         recentlyToggledRef.current[id] = Date.now();
         setSelectedNumbers((prev) => prev.filter((n) => n !== id));
+        setSubmittedNumbers((prev) => prev.filter((n) => n !== id));
+        setDbNumbers((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        setLocks((prev) => {
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+
         try {
           await pixService.lockCota({ 
             numberId: id, 
@@ -2647,9 +2683,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
             raffleId: selectedCustomerRaffleId || raffleConfig.id || "current"
           });
         } catch (err: any) {
-          // Gracefully handle unlock network failures (such as standard Safari "Load failed" or page-unload aborts)
-          // Since the backend background cleaner runs every 15s to purge expired locks, any orphaned lock will be cleaned dynamically.
-          console.warn("[MOBILE_RESERVATION_WARNING] Failed to release individual cota lock dynamically (server TTL worker will clean up):", err.message || err);
+          console.warn("[MOBILE_RESERVATION_WARNING] Failed to release individual cota lock dynamically:", err.message || err);
         } finally {
           pendingLocksRef.current.delete(id);
         }
@@ -2677,6 +2711,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         if (testTotalNeeded > capacityRemaining) {
           console.warn(`[PROMOTION_LIMIT_REACHED] Selection blocked by client validation. Needed total: ${testTotalNeeded} (candidate: ${candidateLength}, test bonus: ${testBonus}), capacity remaining: ${capacityRemaining}`);
           alert(`⚠️ Restam apenas ${capacityRemaining} cotas disponíveis considerando a promoção ativa.`);
+          pendingLocksRef.current.delete(id);
           return;
         }
 
@@ -2686,12 +2721,10 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         try {
           const data = await pixService.lockCota({ numberId: id, sessionId, action: "lock", raffleId: selectedCustomerRaffleId || raffleConfig.id || "current" });
           if (data.expiresAt) {
-            // Align local countdown timer to backend returned timestamp
             setSelectionExpiresAt(data.expiresAt);
           }
         } catch (err: any) {
           console.error("[MOBILE_RESERVATION_ERROR] Failed to claim individual cota lock:", err);
-          // Rollback optimistic update
           recentlyToggledRef.current[id] = 0;
           setSelectedNumbers((prev) => prev.filter((n) => n !== id));
 
@@ -2721,7 +2754,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         }
       }
     },
-    [raffleConfig, sessionId, numbers],
+    [raffleConfig, sessionId, numbers, dbNumbers, submittedNumbers],
   );
 
   const handleCellClick = useCallback((id: string, status: Status) => {
@@ -3022,33 +3055,49 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                   </div>
                 </motion.div>
                 
-                {/* Right Column: Visual of Premium Gear (Exactly as in Mockup) */}
+                {/* Right Column: Visual of Premium Configured Gear */}
                 <motion.div
                   initial={{ opacity: 0, scale: 0.95, y: 20 }}
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   transition={{ duration: 0.8, delay: 0.2 }}
-                  className="hidden lg:flex w-[48%] relative aspect-[4/3] flex-col items-center justify-center"
+                  className="hidden lg:flex w-[48%] relative aspect-[4/3] flex-col items-center justify-center cursor-pointer"
+                  onClick={() => {
+                    if (featuredRaffle?.id) {
+                      setSelectedCustomerRaffleId(featuredRaffle.id);
+                      try {
+                        localStorage.setItem("selected_customer_raffle_id", featuredRaffle.id);
+                      } catch {}
+                    } else {
+                      document.getElementById("rifas-section")?.scrollIntoView({ behavior: "smooth" });
+                    }
+                  }}
                 >
                   <div className="absolute inset-0 bg-amber-500/5 rounded-[32px] blur-3xl opacity-30 pointer-events-none" />
                   <div className="relative border border-zinc-800/40 bg-gradient-to-b from-zinc-950/80 to-zinc-950/20 backdrop-blur-md rounded-[24px] p-6 w-full shadow-2xl overflow-hidden group">
                     <img
-                      src="https://images.unsplash.com/photo-1515263487990-61b07816b324?q=80&w=800&auto=format&fit=crop"
-                      alt="Equipamentos Premium Rifa Master"
+                      src={featuredRaffle?.bannerUrl || featuredRaffle?.prizeImageUrl || "https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?q=80&w=800&auto=format&fit=crop"}
+                      alt={featuredRaffle?.title || "Equipamento Configurado"}
                       referrerPolicy="no-referrer"
                       className="rounded-[16px] w-full h-[240px] object-cover border border-zinc-900/60 object-center transition-transform duration-700 group-hover:scale-[1.02]"
                     />
                     <div className="absolute top-10 left-10 bg-amber-500 text-black text-[9px] font-black uppercase px-2.5 py-1 rounded-md shadow-lg tracking-wider">
-                      EQUIPAMENTO OFICIAL
+                      {featuredRaffle?.category || "SORTEIO EM DESTAQUE"}
                     </div>
                     
                     <div className="mt-5 flex items-center justify-between border-t border-zinc-900/80 pt-4">
-                      <div>
-                        <h4 className="text-white text-sm font-black uppercase tracking-wider">Shimano Stella SW 6000XG</h4>
-                        <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mt-1">Série Especial Japonesa</p>
+                      <div className="max-w-[70%]">
+                        <h4 className="text-white text-sm font-black uppercase tracking-wider truncate">
+                          {featuredRaffle?.title || "Prêmio Configurado"}
+                        </h4>
+                        <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mt-1 truncate">
+                          {featuredRaffle?.subtitle || featuredRaffle?.description || "Edição Especial"}
+                        </p>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right shrink-0">
                         <span className="text-amber-400 text-[9px] font-black block">A PARTIR DE</span>
-                        <span className="text-white text-base font-black">R$ 12,00</span>
+                        <span className="text-white text-base font-black">
+                          R$ {(featuredRaffle?.price ? Number(featuredRaffle.price) : 10).toFixed(2).replace('.', ',')}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -6564,7 +6613,21 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                 
                 <button
                   onClick={async () => {
-                    const targetsToRelease = Array.from(new Set([...selectedNumbers, ...submittedNumbers]));
+                    const sessionNumsFromDb = Object.keys(dbNumbers).filter(
+                      (num) => dbNumbers[num]?.sessionId === sessionId && dbNumbers[num]?.status !== "paid" && dbNumbers[num]?.status !== "Pago"
+                    );
+                    const sessionNumsFromLocks = Object.keys(locks).filter(
+                      (num) => locks[num]?.sessionId === sessionId
+                    );
+                    const targetsToRelease = Array.from(
+                      new Set([
+                        ...selectedNumbers,
+                        ...submittedNumbers,
+                        ...sessionNumsFromDb,
+                        ...sessionNumsFromLocks,
+                      ])
+                    );
+
                     if (mpPaymentInfo?.orderId) {
                       try {
                         const orderDocRef = doc(db, "orders", mpPaymentInfo.orderId);
@@ -6580,12 +6643,29 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                           }
                         }
                         ignoreCancellationForOrderIdRef.current = mpPaymentInfo.orderId;
-                        await pixService.cancelOrder(mpPaymentInfo.orderId);
+                        await pixService.cancelOrder({
+                          orderId: mpPaymentInfo.orderId,
+                          sessionId,
+                          raffleId: selectedCustomerRaffleId || raffleConfig.id || "current",
+                        });
                       } catch (err: any) {
                         console.error("Error canceling order remotely on desist:", err);
                       }
+                    } else if (sessionId) {
+                      try {
+                        await pixService.cancelOrder({
+                          sessionId,
+                          raffleId: selectedCustomerRaffleId || raffleConfig.id || "current",
+                        });
+                      } catch (err: any) {
+                        console.error("Error canceling session remotely on desist:", err);
+                      }
                     }
-                    await clearMyLocks(targetsToRelease);
+
+                    if (targetsToRelease.length > 0) {
+                      await clearMyLocks(targetsToRelease);
+                    }
+
                     recentlyToggledRef.current = {};
                     setSelectedNumbers([]);
                     setSubmittedNumbers([]);
@@ -6593,11 +6673,24 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                     setPaymentExpiresAt(null);
                     setSelectionExpiresAt(null);
                     setLastBonusNums([]);
+
+                    setDbNumbers((prev) => {
+                      const next = { ...prev };
+                      targetsToRelease.forEach((num) => delete next[num]);
+                      return next;
+                    });
+                    setLocks((prev) => {
+                      const next = { ...prev };
+                      targetsToRelease.forEach((num) => delete next[num]);
+                      return next;
+                    });
+
                     try {
                       localStorage.removeItem("raffle_selected_numbers_v1");
                       localStorage.removeItem("raffle_submitted_numbers_v1");
                       localStorage.removeItem("raffle_payment_step_v1");
                     } catch (e) {}
+
                     setShowExitConfirm(false);
                     setPaymentStep("data");
                     window.scrollTo({ top: 0, behavior: "smooth" });

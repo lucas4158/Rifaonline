@@ -28,9 +28,9 @@ const LOCAL_STORAGE_INIT_KEY = "rifamaster_store_initialized";
 export const DEFAULT_PRODUCTS: Product[] = [
   {
     id: "prod-1",
-    name: "Carretilha Shimano Curado K 200HG",
+    name: "Carretilha Pro Carbon 200HG",
     category: "Carretilhas",
-    brand: "Shimano",
+    brand: "Pro Fishing",
     description: "Carretilha de alta performance com drag carbon cross, sistema MicroModule Gear e SVS Infinity para arremessos ultra precisos.",
     price: 1290.0,
     promoPrice: 1099.0,
@@ -44,7 +44,7 @@ export const DEFAULT_PRODUCTS: Product[] = [
     isPromotion: true,
     isUnavailable: false,
     isActive: true,
-    sku: "SHI-CUR200HG",
+    sku: "PRO-CAR200HG",
     weight: "215g",
   },
   {

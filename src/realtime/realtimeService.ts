@@ -173,8 +173,7 @@ export const realtimeService = {
     const colRef = collection(db, "locks");
     const q = query(
       colRef,
-      where("raffleId", "==", raffleId),
-      where("expiresAt", ">", Date.now())
+      where("raffleId", "==", raffleId)
     );
     const unsub = onSnapshot(
       q,

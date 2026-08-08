@@ -558,7 +558,7 @@ export const AdminProducts: React.FC<AdminProductsProps> = () => {
                   </label>
                   <input
                     type="text"
-                    placeholder="Ex: Carretilha Shimano Curado K 200HG"
+                    placeholder="Ex: Carretilha Pro Carbon 200HG"
                     value={formName}
                     onChange={(e) => setFormName(e.target.value)}
                     required
@@ -591,7 +591,7 @@ export const AdminProducts: React.FC<AdminProductsProps> = () => {
                   </label>
                   <input
                     type="text"
-                    placeholder="Ex: Shimano, Daiwa, Marine Sports"
+                    placeholder="Ex: Marine Sports, Daiwa, Maruri"
                     value={formBrand}
                     onChange={(e) => setFormBrand(e.target.value)}
                     className="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#FF8A00]"
