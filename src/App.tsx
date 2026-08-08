@@ -50,7 +50,7 @@ import {
   Lock,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { doc, collection, setDoc, updateDoc, deleteDoc, getDocs, getDoc, writeBatch, onSnapshot, query, where } from "firebase/firestore";
+import { doc, collection, setDoc, updateDoc, deleteDoc, getDocs, getDoc, writeBatch, onSnapshot, query, where, orderBy, limit } from "firebase/firestore";
 import { signInAnonymously } from "firebase/auth";
 
 import { db, auth } from "./services/firebase";
@@ -813,8 +813,12 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
   const [canScrollWinnersRight, setCanScrollWinnersRight] = useState(true);
 
   useEffect(() => {
-    const unsub = onSnapshot(
+    const q = query(
       collection(db, "winners_history"),
+      limit(10)
+    );
+    const unsub = onSnapshot(
+      q,
       (snap) => {
         const historyList: any[] = [];
         snap.forEach((docSnap) => {
@@ -1686,19 +1690,17 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       if (selectedNumbersRef.current.length > 0 && paymentStepRef.current !== "finished") {
         const rid = selectedCustomerRaffleId || raffleConfig.id || "current";
         // We use a beacon-like fire and forget for the backend
-        selectedNumbersRef.current.forEach(numId => {
-          fetch("/api/lock-cota", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              numberId: numId,
-              sessionId,
-              action: "unlock",
-              raffleId: rid
-            }),
-            keepalive: true
-          }).catch(() => {});
-        });
+        fetch("/api/lock-cota", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            numbers: selectedNumbersRef.current,
+            sessionId,
+            action: "unlock",
+            raffleId: rid
+          }),
+          keepalive: true
+        }).catch(() => {});
       }
       
       // If they have an active pending order, cancel it
@@ -1826,7 +1828,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
           // Gracefully suppress alarmist logs for transient background network drops
           console.debug("🔄 [Frontend Poller] Background manual check did not respond yet:", err);
         });
-      }, 4000); // Poll every 4 seconds to ensure near-instant confirmation if the real webhook is delayed
+      }, 12000); // Fallback check every 12 seconds if direct webhook is delayed
 
       return () => clearInterval(pollInterval);
     }
@@ -1974,7 +1976,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       const timer = setTimeout(async () => {
         console.log("🔄 Selection modified on Pix page! Triggering Pix auto-recalculation...");
         await handleCreateMercadoPagoPayment();
-      }, 1500); // 1.5 seconds debounce for multiple rapid clicks
+      }, 3500); // 3.5 seconds debounce to prevent rapid duplicate transaction creation
 
       return () => clearTimeout(timer);
     }
@@ -2021,76 +2023,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         return;
       }
 
-      // Extra layer: Direct real-time Firestore database round-trip read check for selected numbers before server call
-      const currentRaffleId = selectedCustomerRaffleId || raffleConfig.id || "current";
-      const userPhoneNorm = String(userData.phone || "").replace(/\D/g, "");
-      const freshSelectedStatusesPromises = selectedNumbers.map(async (numId) => {
-        const numRef = doc(db, "raffles", currentRaffleId, "numbers", numId);
-        const numSnap = await getDoc(numRef);
-        if (numSnap.exists()) {
-          const d = numSnap.data();
-          const isPaid = d.status === "paid" || d.status === "Pago";
-          const isReserved = d.status === "reserved" || d.status === "pending_payment" || d.status === "Aguardando";
-          const isExp = d.expiresAt && Date.now() >= d.expiresAt;
-          
-          if (isPaid) return { id: numId, valid: false, reason: "paid" };
-          if (isReserved && !isExp) {
-            const isMySession = sessionId && d.sessionId === sessionId;
-            const orderPhoneNorm = String(d.phone || "").replace(/\D/g, "");
-            const isMyPhone = userPhoneNorm && orderPhoneNorm && (userPhoneNorm === orderPhoneNorm);
-            if (!isMySession && !isMyPhone) {
-              return { id: numId, valid: false, reason: "reserved" };
-            }
-          }
-        }
-        
-        // Also check if there is an active lock under locks/
-        const lockRef = doc(db, "locks", numId);
-        const lockSnap = await getDoc(lockRef);
-        if (lockSnap.exists()) {
-          const l = lockSnap.data();
-          const isLockExpired = Date.now() >= (l.expiresAt || 0);
-          if (!isLockExpired && l.sessionId && l.sessionId !== sessionId) {
-            return { id: numId, valid: false, reason: "locked" };
-          }
-        }
-        
-        return { id: numId, valid: true };
-      });
-
-      const freshSelectedStatuses = await Promise.all(freshSelectedStatusesPromises);
-      const invalidFromDb = freshSelectedStatuses.filter(s => !s.valid).map(s => s.id);
-
-      if (invalidFromDb.length > 0) {
-        alert(
-          `Aviso: As cotas [ ${invalidFromDb.join(", ")} ] foram reservadas ou pagas por outro usuário no mesmo instante!\n` +
-          `Para sua segurança, elas foram removidas da sua seleção atual.`
-        );
-        setSelectedNumbers((prev) => prev.filter((id) => !invalidFromDb.includes(id)));
-        setIsGeneratingPayment(false);
-        return;
-      }
-
-      // Check if previous order was already Pago/paid before calling the backend
       const previousOrderId = mpPaymentInfo?.orderId;
-      if (previousOrderId) {
-        try {
-          const orderDocRef = doc(db, "orders", previousOrderId);
-          const freshSnap = await getDoc(orderDocRef);
-          if (freshSnap.exists()) {
-            const statusStr = (freshSnap.data()?.status || "").toLowerCase();
-            if (statusStr === "pago" || statusStr === "paid" || statusStr === "confirmed") {
-              console.log("🛑 Previous order was already Pago/paid. Prevented overwrite cancel.");
-              setPaymentStep("finished");
-              alert("Seu pedido anterior já foi aprovado e confirmado! Novas seleções foram bloqueadas para evitar duplicidade de pagamento.");
-              setIsGeneratingPayment(false);
-              return;
-            }
-          }
-        } catch (e) {
-          console.error("Failed to check status of previous order:", e);
-        }
-      }
 
       // 2. Initiate 10-minute timer immediately to replace the 3-minute selection timer
       const initialExpiresAt = Date.now() + 10 * 60 * 1000;
@@ -2098,7 +2031,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
       const activeNumsSnapshot = [...selectedNumbers];
 
-      // 3. Request Mercado Pago creation to our express server proxy endpoint
+      // 3. Request Mercado Pago creation to our express server proxy endpoint (Atomic backend transaction)
       const resData = await pixService.createPix({
         name: String(userData.name || "").trim(),
         phone: String(userData.phone || "").replace(/\D/g, ""),
@@ -2109,34 +2042,9 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         raffleId: selectedCustomerRaffleId || raffleConfig.id || "current",
       });
 
-      // Strict post-creation verification of newly generated Pix details before moving to 'pix' step (Posse, ID, Referência, Chave, Status Ativo)
+      // Strict post-creation verification of newly generated Pix details before moving to 'pix' step
       if (!resData || !resData.paymentId || !resData.qrCode || !resData.orderId) {
         throw new Error("O servidor retornou dados incompletos para a geração do Pix. Tente novamente.");
-      }
-
-      // Check status of newly created order on Firestore to verify active status in database
-      const freshOrderRef = doc(db, "orders", resData.orderId);
-      const freshOrderSnap = await getDoc(freshOrderRef);
-      if (!freshOrderSnap.exists()) {
-        throw new Error("Erro de sincronização: A reserva não foi registrada corretamente no banco de dados.");
-      }
-      
-      const freshOrderData = freshOrderSnap.data();
-      if (freshOrderData.status !== "pending_payment" && freshOrderData.status !== "Aguardando") {
-        throw new Error("Sua reserva foi gerada mas não se encontra em estado ativo para pagamento.");
-      }
-
-      // Verify the external reference (raffleId) matches current selection
-      if (freshOrderData.raffleId !== (selectedCustomerRaffleId || raffleConfig.id || "current")) {
-        throw new Error("Mapeamento de rifa inválido na transação gerada.");
-      }
-
-      // Verify ownership in Firestore (Posse da reserva)
-      const isOwnerBySession = sessionId && freshOrderData.sessionId === sessionId;
-      const orderPhoneNorm = String(freshOrderData.phone || "").replace(/\D/g, "");
-      const isOwnerByPhone = userPhoneNorm && orderPhoneNorm && (userPhoneNorm === orderPhoneNorm);
-      if (!isOwnerBySession && !isOwnerByPhone) {
-        throw new Error("Controle de acesso: A reserva criada pertence a outro identificador.");
       }
 
       // 4. NOW (and ONLY now) that the Pix response has been successfully generated, verified, & returned,

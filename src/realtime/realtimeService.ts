@@ -166,10 +166,16 @@ export const realtimeService = {
     onSyncThrottled: (locks: any) => void,
     raffleId?: string
   ) {
+    if (!raffleId || raffleId === "all") {
+      onSyncThrottled({});
+      return () => {};
+    }
     const colRef = collection(db, "locks");
-    const q = raffleId && raffleId !== "all" 
-      ? query(colRef, where("raffleId", "==", raffleId)) 
-      : colRef;
+    const q = query(
+      colRef,
+      where("raffleId", "==", raffleId),
+      where("expiresAt", ">", Date.now())
+    );
     const unsub = onSnapshot(
       q,
       (querySnap) => {
