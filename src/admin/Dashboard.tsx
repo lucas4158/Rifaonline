@@ -860,10 +860,9 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     });
   };
   const handleOpenMarkAsDrawn = (raffle: RaffleConfig) => {
-    setMarkingAsDrawnRaffle(raffle);
-    setManualWinnerNumberInput("");
-    setManualWinnerNameInput("");
-    setManualWinnerPhoneInput("");
+    setSelectedRaffleId(raffle.id);
+    setCurrentAdminTab("winners");
+    setViewMode("detail");
   };
 
   const handleSubmitManualDraw = async (e: React.FormEvent) => {
@@ -2949,7 +2948,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 { id: "rifas", label: "Minhas Rifas", icon: Ticket },
                 { id: "orders", label: "Compras", icon: ClipboardList },
                 { id: "notifications", label: "Notificações", icon: MessageCircle, badge: unreadNotificationsCount },
-                { id: "winners", label: "Sorteios", icon: Trophy },
+                { id: "winners", label: "Sorteios", icon: Zap },
+                { id: "hall_da_fama", label: "Hall da Fama", icon: Award },
                 { id: "audit", label: "Auditoria", icon: ShieldCheck },
                 { id: "settings", label: "Configurações", icon: Settings },
               ].map((item) => {
@@ -2967,6 +2967,10 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                         setCurrentAdminTab("rifas");
                         setViewMode("list");
                         setMainAdminSection("rifas");
+                      } else if (item.id === "hall_da_fama") {
+                        setCurrentAdminTab("hall_da_fama");
+                        setViewMode("list");
+                        setMainAdminSection("winners_hall");
                       } else {
                         setCurrentAdminTab(item.id as any);
                         setViewMode("detail");
@@ -3048,6 +3052,9 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                     setActiveTab("dashboard");
                   } else if (val === "winners") {
                     setCurrentAdminTab("winners");
+                    setViewMode("detail");
+                  } else if (val === "hall_da_fama") {
+                    setCurrentAdminTab("hall_da_fama");
                     setViewMode("list");
                     setMainAdminSection("winners_hall");
                   } else if (val === "planning") {
@@ -3073,7 +3080,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 <option value="orders">Pedidos</option>
                 <option value="customers">Top Clientes</option>
                 <option value="cotas">Cotas</option>
-                <option value="winners">Resultados</option>
+                <option value="winners">Sorteios</option>
+                <option value="hall_da_fama">Hall da Fama</option>
                 <option value="planning">Planejamento</option>
                 <option value="audit">Auditoria</option>
                 <option value="store">Loja Premium</option>
@@ -3105,9 +3113,11 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         <main className="max-w-6xl mx-auto px-4 sm:px-8 py-8 space-y-8">
           {currentAdminTab === "audit" ? (
           renderAuditLogs()
+        ) : currentAdminTab === "winners" ? (
+          <DrawsView selectedRaffleId={selectedRaffleId} raffleConfig={raffleConfig} />
         ) : mainAdminSection === "loja" ? (
           <AdminProducts />
-        ) : mainAdminSection === "winners_hall" ? (
+        ) : mainAdminSection === "winners_hall" || currentAdminTab === "hall_da_fama" ? (
           <div className="space-y-6">
               {/* HEADER AREA */}
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-zinc-950 border border-zinc-900 rounded-[2rem] p-6">
