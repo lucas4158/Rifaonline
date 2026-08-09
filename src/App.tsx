@@ -2970,69 +2970,65 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
           <div className="flex flex-col bg-[#050505] min-h-screen text-white select-none font-montserrat">
             
             {/* 1. HERO / CAPA */}
-            <section className="relative min-h-[460px] lg:min-h-[580px] flex items-center justify-start overflow-hidden border-b border-[#121212] bg-[#050505]">
-              {/* Background image with multi-directional overlays */}
+            <section className="relative min-h-[500px] sm:min-h-[560px] lg:min-h-[620px] flex items-center justify-start overflow-hidden border-b border-[#121212] bg-[#050505]">
+              {/* Background cover image matching lake/dock sunset scene with subtle gradient overlay */}
               <div className="absolute inset-0 z-0">
                 <picture className="absolute inset-0 w-full h-full block">
-                  {/* Mobile Portrait: Premium, cozy vertical campsite under starry twilight, dark-toned forest background with high contrast for mobile viewports */}
                   <source 
                     media="(max-width: 767px)" 
                     srcSet="https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?q=80&w=1080&auto=format&fit=crop" 
                   />
-                  {/* Tablet/Landscape: Semi-wide cinematic lake camping scene with beautiful twilight horizon */}
                   <source 
                     media="(max-width: 1023px)" 
-                    srcSet="https://images.unsplash.com/photo-1537225228614-56cc3556d7ed?q=80&w=1200&auto=format&fit=crop" 
+                    srcSet="https://images.unsplash.com/photo-1537225228614-56cc3556d7ed?q=80&w=1400&auto=format&fit=crop" 
                   />
-                  {/* Desktop Widescreen: High-end lakeside camp setup with premium gear, campfire, majestic alpine mountains and twilight skies, right-aligned to leave copy space on the left */}
                   <img 
-                    src="https://images.unsplash.com/photo-1537225228614-56cc3556d7ed?q=80&w=1920&auto=format&fit=crop" 
+                    src="https://images.unsplash.com/photo-1537225228614-56cc3556d7ed?q=80&w=2000&auto=format&fit=crop" 
                     alt="Pesca e Camping Premium Rifa Master" 
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover opacity-45 md:opacity-60 object-right-bottom scale-105 transition-transform duration-1000"
+                    className="w-full h-full object-cover opacity-60 md:opacity-75 object-right md:object-center transition-all duration-700"
                   />
                 </picture>
-                {/* Advanced black shadow masks for optimal legibility of left-aligned text */}
-                <div className="absolute inset-0 bg-gradient-to-r from-[#050505] via-[#050505]/95 md:via-[#050505]/75 to-transparent" />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-[#050505]/80 opacity-90" />
-                {/* Ambient warm amber glow from bottom right representing camp fire embers */}
-                <div className="absolute right-[-10%] bottom-[-10%] w-[60%] h-[60%] bg-[#f59e0b]/5 rounded-full blur-[120px] pointer-events-none" />
+                {/* Responsive black gradient overlays ensuring text readability while keeping cover visible */}
+                <div className="absolute inset-0 bg-gradient-to-r from-[#050505] via-[#050505]/90 sm:via-[#050505]/75 md:via-[#050505]/50 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-[#050505]/70 opacity-90" />
+                <div className="absolute right-[-5%] bottom-[-5%] w-[50%] h-[50%] bg-[#f59e0b]/5 rounded-full blur-[100px] pointer-events-none" />
               </div>
 
-              {/* Grid or container content */}
-              <div className="relative z-10 max-w-7xl mx-auto px-6 sm:px-8 py-10 lg:py-14 w-full flex flex-col lg:flex-row items-center justify-between gap-8 lg:gap-12">
+              {/* Clean Left-aligned Hero Content */}
+              <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-8 py-12 lg:py-20 w-full">
                 <motion.div 
-                  initial={{ opacity: 0, x: -30 }}
+                  initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.8 }}
-                  className="max-w-xl text-left"
+                  transition={{ duration: 0.7 }}
+                  className="max-w-2xl text-left"
                 >
-                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 text-amber-400 text-[10px] font-black uppercase tracking-widest mb-6 shadow-lg shadow-amber-500/5 select-none">
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-amber-500/25 bg-amber-500/10 text-amber-400 text-[10px] sm:text-xs font-black uppercase tracking-widest mb-4 sm:mb-6 shadow-lg shadow-amber-500/5 select-none">
                     <Compass className="w-3.5 h-3.5 text-amber-400 animate-spin" style={{ animationDuration: '6s' }} />
                     <span>RIFA MASTER — PESCA &amp; CAMPING PREMIUM</span>
                   </div>
 
-                  <span className="text-[11px] font-black text-zinc-400 tracking-[0.25em] uppercase block mb-3">
+                  <span className="text-[10px] sm:text-xs font-black text-amber-400/90 tracking-[0.25em] uppercase block mb-2 sm:mb-3">
                     OS MELHORES ITENS DE
                   </span>
-                  <h2 className="text-5xl sm:text-6xl md:text-[5.5rem] font-black tracking-tight leading-[0.85] uppercase text-white mb-2 font-montserrat">
+                  <h2 className="text-4xl xs:text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-black tracking-tight leading-[0.88] uppercase text-white mb-2 font-montserrat">
                     <span className="text-amber-400 block">PESCA E</span>
                     <span className="block">CAMPING</span>
                   </h2>
-                  <div className="text-xl sm:text-2xl md:text-3xl font-serif italic text-amber-100/90 tracking-wide font-normal lowercase mb-6 leading-none mt-2">
+                  <div className="text-lg sm:text-2xl md:text-3xl font-serif italic text-amber-100/90 tracking-wide font-normal lowercase mb-4 sm:mb-6 leading-none mt-1">
                     em sorteios premium!
                   </div>
 
-                  <p className="text-zinc-400 text-xs sm:text-sm md:text-base font-semibold leading-relaxed max-w-md mb-8">
+                  <p className="text-zinc-300 text-xs sm:text-sm md:text-base font-medium leading-relaxed max-w-lg mb-6 sm:mb-8">
                     Participe dos nossos sorteios e concorra a equipamentos de Pesca, Camping e Outdoor das marcas mais cobiçadas do mundo de forma 100% auditável.
                   </p>
 
-                  <div className="flex flex-col sm:flex-row gap-4 items-center">
+                  <div className="flex flex-col sm:flex-row gap-3.5 sm:gap-4 items-stretch sm:items-center">
                     <button
                       onClick={() => {
                         document.getElementById("rifas-section")?.scrollIntoView({ behavior: "smooth" });
                       }}
-                      className="w-full sm:w-auto bg-amber-500 hover:bg-amber-400 text-black font-black uppercase text-xs tracking-wider py-4 px-8 rounded-xl shadow-lg shadow-amber-500/20 transition-all duration-300 transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer flex items-center justify-center gap-2"
+                      className="w-full sm:w-auto bg-amber-500 hover:bg-amber-400 text-black font-black uppercase text-xs tracking-wider py-3.5 sm:py-4 px-8 rounded-xl shadow-lg shadow-amber-500/20 transition-all duration-300 transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer flex items-center justify-center gap-2"
                     >
                       <Ticket className="w-4 h-4" />
                       <span>VER RIFAS</span>
@@ -3041,7 +3037,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                       onClick={() => {
                         document.getElementById("como-funciona-section")?.scrollIntoView({ behavior: "smooth" });
                       }}
-                      className="w-full sm:w-auto bg-transparent hover:bg-zinc-900/40 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white font-black uppercase text-xs tracking-wider py-4 px-8 rounded-xl transition-all duration-300 cursor-pointer flex items-center justify-center gap-2"
+                      className="w-full sm:w-auto bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white font-black uppercase text-xs tracking-wider py-3.5 sm:py-4 px-8 rounded-xl transition-all duration-300 cursor-pointer flex items-center justify-center gap-2 backdrop-blur-sm"
                     >
                       <Play className="w-4 h-4 text-zinc-400 fill-zinc-400" />
                       <span>COMO FUNCIONA</span>
@@ -3049,57 +3045,9 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                   </div>
 
                   {/* Trust indicator right under buttons */}
-                  <div className="mt-8 flex items-center gap-2.5 text-zinc-500 text-xs font-semibold uppercase tracking-wider select-none">
-                    <ShieldCheck className="w-4 h-4 text-amber-400" />
+                  <div className="mt-6 sm:mt-8 flex items-center gap-2.5 text-zinc-400 text-[11px] sm:text-xs font-semibold uppercase tracking-wider select-none">
+                    <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
                     <span>100% Seguro • Ambiente protegido e transações seguras</span>
-                  </div>
-                </motion.div>
-                
-                {/* Right Column: Visual of Premium Configured Gear */}
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  transition={{ duration: 0.8, delay: 0.2 }}
-                  className="hidden lg:flex w-[48%] relative aspect-[4/3] flex-col items-center justify-center cursor-pointer"
-                  onClick={() => {
-                    if (featuredRaffle?.id) {
-                      setSelectedCustomerRaffleId(featuredRaffle.id);
-                      try {
-                        localStorage.setItem("selected_customer_raffle_id", featuredRaffle.id);
-                      } catch {}
-                    } else {
-                      document.getElementById("rifas-section")?.scrollIntoView({ behavior: "smooth" });
-                    }
-                  }}
-                >
-                  <div className="absolute inset-0 bg-amber-500/5 rounded-[32px] blur-3xl opacity-30 pointer-events-none" />
-                  <div className="relative border border-zinc-800/40 bg-gradient-to-b from-zinc-950/80 to-zinc-950/20 backdrop-blur-md rounded-[24px] p-6 w-full shadow-2xl overflow-hidden group">
-                    <img
-                      src={featuredRaffle?.bannerUrl || featuredRaffle?.prizeImageUrl || "https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?q=80&w=800&auto=format&fit=crop"}
-                      alt={featuredRaffle?.title || "Equipamento Configurado"}
-                      referrerPolicy="no-referrer"
-                      className="rounded-[16px] w-full h-[240px] object-cover border border-zinc-900/60 object-center transition-transform duration-700 group-hover:scale-[1.02]"
-                    />
-                    <div className="absolute top-10 left-10 bg-amber-500 text-black text-[9px] font-black uppercase px-2.5 py-1 rounded-md shadow-lg tracking-wider">
-                      {featuredRaffle?.category || "SORTEIO EM DESTAQUE"}
-                    </div>
-                    
-                    <div className="mt-5 flex items-center justify-between border-t border-zinc-900/80 pt-4">
-                      <div className="max-w-[70%]">
-                        <h4 className="text-white text-sm font-black uppercase tracking-wider truncate">
-                          {featuredRaffle?.title || "Prêmio Configurado"}
-                        </h4>
-                        <p className="text-zinc-500 text-[10px] uppercase font-bold tracking-widest mt-1 truncate">
-                          {featuredRaffle?.subtitle || featuredRaffle?.description || "Edição Especial"}
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <span className="text-amber-400 text-[9px] font-black block">A PARTIR DE</span>
-                        <span className="text-white text-base font-black">
-                          R$ {(featuredRaffle?.price ? Number(featuredRaffle.price) : 10).toFixed(2).replace('.', ',')}
-                        </span>
-                      </div>
-                    </div>
                   </div>
                 </motion.div>
               </div>
