@@ -57,6 +57,7 @@ console.warn = function (...args: any[]) {
 
 // Import API handlers directly to keep routing 100% unified and eliminate duplication!
 import { getAdminFirestore } from "./api/_firebaseAdmin.js";
+import healthHandler from "./api/health";
 import createPixHandler from "./api/create-pix";
 import webhookHandler from "./api/webhook";
 import simulateWebhookHandler from "./api/simulate-webhook";
@@ -64,7 +65,6 @@ import adminActionHandler from "./api/admin-action";
 import sendReceiptHandler from "./api/send-receipt";
 import lockCotaHandler from "./api/lock-cota";
 import cancelOrderHandler from "./api/cancel-order";
-import adminLogoutHandler from "./api/admin-logout";
 import adminSessionHandler from "./api/admin-session";
 import customerHistoryHandler from "./api/customer-history";
 
@@ -242,8 +242,10 @@ setInterval(() => {
 }, 60000);
 
 // API ROUTES
-app.get("/api/health", (req, res) => {
-  res.json({ status: "healthy" });
+app.use("/api/health", healthHandler);
+app.use("/api/test-supabase", (req, res) => {
+  req.query = { ...req.query, action: "test-supabase" };
+  return healthHandler(req, res);
 });
 
 // Map serverless handlers directly as standard Express middleware routes!
@@ -254,7 +256,10 @@ app.post("/api/admin-action", adminActionHandler);
 app.post("/api/send-receipt", sendReceiptHandler);
 app.post("/api/lock-cota", lockCotaHandler);
 app.post("/api/cancel-order", cancelOrderHandler);
-app.post("/api/admin-logout", adminLogoutHandler);
+app.use("/api/admin-logout", (req, res) => {
+  req.query = { ...req.query, action: "logout" };
+  return adminSessionHandler(req, res);
+});
 app.use("/api/admin-session", adminSessionHandler);
 app.use("/api/customer-history", customerHistoryHandler);
 

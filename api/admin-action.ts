@@ -3,7 +3,7 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 
-import { allocatePromotionalBonus } from "./promo-helper.js";
+import { allocatePromotionalBonus } from "./_promoHelper.js";
 import { getSeedCommitment, deterministicShuffle, sha256 } from "../src/utils/seed.js";
 import { MercadoPagoConfig, Payment } from "mercadopago";
 import admin from "firebase-admin";

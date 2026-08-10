@@ -21,11 +21,21 @@ export default async function handler(req: any, res: any) {
   } else {
     res.setHeader("Access-Control-Allow-Origin", "*");
   }
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
+  }
+
+  // Handle logout request
+  if (req.query?.action === "logout" || req.body?.action === "logout" || (req.url && req.url.includes("admin-logout"))) {
+    console.log("[ADMIN_LOGOUT] Admin initiated logout. Clearing session cookie.");
+    res.setHeader(
+      "Set-Cookie",
+      "admin_session=; Path=/; HttpOnly; SameSite=None; Secure; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
+    );
+    return res.status(200).json({ success: true, message: "Logout realizado com sucesso" });
   }
 
   const authHeader = req.headers.authorization;

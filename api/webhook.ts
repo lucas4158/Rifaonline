@@ -4,7 +4,7 @@ import fs from "fs";
 import crypto from "crypto";
 
 
-import { allocatePromotionalBonus } from "./promo-helper.js";
+import { allocatePromotionalBonus } from "./_promoHelper.js";
 import { serverSupabaseSync } from "./_supabaseSync.js";
 
 import admin from "firebase-admin";

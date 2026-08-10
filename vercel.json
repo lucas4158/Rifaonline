@@ -2,6 +2,14 @@
   "regions": ["gru1"],
   "rewrites": [
     {
+      "source": "/api/admin-logout",
+      "destination": "/api/admin-session?action=logout"
+    },
+    {
+      "source": "/api/test-supabase",
+      "destination": "/api/health?action=test-supabase"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
