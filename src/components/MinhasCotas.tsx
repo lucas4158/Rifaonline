@@ -87,7 +87,7 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
     fetchRaffleTitles();
   }, []);
 
-  // Fetch orders for a phone number
+  // Fetch orders for a phone number using secure API route
   const fetchOrdersForPhone = async (phoneDigits: string) => {
     if (!phoneDigits) return;
     setLoading(true);
@@ -100,29 +100,24 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
         return;
       }
 
-      const q = query(collection(db, "orders"), where("phone", "==", canonicalPhone));
-      const snap = await getDocs(q);
-      
-      const found: any[] = [];
-      snap.forEach((docSnap) => {
-        const data = docSnap.data();
-        found.push({
-          id: docSnap.id,
-          ...data,
-        });
+      const res = await fetch("/api/customer-history", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: canonicalPhone }),
       });
 
-      // Sort by date descending
-      found.sort((a, b) => {
-        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return dateB - dateA;
-      });
+      if (res.ok) {
+        const data = await res.json();
+        setOrders(data.orders || []);
+      } else {
+        console.warn("⚠️ API customer-history error:", res.status);
+        setOrders([]);
+      }
 
-      setOrders(found);
       localStorage.setItem("client_lookup_phone", phoneDigits);
     } catch (err) {
-      console.error("Error retrieving orders from Firestore:", err);
+      console.error("Error retrieving orders from customer-history API:", err);
+      setOrders([]);
     } finally {
       setLoading(false);
     }

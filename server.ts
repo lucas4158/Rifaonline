@@ -66,6 +66,7 @@ import lockCotaHandler from "./api/lock-cota";
 import cancelOrderHandler from "./api/cancel-order";
 import adminLogoutHandler from "./api/admin-logout";
 import adminSessionHandler from "./api/admin-session";
+import customerHistoryHandler from "./api/customer-history";
 
 // Initialize Server App
 const app = express();
@@ -255,6 +256,7 @@ app.post("/api/lock-cota", lockCotaHandler);
 app.post("/api/cancel-order", cancelOrderHandler);
 app.post("/api/admin-logout", adminLogoutHandler);
 app.use("/api/admin-session", adminSessionHandler);
+app.use("/api/customer-history", customerHistoryHandler);
 
 // VITE OR STATIC SERVING MIDDLEWARE (Only run if NOT on Vercel serverless)
 if (process.env.VERCEL !== "1") {

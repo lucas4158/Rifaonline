@@ -2971,27 +2971,27 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
             
             {/* 1. HERO / CAPA */}
             <section className="relative min-h-[500px] sm:min-h-[560px] lg:min-h-[620px] flex items-center justify-start overflow-hidden border-b border-[#121212] bg-[#050505]">
-              {/* Background cover image matching lake/dock sunset scene with subtle gradient overlay */}
+              {/* Background cover image matching lakeside sunset dock with fishing gear, reel, compass & camping tent */}
               <div className="absolute inset-0 z-0">
                 <picture className="absolute inset-0 w-full h-full block">
                   <source 
                     media="(max-width: 767px)" 
-                    srcSet="https://images.unsplash.com/photo-1504280390367-361c6d9f38f4?q=80&w=1080&auto=format&fit=crop" 
+                    srcSet={raffleConfig?.heroBgUrl || "https://images.unsplash.com/photo-1510312305653-8ed496efae75?q=80&w=1080&auto=format&fit=crop"} 
                   />
                   <source 
                     media="(max-width: 1023px)" 
-                    srcSet="https://images.unsplash.com/photo-1537225228614-56cc3556d7ed?q=80&w=1400&auto=format&fit=crop" 
+                    srcSet={raffleConfig?.heroBgUrl || "https://images.unsplash.com/photo-1510312305653-8ed496efae75?q=80&w=1400&auto=format&fit=crop"} 
                   />
                   <img 
-                    src="https://images.unsplash.com/photo-1537225228614-56cc3556d7ed?q=80&w=2000&auto=format&fit=crop" 
+                    src={raffleConfig?.heroBgUrl || "https://images.unsplash.com/photo-1510312305653-8ed496efae75?q=80&w=2000&auto=format&fit=crop"} 
                     alt="Pesca e Camping Premium Rifa Master" 
                     referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover opacity-60 md:opacity-75 object-right md:object-center transition-all duration-700"
+                    className="w-full h-full object-cover opacity-65 md:opacity-80 object-right md:object-center transition-all duration-700"
                   />
                 </picture>
-                {/* Responsive black gradient overlays ensuring text readability while keeping cover visible */}
-                <div className="absolute inset-0 bg-gradient-to-r from-[#050505] via-[#050505]/90 sm:via-[#050505]/75 md:via-[#050505]/50 to-transparent" />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-[#050505]/70 opacity-90" />
+                {/* Responsive dark gradient overlays ensuring high text contrast while keeping golden sunset & gear visible */}
+                <div className="absolute inset-0 bg-gradient-to-r from-[#050505] via-[#050505]/90 sm:via-[#050505]/75 md:via-[#050505]/45 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-[#050505]/60 opacity-90" />
                 <div className="absolute right-[-5%] bottom-[-5%] w-[50%] h-[50%] bg-[#f59e0b]/5 rounded-full blur-[100px] pointer-events-none" />
               </div>
 

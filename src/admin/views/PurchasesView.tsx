@@ -80,9 +80,33 @@ export function PurchasesView({
         setOrders(loadedOrders);
         setLoading(false);
       },
-      (err) => {
-        console.error("Firestore orders subscription error, falling back to static query:", err);
-        setLoading(false);
+      async (err) => {
+        console.info("🔒 Firestore direct orders access restricted. Fetching via secure Admin API...");
+        try {
+          const adminToken = getAdminToken();
+          const res = await fetch("/api/admin-action", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${adminToken}`
+            },
+            body: JSON.stringify({
+              action: "list-orders",
+              raffleId: selectedRaffleId,
+              limitCount: limit || 100
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.orders) {
+              setOrders(data.orders);
+            }
+          }
+        } catch (apiErr) {
+          console.error("Failed to fetch orders via Admin API:", apiErr);
+        } finally {
+          setLoading(false);
+        }
       }
     );
 

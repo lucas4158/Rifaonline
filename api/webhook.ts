@@ -67,43 +67,46 @@ export default async function handler(req: any, res: any) {
       if (!xSignature) {
         console.warn("⚠️ [Webhook] Assinatura x-signature ausente!");
         console.log("[SIGNATURE_CHECK]", "INVALID");
-      } else {
-        let ts = "";
-        let v1 = "";
-        String(xSignature).split(",").forEach((part) => {
-          const [key, val] = part.split("=").map((s) => s.trim());
-          if (key === "ts") ts = val;
-          if (key === "v1") v1 = val;
-        });
-
-        if (!ts || !v1) {
-          console.warn("⚠️ [Webhook] Formato inválido no cabeçalho x-signature!");
-          console.log("[SIGNATURE_CHECK]", "INVALID");
-        } else {
-          const manifest = `id:${paymentId};request-id:${xRequestId};ts:${ts};`;
-          const hmac = crypto.createHmac("sha256", process.env.MP_WEBHOOK_SECRET);
-          hmac.update(manifest);
-          const calculatedHash = hmac.digest("hex");
-
-          let isSignatureValid = false;
-          if (v1.length === calculatedHash.length) {
-            isSignatureValid = crypto.timingSafeEqual(
-              Buffer.from(calculatedHash),
-              Buffer.from(v1)
-            );
-          } else {
-            console.error("❌ [Webhook] Assinatura com tamanho inválido!");
-          }
-
-          console.log("[SIGNATURE_CHECK]", isSignatureValid ? "VALID" : "INVALID");
-
-          if (!isSignatureValid) {
-            console.error("❌ [Webhook] Assinatura HMAC inválida do Mercado Pago!");
-          } else {
-            console.log("✅ [Webhook] Assinatura do Mercado Pago validada com sucesso!");
-          }
-        }
+        return res.status(401).json({ error: "Missing x-signature header" });
       }
+
+      let ts = "";
+      let v1 = "";
+      String(xSignature).split(",").forEach((part) => {
+        const [key, val] = part.split("=").map((s) => s.trim());
+        if (key === "ts") ts = val;
+        if (key === "v1") v1 = val;
+      });
+
+      if (!ts || !v1) {
+        console.warn("⚠️ [Webhook] Formato inválido no cabeçalho x-signature!");
+        console.log("[SIGNATURE_CHECK]", "INVALID");
+        return res.status(401).json({ error: "Invalid x-signature header format" });
+      }
+
+      const manifest = `id:${paymentId};request-id:${xRequestId};ts:${ts};`;
+      const hmac = crypto.createHmac("sha256", process.env.MP_WEBHOOK_SECRET);
+      hmac.update(manifest);
+      const calculatedHash = hmac.digest("hex");
+
+      let isSignatureValid = false;
+      if (v1.length === calculatedHash.length) {
+        isSignatureValid = crypto.timingSafeEqual(
+          Buffer.from(calculatedHash),
+          Buffer.from(v1)
+        );
+      } else {
+        console.error("❌ [Webhook] Assinatura com tamanho inválido!");
+      }
+
+      console.log("[SIGNATURE_CHECK]", isSignatureValid ? "VALID" : "INVALID");
+
+      if (!isSignatureValid) {
+        console.error("❌ [Webhook] Assinatura HMAC inválida do Mercado Pago!");
+        return res.status(401).json({ error: "Invalid HMAC signature" });
+      }
+
+      console.log("✅ [Webhook] Assinatura do Mercado Pago validada com sucesso!");
     } else {
       console.log("ℹ️ [Webhook] MP_WEBHOOK_SECRET não configurado. Validação de assinatura ignorada.");
     }

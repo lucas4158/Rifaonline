@@ -1117,7 +1117,30 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         currentOrders = freshOrders;
         setOrders(freshOrders);
       } catch (err) {
-        console.error("Erro ao obter os pedidos atualizados:", err);
+        console.info("🔒 Firestore direct orders access restricted. Fetching via secure Admin API...");
+        try {
+          const adminToken = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
+          const res = await fetch("/api/admin-action", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${adminToken}`
+            },
+            body: JSON.stringify({
+              action: "list-orders",
+              raffleId: selectedRaffleId || "current"
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.orders) {
+              currentOrders = data.orders;
+              setOrders(data.orders);
+            }
+          }
+        } catch (apiErr) {
+          console.error("Erro ao obter pedidos via Admin API:", apiErr);
+        }
       }
 
       if (localDrawMode === "manual") {
@@ -4635,7 +4658,30 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                             currentOrders = freshOrders;
                             setOrders(freshOrders);
                           } catch (err) {
-                            console.error("Erro ao obter pedidos atualizados:", err);
+                            console.info("🔒 Direct orders subscription restricted. Fetching via Admin API...");
+                            try {
+                              const adminToken = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
+                              const res = await fetch("/api/admin-action", {
+                                method: "POST",
+                                headers: {
+                                  "Content-Type": "application/json",
+                                  Authorization: `Bearer ${adminToken}`
+                                },
+                                body: JSON.stringify({
+                                  action: "list-orders",
+                                  raffleId: selectedRaffleId || "current"
+                                })
+                              });
+                              if (res.ok) {
+                                const data = await res.json();
+                                if (data.orders) {
+                                  currentOrders = data.orders;
+                                  setOrders(data.orders);
+                                }
+                              }
+                            } catch (apiErr) {
+                              console.error("Erro ao obter pedidos via Admin API:", apiErr);
+                            }
                           }
 
                           const normalizeQuota = (q: string): string => {

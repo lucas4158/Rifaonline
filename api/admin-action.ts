@@ -411,9 +411,8 @@ export default async function handler(req: any, res: any) {
       isValidSession = true;
     }
     
-    // 2. Fallback: Check computed legacy token or master token
-    
-    if (!isValidSession && (token === computedLegacyToken || token === "master_token" || token === (process.env.ADMIN_PASSWORD || "").trim())) {
+    // 2. Check token against session or valid token format
+    if (!isValidSession && token === computedLegacyToken) {
       isValidSession = true;
     }
 
@@ -2091,6 +2090,24 @@ export default async function handler(req: any, res: any) {
           updatedCount,
           globalPix: globalPixPayload
         });
+      }
+
+      case "list-orders": {
+        const { raffleId, limitCount } = req.body;
+        console.log(`📋 [Admin Action] Listing orders (raffleId: ${raffleId || "all"})...`);
+        const adminDb = getAdminFirestore();
+        let query: any = adminDb.collection("orders");
+        if (raffleId && raffleId !== "all") {
+          query = query.where("raffleId", "==", raffleId);
+        }
+        const snap = await query.get();
+        const ordersList: any[] = [];
+        snap.forEach((docSnap: any) => {
+          ordersList.push({ id: docSnap.id, ...docSnap.data() });
+        });
+        ordersList.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+        const maxLimit = Number(limitCount) || 200;
+        return res.status(200).json({ success: true, orders: ordersList.slice(0, maxLimit) });
       }
 
       case "list-raffles": {

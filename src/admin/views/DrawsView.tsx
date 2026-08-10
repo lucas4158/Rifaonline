@@ -83,9 +83,30 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
         setOrders(list);
         setLoadingOrders(false);
       },
-      (err) => {
-        console.error("Erro ao carregar pedidos para estatísticas do sorteio:", err);
-        setLoadingOrders(false);
+      async (err) => {
+        console.info("🔒 Direct orders subscription restricted. Fetching via Admin API...");
+        try {
+          const token = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
+          const res = await fetch("/api/admin-action", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              action: "list-orders",
+              raffleId: activeRaffleId
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.orders) setOrders(data.orders);
+          }
+        } catch (apiErr) {
+          console.error("Failed to fetch orders via Admin API in DrawsView:", apiErr);
+        } finally {
+          setLoadingOrders(false);
+        }
       }
     );
 
