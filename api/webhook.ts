@@ -35,60 +35,94 @@ export default async function handler(req: any, res: any) {
   try {
     console.log("📥 [WEBHOOK_RECEIVED] Raw notification payload from Mercado Pago:", JSON.stringify(req.body));
 
-    // 1. Extract Payment ID from multiple supported notification formats:
-    // Format A: data.id in query or body (e.g. payment.created, payment.updated)
-    // Format B: topic=payment and id in query or body
-    // Format C: resource URL (e.g. "/v1/payments/123456" or "123456")
-    let paymentId =
-      req.query?.["data.id"] ||
-      req.body?.data?.id ||
-      req.body?.id ||
-      req.query?.id;
+    const rawBody = req.body || {};
+    const rawQuery = req.query || {};
 
-    if (!paymentId && req.query?.topic === "payment" && req.query?.id) {
-      paymentId = req.query.id;
-    }
+    const rawXSignature = req.headers["x-signature"];
+    const rawXRequestId = req.headers["x-request-id"];
 
-    if (!paymentId && req.body?.resource) {
-      const match = String(req.body.resource).match(/\/(\d+)$/);
+    const hasXSignature = !!rawXSignature;
+    const hasXRequestId = !!rawXRequestId;
+
+    // 1. Extract data.id for modern v2 webhooks
+    const dataId =
+      rawBody?.data?.id ||
+      rawQuery?.["data.id"] ||
+      rawQuery?.["data[id]"] ||
+      "";
+
+    const hasDataId = !!dataId;
+
+    // Determine notification format and action
+    const action = String(rawBody?.action || rawBody?.topic || rawQuery?.topic || "unknown");
+    const isLegacyFormat =
+      !!(rawBody?.resource || rawBody?.topic || rawQuery?.topic) &&
+      !rawBody?.action &&
+      !hasDataId;
+
+    const notificationFormat = isLegacyFormat ? "legacy_ipn" : "modern_webhook";
+
+    // Extract paymentId from all supported formats
+    let paymentId = String(dataId || rawBody?.id || rawQuery?.id || "").trim();
+    if (!paymentId && rawBody?.resource) {
+      const match = String(rawBody.resource).match(/\/(\d+)$/);
       if (match) {
         paymentId = match[1];
-      } else if (!isNaN(Number(req.body.resource))) {
-        paymentId = String(req.body.resource);
+      } else if (!isNaN(Number(rawBody.resource))) {
+        paymentId = String(rawBody.resource);
       }
     }
 
+    const logDiagnostic = (hmacResult: string, httpStatus: number) => {
+      console.log(
+        `🔍 [WEBHOOK_DIAGNOSTIC] ` +
+        `format: "${notificationFormat}", ` +
+        `hasXSignature: ${hasXSignature}, ` +
+        `hasXRequestId: ${hasXRequestId}, ` +
+        `hasDataId: ${hasDataId}, ` +
+        `hmacResult: "${hmacResult}", ` +
+        `paymentId: "${paymentId || "N/A"}", ` +
+        `action: "${action}", ` +
+        `httpStatus: ${httpStatus}`
+      );
+    };
+
     if (!paymentId) {
-      console.log("ℹ️ [WEBHOOK_RECEIVED] Webhook received without paymentId. Ignored.");
+      logDiagnostic("IGNORED_NO_PAYMENT_ID", 200);
       return res.status(200).json({ status: "ignored", message: "No paymentId found." });
     }
 
-    console.log(`🔍 [WEBHOOK_RECEIVED] Extracted paymentId: ${paymentId}`);
+    // 2. Safe handling of Legacy IPN notifications (Acknowledged without financial processing)
+    if (isLegacyFormat) {
+      logDiagnostic("BYPASSED_LEGACY_IGNORED", 200);
+      return res.status(200).json({
+        status: "ignored",
+        message: "Legacy IPN notification acknowledged without financial processing.",
+      });
+    }
 
-    // 2. Strict HMAC Signature Validation
-    const xSignature = req.headers["x-signature"];
-    const xRequestId = req.headers["x-request-id"] || "";
-
+    // 3. Strict HMAC Signature Validation for Modern Webhooks
     if (process.env.MP_WEBHOOK_SECRET) {
-      if (!xSignature) {
-        console.warn("⚠️ [SIGNATURE_INVALID] Missing x-signature header!");
-        return res.status(401).json({ error: "Missing x-signature header" });
+      if (!hasXSignature || !hasDataId) {
+        logDiagnostic("FAILED_MISSING_SIGNATURE", 401);
+        return res.status(401).json({ error: "Missing x-signature or data.id parameter" });
       }
 
       let ts = "";
       let v1 = "";
-      String(xSignature).split(",").forEach((part) => {
+      String(rawXSignature).split(",").forEach((part) => {
         const [key, val] = part.split("=").map((s) => s.trim());
         if (key === "ts") ts = val;
         if (key === "v1") v1 = val;
       });
 
       if (!ts || !v1) {
-        console.warn("⚠️ [SIGNATURE_INVALID] Invalid x-signature header format!");
+        logDiagnostic("FAILED_INVALID_SIGNATURE_FORMAT", 401);
         return res.status(401).json({ error: "Invalid x-signature header format" });
       }
 
-      const manifest = `id:${paymentId};request-id:${xRequestId};ts:${ts};`;
+      const xRequestIdStr = String(rawXRequestId || "").trim();
+      const manifest = `id:${dataId};request-id:${xRequestIdStr};ts:${ts};`;
       const hmac = crypto.createHmac("sha256", process.env.MP_WEBHOOK_SECRET);
       hmac.update(manifest);
       const calculatedHash = hmac.digest("hex");
@@ -102,13 +136,13 @@ export default async function handler(req: any, res: any) {
       }
 
       if (!isSignatureValid) {
-        console.error("❌ [SIGNATURE_INVALID] HMAC signature validation failed!");
+        logDiagnostic("FAILED_HMAC_MISMATCH", 401);
         return res.status(401).json({ error: "Invalid HMAC signature" });
       }
 
-      console.log("✅ [SIGNATURE_VALID] Mercado Pago HMAC signature verified successfully!");
+      logDiagnostic("SUCCESS", 200);
     } else {
-      console.log("ℹ️ [SIGNATURE_CHECK] MP_WEBHOOK_SECRET is not configured. HMAC check bypassed.");
+      logDiagnostic("BYPASSED_NO_SECRET_CONFIGURED", 200);
     }
 
     // 3. Consult payment status directly from Mercado Pago API using Access Token
