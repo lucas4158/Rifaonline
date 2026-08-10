@@ -3370,17 +3370,17 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
           ) : (
             <>
           {/* TITLE & ACTION BAR */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-zinc-950 border border-zinc-900 rounded-[2rem] p-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-zinc-950 border border-zinc-900 rounded-[2rem] p-4 sm:p-6">
             <div>
               <span className="text-[10px] font-black uppercase tracking-widest text-violet-400">Painel Principal</span>
-              <h2 className="text-2xl font-black uppercase tracking-tight text-white mt-0.5">Minhas Rifas</h2>
+              <h2 className="text-xl sm:text-2xl font-black uppercase tracking-tight text-white mt-0.5">Minhas Rifas</h2>
               <p className="text-xs text-zinc-500 mt-1">Gerencie, crie e acompanhe todas as suas campanhas ativas e passadas.</p>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
               <button
                 onClick={fetchRaffles}
-                className="p-3 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition-all cursor-pointer"
+                className="p-3 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 rounded-2xl text-zinc-400 hover:text-white transition-all cursor-pointer shrink-0"
                 title="Atualizar Lista"
               >
                 <RefreshCw className="w-4 h-4" />
@@ -3388,19 +3388,19 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
 
               <button
                 onClick={handleOpenGlobalPixModal}
-                className="px-5 py-3.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white rounded-2xl text-xs font-black uppercase tracking-widest flex items-center gap-2 cursor-pointer transition-all transform active:scale-98"
+                className="flex-1 sm:flex-none px-4 sm:px-5 py-3 sm:py-3.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white rounded-2xl text-[11px] sm:text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer transition-all transform active:scale-98 min-h-[44px]"
                 title="Configurar PIX Global"
               >
-                <Settings className="w-4 h-4 text-violet-400" />
-                PIX Global
+                <Settings className="w-4 h-4 text-violet-400 shrink-0" />
+                <span>PIX Global</span>
               </button>
 
               <button
                 onClick={handleOpenCreateModal}
-                className="px-6 py-3.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-violet-600/20 flex items-center gap-2 cursor-pointer transition-all transform active:scale-98"
+                className="flex-1 sm:flex-none px-4 sm:px-6 py-3 sm:py-3.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-2xl text-[11px] sm:text-xs font-black uppercase tracking-widest shadow-lg shadow-violet-600/20 flex items-center justify-center gap-2 cursor-pointer transition-all transform active:scale-98 min-h-[44px]"
               >
-                <PlusCircle className="w-4 h-4" />
-                Criar Nova Rifa
+                <PlusCircle className="w-4 h-4 shrink-0" />
+                <span className="whitespace-nowrap">Criar Nova Rifa</span>
               </button>
             </div>
           </div>
@@ -3672,20 +3672,20 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
 
         {/* CREATE / EDIT RAFFLE MODAL */}
         {showRaffleModal && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-            <div className="bg-zinc-950 border border-zinc-850 w-full max-w-lg rounded-[2.5rem] p-6 sm:p-8 space-y-6 my-8 shadow-2xl relative">
-              <div className="flex justify-between items-center border-b border-zinc-900 pb-4">
-                <div>
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[200] overflow-y-auto p-3 sm:p-4 md:p-6 flex justify-center items-start sm:items-center min-h-screen">
+            <div className="bg-zinc-950 border border-zinc-850 w-full max-w-lg rounded-2xl sm:rounded-[2.5rem] p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-6 my-3 sm:my-8 shadow-2xl relative">
+              <div className="flex justify-between items-start border-b border-zinc-900 pb-4 gap-3">
+                <div className="flex-1 min-w-0">
                   <h3 className="font-black text-white text-base uppercase tracking-tight">
                     {editingRaffleItem ? "Editar Rifa" : "Criar Nova Rifa"}
                   </h3>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-xs text-zinc-500 mt-0.5">
                     {editingRaffleItem ? "Atualize as configurações da rifa." : "Preencha os dados da sua nova campanha."}
                   </p>
                   
                   {/* SWITCH RAFFLE SELECTOR */}
-                  <div className="mt-3 flex items-center gap-2">
-                    <span className="text-[10px] font-black uppercase text-zinc-500">Editar outra:</span>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 w-full">
+                    <span className="text-[10px] font-black uppercase text-zinc-500 shrink-0">Editar outra:</span>
                     <select
                       value={editingRaffleItem ? editingRaffleItem.id : ""}
                       onChange={(e) => {
@@ -3732,7 +3732,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                           setModalDrawMode("automatico");
                         }
                       }}
-                      className="bg-zinc-900 border border-zinc-850 text-[10px] font-black uppercase text-white rounded-xl px-2.5 py-1.5 outline-none cursor-pointer focus:border-violet-500"
+                      className="bg-zinc-900 border border-zinc-850 text-[10px] font-black uppercase text-white rounded-xl px-2.5 py-1.5 outline-none cursor-pointer focus:border-violet-500 max-w-full truncate"
                     >
                       <option value="">-- CRIAR NOVA RIFA --</option>
                       {raffles.map((r) => (
@@ -3745,7 +3745,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 </div>
                 <button
                   onClick={() => setShowRaffleModal(false)}
-                  className="p-2 text-zinc-500 hover:text-white bg-zinc-900 rounded-xl"
+                  className="p-2.5 text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 rounded-xl cursor-pointer shrink-0 transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -3760,7 +3760,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                     placeholder="Ex: iPhone 15 Pro Max 256GB"
                     value={modalTitle}
                     onChange={(e) => setModalTitle(e.target.value)}
-                    className="w-full bg-black border border-zinc-850 rounded-2xl px-4 py-3 text-xs font-bold text-white outline-none focus:border-violet-500"
+                    className="w-full bg-black border border-zinc-850 rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 text-base sm:text-xs font-bold text-white outline-none focus:border-violet-500"
                   />
                 </div>
 
@@ -3771,11 +3771,11 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                     placeholder="Descreva detalhes do prêmio, regras e entrega..."
                     value={modalDescription}
                     onChange={(e) => setModalDescription(e.target.value)}
-                    className="w-full bg-black border border-zinc-850 rounded-2xl p-3 text-xs text-white outline-none focus:border-violet-500"
+                    className="w-full bg-black border border-zinc-850 rounded-2xl p-3 text-base sm:text-xs text-white outline-none focus:border-violet-500"
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black uppercase text-zinc-400">Valor da Cota (R$) *</label>
                     <input
@@ -3784,7 +3784,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                       placeholder="Ex: 10"
                       value={modalPrice}
                       onChange={(e) => setModalPrice(e.target.value)}
-                      className="w-full bg-black border border-zinc-850 rounded-2xl px-4 py-3 text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
+                      className="w-full bg-black border border-zinc-850 rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 text-base sm:text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
                     />
                   </div>
 
@@ -3796,7 +3796,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                       placeholder="Ex: 100"
                       value={modalTotalNumbers}
                       onChange={(e) => setModalTotalNumbers(e.target.value)}
-                      className="w-full bg-black border border-zinc-850 rounded-2xl px-4 py-3 text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
+                      className="w-full bg-black border border-zinc-850 rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 text-base sm:text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
                     />
                   </div>
                 </div>
@@ -3804,24 +3804,26 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 {/* IMAGE UPLOAD */}
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-black uppercase text-zinc-400">Imagem do Prêmio</label>
-                  <div className="flex items-center gap-4 bg-black p-3 rounded-2xl border border-zinc-850">
-                    {modalImageUrl ? (
-                      <img src={modalImageUrl} className="w-14 h-14 object-cover rounded-xl shrink-0" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="w-14 h-14 bg-zinc-900 rounded-xl flex items-center justify-center text-zinc-600 shrink-0">
-                        <ImageIcon className="w-6 h-6" />
-                      </div>
-                    )}
-                    <div className="space-y-2 flex-1">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 bg-black p-3 rounded-2xl border border-zinc-850">
+                    <div className="flex items-center gap-3">
+                      {modalImageUrl ? (
+                        <img src={modalImageUrl} className="w-14 h-14 object-cover rounded-xl shrink-0" referrerPolicy="no-referrer" />
+                      ) : (
+                        <div className="w-14 h-14 bg-zinc-900 rounded-xl flex items-center justify-center text-zinc-600 shrink-0">
+                          <ImageIcon className="w-6 h-6" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="space-y-2 flex-1 w-full min-w-0">
                       <input
                         type="text"
                         placeholder="URL da imagem ou envie do computador..."
                         value={modalImageUrl}
                         onChange={(e) => setModalImageUrl(e.target.value)}
-                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-1.5 text-[11px] text-white outline-none"
+                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-3 py-2 text-base sm:text-[11px] text-white outline-none focus:border-violet-500"
                       />
-                      <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-750 text-white rounded-lg text-[10px] font-bold cursor-pointer">
-                        <Upload className="w-3 h-3 text-violet-400" />
+                      <label className="inline-flex items-center justify-center gap-1.5 px-3 py-2 bg-zinc-800 hover:bg-zinc-750 text-white rounded-lg text-xs sm:text-[10px] font-bold cursor-pointer w-full sm:w-auto">
+                        <Upload className="w-3.5 h-3.5 text-violet-400" />
                         {uploadingModalImage ? "Enviando..." : "Carregar Imagem"}
                         <input
                           type="file"
@@ -3855,14 +3857,14 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                       placeholder="Chave PIX (CPF/CNPJ/Email/Telefone)"
                       value={modalPixKey}
                       onChange={(e) => setModalPixKey(e.target.value)}
-                      className="bg-black border border-zinc-850 rounded-xl px-3 py-2 text-[11px] text-white"
+                      className="w-full bg-black border border-zinc-850 rounded-xl px-3 py-2.5 text-base sm:text-[11px] text-white outline-none focus:border-violet-500"
                     />
                     <input
                       type="text"
                       placeholder="Nome do Titular"
                       value={modalPixReceiver}
                       onChange={(e) => setModalPixReceiver(e.target.value)}
-                      className="bg-black border border-zinc-850 rounded-xl px-3 py-2 text-[11px] text-white"
+                      className="w-full bg-black border border-zinc-850 rounded-xl px-3 py-2.5 text-base sm:text-[11px] text-white outline-none focus:border-violet-500"
                     />
                   </div>
                 </div>
@@ -3871,13 +3873,13 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 <div className="space-y-4 pt-2 border-t border-zinc-900">
                   <span className="text-[10px] font-black uppercase tracking-wider text-violet-400">Modos de Compra e Sorteio</span>
                   
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                     <div className="space-y-1.5">
                       <label className="text-[10px] font-black uppercase text-zinc-400 block">Modo de Compra</label>
                       <select
                         value={modalPurchaseMode}
                         onChange={(e) => setModalPurchaseMode(e.target.value as "manual" | "aleatorio")}
-                        className="w-full bg-black border border-zinc-850 rounded-2xl px-3 py-2.5 text-xs font-bold text-white outline-none focus:border-violet-500 cursor-pointer"
+                        className="w-full bg-black border border-zinc-850 rounded-2xl px-3 py-2.5 text-base sm:text-xs font-bold text-white outline-none focus:border-violet-500 cursor-pointer"
                       >
                         <option value="manual">Escolha Manual</option>
                         <option value="aleatorio">Escolha Aleatória (Bolsão)</option>
@@ -3889,7 +3891,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                       <select
                         value={modalDrawMode}
                         onChange={(e) => setModalDrawMode(e.target.value as "automatico" | "federal")}
-                        className="w-full bg-black border border-zinc-850 rounded-2xl px-3 py-2.5 text-xs font-bold text-white outline-none focus:border-violet-500 cursor-pointer"
+                        className="w-full bg-black border border-zinc-850 rounded-2xl px-3 py-2.5 text-base sm:text-xs font-bold text-white outline-none focus:border-violet-500 cursor-pointer"
                       >
                         <option value="automatico">RifaMaster Automático</option>
                         <option value="federal">Loteria Federal</option>
@@ -3898,7 +3900,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   </div>
 
                   {modalDrawMode === "federal" && (
-                    <div className="bg-zinc-900/50 border border-zinc-850 p-4 rounded-2xl space-y-3">
+                    <div className="bg-zinc-900/50 border border-zinc-850 p-3.5 sm:p-4 rounded-2xl space-y-3">
                       <span className="text-[9px] font-black uppercase tracking-wider text-amber-500 block">Dados da Loteria Federal</span>
                       
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -3909,7 +3911,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                             placeholder="Ex: 5892"
                             value={modalFederalConcurso}
                             onChange={(e) => setModalFederalConcurso(e.target.value)}
-                            className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-[11px] text-white font-mono"
+                            className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-base sm:text-[11px] text-white font-mono outline-none focus:border-violet-500"
                           />
                         </div>
                         <div className="space-y-1">
@@ -3919,7 +3921,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                             placeholder="Ex: 15/08/2026"
                             value={modalFederalData}
                             onChange={(e) => setModalFederalData(e.target.value)}
-                            className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-[11px] text-white"
+                            className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-base sm:text-[11px] text-white outline-none focus:border-violet-500"
                           />
                         </div>
                       </div>
@@ -3929,7 +3931,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                         <select
                           value={modalFederalRegra}
                           onChange={(e) => setModalFederalRegra(e.target.value)}
-                          className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-[11px] text-white"
+                          className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-base sm:text-[11px] text-white outline-none focus:border-violet-500 cursor-pointer"
                         >
                           <option value="Último dígito do 1º prêmio">Último dígito do 1º prêmio</option>
                           <option value="Dois últimos dígitos do 1º prêmio">Dois últimos dígitos do 1º prêmio</option>
@@ -3958,7 +3960,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   </div>
 
                   {modalPromoEnabled ? (
-                    <div className="space-y-3 bg-zinc-900/50 p-4 rounded-2xl border border-zinc-850">
+                    <div className="space-y-3 bg-zinc-900/50 p-3.5 sm:p-4 rounded-2xl border border-zinc-850">
                       <p className="text-[10px] text-zinc-400">
                         Configure o método "compre X ganhe Y" (exemplo: compre 2 ganhe 1 de bônus).
                       </p>
@@ -3971,7 +3973,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                             value={modalPromoBuy}
                             onChange={(e) => setModalPromoBuy(e.target.value)}
                             placeholder="Ex: 2"
-                            className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-[11px] text-white font-mono outline-none focus:border-violet-500"
+                            className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-base sm:text-[11px] text-white font-mono outline-none focus:border-violet-500"
                           />
                         </div>
                         <div className="space-y-1">
@@ -3982,7 +3984,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                             value={modalPromoBonus}
                             onChange={(e) => setModalPromoBonus(e.target.value)}
                             placeholder="Ex: 1"
-                            className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-[11px] text-white font-mono outline-none focus:border-violet-500"
+                            className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-base sm:text-[11px] text-white font-mono outline-none focus:border-violet-500"
                           />
                         </div>
                       </div>
@@ -4000,7 +4002,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 <button
                   type="submit"
                   disabled={isSubmittingRaffleModal}
-                  className="w-full py-4 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-violet-600/20 cursor-pointer mt-4"
+                  className="w-full py-3.5 sm:py-4 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-2xl text-xs sm:text-xs font-black uppercase tracking-widest shadow-lg shadow-violet-600/20 cursor-pointer mt-4 min-h-[48px] flex items-center justify-center"
                 >
                   {isSubmittingRaffleModal
                     ? "SALVANDO..."
@@ -4017,12 +4019,12 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
 
         {/* GLOBAL PIX CONFIGURATION MODAL */}
         {showGlobalPixModal && (
-          <div id="global-pix-modal" className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
-            <div className="bg-zinc-950 border border-zinc-850 w-full max-w-lg rounded-[2.5rem] p-6 sm:p-8 space-y-6 my-8 shadow-2xl relative">
-              <div className="flex justify-between items-center border-b border-zinc-900 pb-4">
-                <div>
+          <div id="global-pix-modal" className="fixed inset-0 bg-black/80 backdrop-blur-md z-[200] overflow-y-auto p-3 sm:p-4 md:p-6 flex justify-center items-start sm:items-center min-h-screen">
+            <div className="bg-zinc-950 border border-zinc-850 w-full max-w-lg rounded-2xl sm:rounded-[2.5rem] p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-6 my-3 sm:my-8 shadow-2xl relative">
+              <div className="flex justify-between items-start border-b border-zinc-900 pb-4 gap-3">
+                <div className="flex-1 min-w-0">
                   <h3 className="font-black text-white text-base uppercase tracking-tight flex items-center gap-2">
-                    <Settings className="w-5 h-5 text-violet-400" />
+                    <Settings className="w-5 h-5 text-violet-400 shrink-0" />
                     Conta PIX Global
                   </h3>
                   <p className="text-xs text-zinc-500 mt-0.5">
@@ -4030,14 +4032,14 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   </p>
                   
                   {/* SELECTOR FOR DESIRED RAFFLE */}
-                  <div className="mt-3 flex items-center gap-2">
-                    <span className="text-[10px] font-black uppercase text-zinc-500">Selecionar Rifa Ativa:</span>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 w-full">
+                    <span className="text-[10px] font-black uppercase text-zinc-500 shrink-0">Selecionar Rifa Ativa:</span>
                     <select
                       value={selectedRaffleId}
                       onChange={(e) => {
                         setSelectedRaffleId(e.target.value);
                       }}
-                      className="bg-zinc-900 border border-zinc-800 text-[10px] font-black uppercase text-white rounded-xl px-2.5 py-1.5 outline-none cursor-pointer focus:border-violet-500"
+                      className="bg-zinc-900 border border-zinc-800 text-[10px] font-black uppercase text-white rounded-xl px-2.5 py-1.5 outline-none cursor-pointer focus:border-violet-500 max-w-full truncate"
                     >
                       {raffles.map((r) => (
                         <option key={r.id} value={r.id}>
@@ -4049,13 +4051,13 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 </div>
                 <button
                   onClick={() => setShowGlobalPixModal(false)}
-                  className="p-2 text-zinc-500 hover:text-white bg-zinc-900 rounded-xl cursor-pointer"
+                  className="p-2.5 text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 rounded-xl cursor-pointer shrink-0 transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <div className="bg-zinc-900/40 border border-violet-950/40 p-4 rounded-2xl text-xs text-violet-300 space-y-2">
+              <div className="bg-zinc-900/40 border border-violet-950/40 p-3.5 sm:p-4 rounded-2xl text-xs text-violet-300 space-y-2">
                 <p className="font-bold text-violet-200">ℹ️ Como funciona?</p>
                 <p className="text-zinc-400 leading-relaxed">
                   Ao atualizar esta conta PIX, os novos dados (Chave, Titular, Banco e Contato) serão salvos globalmente e aplicados imediatamente a <strong>todas as suas rifas ativas</strong> do sistema.
@@ -4071,7 +4073,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                     placeholder="Chave (CNPJ, CPF, Celular, E-mail ou Aleatória)"
                     value={globalPixKey}
                     onChange={(e) => setGlobalPixKey(e.target.value)}
-                    className="w-full bg-black border border-zinc-850 rounded-2xl px-4 py-3 text-xs font-bold text-white outline-none focus:border-violet-500"
+                    className="w-full bg-black border border-zinc-850 rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 text-base sm:text-xs font-bold text-white outline-none focus:border-violet-500"
                   />
                 </div>
 
@@ -4083,11 +4085,11 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                     placeholder="Nome completo do titular da conta"
                     value={globalPixReceiver}
                     onChange={(e) => setGlobalPixReceiver(e.target.value)}
-                    className="w-full bg-black border border-zinc-850 rounded-2xl px-4 py-3 text-xs font-bold text-white outline-none focus:border-violet-500"
+                    className="w-full bg-black border border-zinc-850 rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 text-base sm:text-xs font-bold text-white outline-none focus:border-violet-500"
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-black uppercase text-zinc-400">Banco *</label>
                     <input
@@ -4096,7 +4098,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                       placeholder="Ex: Nubank, Itaú..."
                       value={globalPixBank}
                       onChange={(e) => setGlobalPixBank(e.target.value)}
-                      className="w-full bg-black border border-zinc-850 rounded-2xl px-4 py-3 text-xs font-bold text-white outline-none focus:border-violet-500"
+                      className="w-full bg-black border border-zinc-850 rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 text-base sm:text-xs font-bold text-white outline-none focus:border-violet-500"
                     />
                   </div>
 
@@ -4107,7 +4109,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                       placeholder="Ex: (11) 99999-9999"
                       value={globalPixPhone}
                       onChange={(e) => setGlobalPixPhone(e.target.value)}
-                      className="w-full bg-black border border-zinc-850 rounded-2xl px-4 py-3 text-xs font-bold text-white outline-none focus:border-violet-500"
+                      className="w-full bg-black border border-zinc-850 rounded-2xl px-3.5 py-2.5 sm:px-4 sm:py-3 text-base sm:text-xs font-bold text-white outline-none focus:border-violet-500"
                     />
                   </div>
                 </div>
@@ -4115,7 +4117,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 <button
                   type="submit"
                   disabled={isSubmittingGlobalPix}
-                  className="w-full py-4 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-violet-600/20 cursor-pointer mt-4 flex items-center justify-center gap-2"
+                  className="w-full py-3.5 sm:py-4 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-violet-600/20 cursor-pointer mt-4 flex items-center justify-center gap-2 min-h-[48px]"
                 >
                   {isSubmittingGlobalPix ? (
                     <>
