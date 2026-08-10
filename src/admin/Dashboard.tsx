@@ -5,7 +5,7 @@ import {
   DollarSign, Check, Calendar, Phone, ArrowLeft, LogOut, MessageCircle, CheckCircle2,
   Image as ImageIcon, Loader2, Play, LayoutDashboard, ClipboardList, PlusCircle, Award, Settings,
   Copy, Edit3, Archive, Power, Sparkles, Eye, CheckCircle, Pause, ShoppingBag, Ticket, Save, FolderOpen,
-  Calculator
+  Calculator, Users, Grid
 } from "lucide-react";
 import { db } from "../services/firebase";
 import { adminService } from "../services/adminService";
@@ -101,6 +101,44 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   // Tabs inside detail view
   const [activeTab, setActiveTab] = useState<"dashboard" | "orders" | "new_raffle" | "winners" | "draw" | "settings">("dashboard");
   const [showPlanning, setShowPlanning] = useState<boolean>(currentPath === "/dashboard/planejamento");
+  const [mobileNavOpen, setMobileNavOpen] = useState<boolean>(false);
+
+  const handleSwitchAdminTab = (tab: string) => {
+    setCurrentAdminTab(tab as any);
+    if (tab === "overview") {
+      setViewMode("detail");
+      setActiveTab("dashboard");
+    } else if (tab === "rifas") {
+      setViewMode("list");
+      setMainAdminSection("rifas");
+    } else if (tab === "orders") {
+      setViewMode("detail");
+      setActiveTab("orders");
+    } else if (tab === "customers") {
+      setViewMode("detail");
+      setActiveTab("customers");
+    } else if (tab === "cotas") {
+      setViewMode("detail");
+      setActiveTab("dashboard");
+    } else if (tab === "winners") {
+      setViewMode("detail");
+    } else if (tab === "hall_da_fama") {
+      setViewMode("list");
+      setMainAdminSection("winners_hall");
+    } else if (tab === "planning") {
+      setViewMode("detail");
+      setActiveTab("dashboard");
+    } else if (tab === "audit") {
+      setViewMode("list");
+    } else if (tab === "store") {
+      setViewMode("list");
+      setMainAdminSection("loja");
+    } else if (tab === "settings") {
+      setViewMode("detail");
+      setActiveTab("settings");
+    }
+    setMobileNavOpen(false);
+  };
 
   // Filter for "Minhas Rifas" list
   const [raffleListFilter, setRaffleListFilter] = useState<"todas" | "ativas" | "encerradas" | "arquivadas">("todas");
@@ -201,30 +239,6 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
       if (typeof unsub === "function") unsub();
     };
   }, []);
-
-  useEffect(() => {
-    if (viewMode === "list") {
-      if (mainAdminSection === "rifas") {
-        setCurrentAdminTab("rifas");
-      } else if (mainAdminSection === "winners_hall") {
-        setCurrentAdminTab("winners");
-      } else if (mainAdminSection === "loja") {
-        setCurrentAdminTab("store");
-      }
-    } else {
-      if (activeTab === "dashboard") {
-        if (currentAdminTab !== "cotas") {
-          setCurrentAdminTab("overview");
-        }
-      } else if (activeTab === "orders") {
-        setCurrentAdminTab("orders");
-      } else if (activeTab === "customers") {
-        setCurrentAdminTab("customers");
-      } else if (activeTab === "settings") {
-        setCurrentAdminTab("settings");
-      }
-    }
-  }, [viewMode, mainAdminSection, activeTab]);
 
   // Customers & Filters states
   const [customerSearch, setCustomerSearch] = useState<string>("");
@@ -2504,16 +2518,27 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     // Faturamento bruto necessário considerando as taxas
     const divisor = 1 - (taxa / 100);
     const faturamentoBrutoNecessario = divisor > 0 ? (faturamentoLiquidoNecessario / divisor) : 0;
-    const cotaIdeal = totalCotas > 0 ? (faturamentoBrutoNecessario / totalCotas) : 0;
 
-    // Cenário planejado com os dados fornecidos pelo usuário
-    let totalCotasPagas = totalCotas;
-    if (promoAtivaInput && buyNum > 0 && bonusNum > 0) {
-      // Regra de compre X ganhe Y de bônus
-      totalCotasPagas = totalCotas * (buyNum / (buyNum + bonusNum));
-    }
+    // 1. QUANTIDADE DE COTAS NECESSÁRIAS (para atingir o lucro desejado vendendo pelo preço planejado):
+    const cotasPagasNecessarias = pricePlan > 0 ? Math.ceil(faturamentoBrutoNecessario / pricePlan) : 0;
+    const pacotesCompletos = buyNum > 0 ? Math.floor(cotasPagasNecessarias / buyNum) : 0;
+    const cotasBonusNecessarias = (promoAtivaInput && buyNum > 0 && bonusNum > 0)
+      ? (pacotesCompletos * bonusNum)
+      : 0;
+    const cotasTotaisNecessarias = cotasPagasNecessarias + cotasBonusNecessarias;
 
-    const faturamentoBrutoPlanejado = totalCotasPagas * pricePlan;
+    // 2. PREÇO IDEAL RECOMENDADO POR COTA (Protegendo o lucro desejado quando a promoção está ativa):
+    // Se o usuário fixar a rifa em 'totalCotas', quantas cotas serão pagas pelo cliente?
+    const cotasPagasNoTotal = (promoAtivaInput && buyNum > 0 && bonusNum > 0)
+      ? (totalCotas * (buyNum / (buyNum + bonusNum)))
+      : totalCotas;
+    const cotasBonusNoTotal = totalCotas - cotasPagasNoTotal;
+
+    // O preço ideal por cota deve ser calculated dividindo a meta de faturamento pelo número de COTAS PAGAS!
+    const cotaIdeal = cotasPagasNoTotal > 0 ? (faturamentoBrutoNecessario / cotasPagasNoTotal) : 0;
+
+    // 3. CENÁRIO PLANEJADO (Projeção real considerando o Preço e Total informados):
+    const faturamentoBrutoPlanejado = cotasPagasNoTotal * pricePlan;
     const taxaTotalPlanejada = faturamentoBrutoPlanejado * (taxa / 100);
     const faturamentoLiquidoPlanejado = faturamentoBrutoPlanejado - taxaTotalPlanejada;
     const lucroLiquidoPlanejado = faturamentoLiquidoPlanejado - custo;
@@ -2527,7 +2552,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
             <span className="text-[10px] font-black uppercase tracking-widest text-violet-400 font-bebas">Inteligência Financeira</span>
             <h2 className="text-2xl font-black uppercase tracking-tight text-white mt-0.5 font-bebas">🧮 Planejamento e Cálculos da Rifa</h2>
             <p className="text-xs text-zinc-500 mt-1">
-              Simule custos, configure bônus e calcule o valor ideal da cota para atingir sua meta financeira com precisão.
+              Simule custos, configure bônus e calcule a quantidade de cotas e o valor ideal para proteger seu lucro desejado.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -2539,7 +2564,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* COLUNA 1: INPUTS (7 cols) */}
+          {/* COLUNA 1: INPUTS & REQUISITOS DE COTAS (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
             <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-6 space-y-4">
               <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400 pb-3 border-b border-zinc-900 flex items-center gap-2 font-bebas">
@@ -2556,7 +2581,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                     placeholder="Ex: 1500"
                     className="w-full bg-black border border-zinc-900 rounded-2xl px-4 py-3 text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
                   />
-                  <span className="text-[9px] text-zinc-500">Valor que você pagou no prêmio a ser sorteado.</span>
+                  <span className="text-[9px] text-zinc-500">Valor investido na premiação.</span>
                 </div>
 
                 <div className="space-y-1.5">
@@ -2568,25 +2593,25 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                     placeholder="Ex: 5000"
                     className="w-full bg-black border border-zinc-900 rounded-2xl px-4 py-3 text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
                   />
-                  <span className="text-[9px] text-zinc-500">Quanto você quer colocar limpo no bolso.</span>
+                  <span className="text-[9px] text-zinc-500">Valor líquido limpo que deseja colocar no bolso.</span>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase text-zinc-500 font-bebas">Taxa do Gateway (%)</label>
+                  <label className="text-[10px] font-black uppercase text-zinc-500 font-bebas">Taxa Gateway (%)</label>
                   <input
                     type="text"
                     value={taxaMPInput}
                     onChange={(e) => setTaxaMPInput(e.target.value)}
-                    placeholder="Ex: 4.99"
+                    placeholder="Ex: 1.5"
                     className="w-full bg-black border border-zinc-900 rounded-2xl px-4 py-3 text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
                   />
-                  <span className="text-[9px] text-zinc-500">Taxa média do Mercado Pago / PIX.</span>
+                  <span className="text-[9px] text-zinc-500">Taxa do Mercado Pago/PIX.</span>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase text-zinc-500 font-bebas">Total de Cotas</label>
+                  <label className="text-[10px] font-black uppercase text-zinc-500 font-bebas">Total de Cotas Rifa</label>
                   <input
                     type="text"
                     value={totalNumbersInput}
@@ -2594,19 +2619,19 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                     placeholder="Ex: 1000"
                     className="w-full bg-black border border-zinc-900 rounded-2xl px-4 py-3 text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
                   />
-                  <span className="text-[9px] text-zinc-500">Número de cotas totais da rifa.</span>
+                  <span className="text-[9px] text-zinc-500">Capacidade máxima da campanha.</span>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-black uppercase text-zinc-500 font-bebas">Valor Planejado da Cota (R$)</label>
+                  <label className="text-[10px] font-black uppercase text-zinc-500 font-bebas">Valor da Cota (R$)</label>
                   <input
                     type="text"
                     value={valorCotaPlanejadoInput}
                     onChange={(e) => setValorCotaPlanejadoInput(e.target.value)}
-                    placeholder="Ex: 10"
+                    placeholder="Ex: 5"
                     className="w-full bg-black border border-zinc-900 rounded-2xl px-4 py-3 text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
                   />
-                  <span className="text-[9px] text-zinc-500">Preço real que planeja vender.</span>
+                  <span className="text-[9px] text-zinc-500">Preço de venda planejado.</span>
                 </div>
               </div>
             </div>
@@ -2631,7 +2656,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
               {promoAtivaInput ? (
                 <div className="space-y-4">
                   <p className="text-[11px] text-zinc-400">
-                    Defina o método de bônus compre e ganhe (compre X cotas, ganhe Y cotas de bônus adicionais automaticamente).
+                    Defina a regra compre X e ganhe Y cotas bônus grátis. O cálculo de lucro protegerá automaticamente seu valor líquido!
                   </p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1.5">
@@ -2641,12 +2666,12 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                         min="1"
                         value={promoBuyInput}
                         onChange={(e) => setPromoBuyInput(e.target.value)}
-                        placeholder="Ex: 5"
+                        placeholder="Ex: 2"
                         className="w-full bg-black border border-zinc-900 rounded-2xl px-4 py-3 text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="text-[10px] font-black uppercase text-zinc-500 font-bebas">Ganhe de Bônus (Cotas Extra)</label>
+                      <label className="text-[10px] font-black uppercase text-zinc-500 font-bebas">Ganhe de Bônus (Cotas Extra Grátis)</label>
                       <input
                         type="number"
                         min="1"
@@ -2659,29 +2684,66 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   </div>
 
                   <div className="bg-[#A3E635]/10 border border-[#A3E635]/20 p-4 rounded-2xl text-xs text-[#A3E635] space-y-1.5">
-                    <p className="font-bold">✨ Resumo da Promoção:</p>
+                    <p className="font-bold">✨ Promoção Ativa: Compre {promoBuyInput}, Ganhe +{promoBonusInput} Grátis</p>
                     <p className="text-zinc-300 leading-relaxed">
-                      A cada <strong>{promoBuyInput}</strong> cotas compradas no mesmo pedido, o sistema presentará o cliente com mais <strong>{promoBonusInput}</strong> cota(s) de bônus, totalmente de graça!
+                      A cada <strong>{promoBuyInput}</strong> cotas pagas no mesmo pedido, o cliente ganha <strong>{promoBonusInput}</strong> cota(s) bônus adicionais de graça.
                     </p>
-                    <p className="text-[10px] text-zinc-400 font-mono">
-                      Isto equivale a uma redução de <strong>{((bonusNum / (buyNum + bonusNum)) * 100).toFixed(1)}%</strong> no ticket médio pago por cota se o cliente usar a promoção máxima.
+                    <p className="text-[10px] text-[#A3E635] font-semibold">
+                      🛡️ As cotas bônus são consideradas nos cálculos para que NUNCA reduzam seu lucro líquido desejado.
                     </p>
                   </div>
                 </div>
               ) : (
                 <p className="text-xs text-zinc-500">
-                  Promoção desativada. Todas as cotas vendidas serão cobradas pelo preço cheio planejado (R$ {pricePlan.toFixed(2)} cada).
+                  Promoção desativada. Todas as cotas da rifa serão cobradas pelo preço cheio planejado (R$ {pricePlan.toFixed(2)} cada).
                 </p>
               )}
+            </div>
+
+            {/* DEDICATED CARD: QUANTIDADE DE COTAS NECESSÁRIAS */}
+            <div className="bg-gradient-to-br from-violet-950/30 via-zinc-950 to-zinc-950 border border-violet-500/20 rounded-3xl p-6 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-900">
+                <h3 className="text-xs font-black uppercase tracking-wider text-violet-300 flex items-center gap-2 font-bebas">
+                  <Calculator className="w-4 h-4 text-violet-400" /> Quantidade de Cotas Necessárias para Atingir a Meta
+                </h3>
+                <span className="px-2.5 py-1 bg-violet-500/10 border border-violet-500/20 text-violet-300 text-[10px] font-black rounded-lg uppercase">
+                  Preço Fixado: R$ {pricePlan.toFixed(2)}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-center">
+                <div className="bg-black/50 border border-zinc-900 rounded-2xl p-3.5">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500 font-bebas">Cotas Pagas Vendas</span>
+                  <div className="text-xl font-black text-[#A3E635] mt-1 font-mono">{cotasPagasNecessarias} un</div>
+                  <span className="text-[8px] text-zinc-500">Arrecadam R$ {(cotasPagasNecessarias * pricePlan).toFixed(2)}</span>
+                </div>
+
+                <div className="bg-black/50 border border-zinc-900 rounded-2xl p-3.5">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-zinc-500 font-bebas">Cotas Bônus (Graça)</span>
+                  <div className="text-xl font-black text-amber-400 mt-1 font-mono">{cotasBonusNecessarias} un</div>
+                  <span className="text-[8px] text-zinc-500">{promoAtivaInput ? `Regra ${promoBuyInput}x${promoBonusInput}` : "Sem bônus"}</span>
+                </div>
+
+                <div className="bg-violet-950/40 border border-violet-500/30 rounded-2xl p-3.5">
+                  <span className="text-[9px] font-black uppercase tracking-wider text-violet-300 font-bebas">Total Cotas na Rifa</span>
+                  <div className="text-xl font-black text-white mt-1 font-mono">{cotasTotaisNecessarias} un</div>
+                  <span className="text-[8px] text-violet-400 font-bold">Capacidade Mínima</span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-zinc-900/60 border border-zinc-880 rounded-2xl text-[11px] text-zinc-300 leading-relaxed">
+                💡 <strong>Resultado da Meta:</strong> Para colocar <strong className="text-[#A3E635]">R$ {lucro.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong> limpos no bolso vendendo a <strong>R$ {pricePlan.toFixed(2)}</strong>/cota {promoAtivaInput ? "com bônus ativo" : ""}, sua rifa precisa ter no mínimo <strong className="text-white">{cotasTotaisNecessarias} cotas</strong> cadastradas no total ({cotasPagasNecessarias} pagas + {cotasBonusNecessarias} bônus grátis).
+              </div>
             </div>
           </div>
 
           {/* COLUNA 2: RESULTADOS DOS CÁLCULOS (5 cols) */}
           <div className="lg:col-span-5 space-y-6">
-            {/* CARD METAS */}
+            {/* CARD METAS E PREÇO RECOMENDADO */}
             <div className="bg-zinc-950 border border-zinc-900 rounded-3xl p-6 space-y-6">
-              <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400 pb-3 border-b border-zinc-900 font-bebas">
-                🎯 Metas e Preço Recomendado
+              <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400 pb-3 border-b border-zinc-900 font-bebas flex items-center justify-between">
+                <span>🎯 Metas e Preço Recomendado</span>
+                <span className="text-[10px] text-violet-400 font-bold">Proteção de Lucro</span>
               </h3>
 
               <div className="space-y-4">
@@ -2691,7 +2753,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                     R$ {faturamentoBrutoNecessario.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                   <p className="text-[10px] text-zinc-500 mt-0.5">
-                    Arrecadação total necessária para cobrir as taxas do gateway (R$ {(faturamentoBrutoNecessario - faturamentoLiquidoNecessario).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}) e o prêmio, garantindo o lucro líquido desejado.
+                    Arrecadação necessária para cobrir as taxas do gateway (R$ {(faturamentoBrutoNecessario - faturamentoLiquidoNecessario).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}) e o prêmio, garantindo seu lucro líquido desejado.
                   </p>
                 </div>
 
@@ -2700,8 +2762,14 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   <div className="text-2xl font-black text-violet-400 mt-1 font-mono">
                     R$ {cotaIdeal.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
-                  <p className="text-[10px] text-zinc-500 mt-0.5">
-                    Se você vender todas as {totalCotas} cotas, este é o preço unitário necessário para atingir sua meta.
+                  <p className="text-[10px] text-zinc-400 mt-0.5">
+                    {promoAtivaInput ? (
+                      <>
+                        Considerando que <strong>{Math.round(cotasPagasNoTotal)}</strong> das {totalCotas} cotas serão pagas (e <strong>{Math.round(cotasBonusNoTotal)}</strong> serão bônus grátis), cobrar <strong>R$ {cotaIdeal.toFixed(2)}</strong> por cota garante 100% do seu lucro líquido de R$ {lucro.toFixed(2)}!
+                      </>
+                    ) : (
+                      <>Se você vender todas as {totalCotas} cotas sem bônus, este é o valor unitário para bater sua meta de lucro.</>
+                    )}
                   </p>
                 </div>
               </div>
@@ -2712,13 +2780,13 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
               <h3 className="text-xs font-black uppercase tracking-wider text-zinc-400 pb-3 border-b border-zinc-900 flex items-center justify-between font-bebas">
                 <span>📊 Projeção do Seu Cenário</span>
                 <span className="px-2 py-0.5 bg-zinc-900 border border-zinc-850 text-zinc-400 text-[9px] font-bold rounded-lg uppercase">
-                  {promoAtivaInput ? "Com Bônus" : "Sem Bônus"}
+                  {promoAtivaInput ? "Com Bônus Ativo" : "Sem Bônus"}
                 </span>
               </h3>
 
               <div className="space-y-3.5 text-xs">
                 <div className="flex justify-between items-center pb-2 border-b border-zinc-900/50">
-                  <span className="text-zinc-400">Total de Cotas Disponíveis</span>
+                  <span className="text-zinc-400">Total de Cotas da Rifa</span>
                   <span className="font-bold text-white font-mono">{totalCotas}</span>
                 </div>
 
@@ -2726,11 +2794,11 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   <>
                     <div className="flex justify-between items-center pb-2 border-b border-zinc-900/50">
                       <span className="text-zinc-400">Cotas Pagas Estimadas</span>
-                      <span className="font-bold text-[#A3E635] font-mono">{Math.round(totalCotasPagas)}</span>
+                      <span className="font-bold text-[#A3E635] font-mono">{Math.round(cotasPagasNoTotal)}</span>
                     </div>
                     <div className="flex justify-between items-center pb-2 border-b border-zinc-900/50">
                       <span className="text-zinc-400">Cotas Bônus (Dadas de Graça)</span>
-                      <span className="font-bold text-zinc-400 font-mono">{Math.round(totalCotas - totalCotasPagas)}</span>
+                      <span className="font-bold text-amber-400 font-mono">{Math.round(cotasBonusNoTotal)}</span>
                     </div>
                   </>
                 )}
@@ -2738,35 +2806,35 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 <div className="flex justify-between items-center pb-2 border-b border-zinc-900/50">
                   <span className="text-zinc-400">Faturamento Bruto Estimado</span>
                   <span className="font-black text-white font-mono">
-                    R$ {faturamentoBrutoPlanejado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    R$ {faturamentoBrutoPlanejado.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center pb-2 border-b border-zinc-900/50">
-                  <span className="text-zinc-400">Taxas Gateway MP ({taxa}%)</span>
+                  <span className="text-zinc-400">Taxas Gateway ({taxa}%)</span>
                   <span className="font-bold text-red-400 font-mono">
-                    - R$ {taxaTotalPlanejada.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    - R$ {taxaTotalPlanejada.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center pb-2 border-b border-zinc-900/50">
                   <span className="text-zinc-400">Faturamento Líquido Estimado</span>
                   <span className="font-bold text-zinc-300 font-mono">
-                    R$ {faturamentoLiquidoPlanejado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    R$ {faturamentoLiquidoPlanejado.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center pb-2 border-b border-zinc-900/50">
                   <span className="text-zinc-400">Custo do Prêmio</span>
                   <span className="font-bold text-red-500 font-mono">
-                    - R$ {custo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    - R$ {custo.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center pt-1">
                   <span className="text-zinc-300 font-bold">Lucro Líquido Real</span>
                   <span className={`font-black text-lg font-mono ${lucroLiquidoPlanejado >= lucro ? "text-[#A3E635]" : lucroLiquidoPlanejado > 0 ? "text-amber-400" : "text-red-500"}`}>
-                    R$ {lucroLiquidoPlanejado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    R$ {lucroLiquidoPlanejado.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </span>
                 </div>
 
@@ -2776,11 +2844,28 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 </div>
               </div>
 
+              {/* PROFIT STATUS NOTICE */}
+              {lucroLiquidoPlanejado >= lucro ? (
+                <div className="p-3 bg-[#A3E635]/10 border border-[#A3E635]/20 rounded-2xl text-[11px] text-[#A3E635]">
+                  ✅ <strong>Lucro Protegido!</strong> O preço atual de R$ {pricePlan.toFixed(2)} garante R$ {lucroLiquidoPlanejado.toFixed(2)} de lucro líquido, cobrindo a meta de R$ {lucro.toFixed(2)} sem sofrer prejuízo do bônus.
+                </div>
+              ) : (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-[11px] text-amber-400 space-y-1">
+                  <p className="font-bold">⚠️ Atenção: Lucro Abaixo da Meta</p>
+                  <p className="text-[10px] text-zinc-300 leading-normal">
+                    Cobrando R$ {pricePlan.toFixed(2)}/cota com o bônus ativo em {totalCotas} cotas, seu lucro líquido fica em R$ {lucroLiquidoPlanejado.toFixed(2)} (meta: R$ {lucro.toFixed(2)}).
+                  </p>
+                  <p className="text-[10px] text-amber-300 font-bold">
+                    👉 Dica: Ajuste o valor da cota para R$ {cotaIdeal.toFixed(2)} ou aumente o número de cotas para {cotasTotaisNecessarias} para garantir 100% da sua meta.
+                  </p>
+                </div>
+              )}
+
               {/* ACTION TO SAVE ON THE LIVE CAMPAIGN */}
               <button
                 onClick={handleApplyPlanning}
                 disabled={isSaving}
-                className="w-full py-4 mt-4 bg-gradient-to-r from-[#A3E635] to-emerald-500 hover:from-[#bbf255] hover:to-emerald-400 text-black rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg shadow-[#A3E635]/15 cursor-pointer flex items-center justify-center gap-2 transition-all"
+                className="w-full py-4 mt-2 bg-gradient-to-r from-[#A3E635] to-emerald-500 hover:from-[#bbf255] hover:to-emerald-400 text-black rounded-2xl text-xs font-black uppercase tracking-wider shadow-lg shadow-[#A3E635]/15 cursor-pointer flex items-center justify-center gap-2 transition-all active:scale-95"
               >
                 {isSaving ? (
                   <>
@@ -2969,11 +3054,14 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
               {[
                 { id: "overview", label: "Dashboard", icon: LayoutDashboard },
                 { id: "rifas", label: "Minhas Rifas", icon: Ticket },
-                { id: "orders", label: "Compras", icon: ClipboardList },
-                { id: "notifications", label: "Notificações", icon: MessageCircle, badge: unreadNotificationsCount },
+                { id: "orders", label: "Compras / Pedidos", icon: ClipboardList },
+                { id: "customers", label: "Top Clientes", icon: Users },
+                { id: "cotas", label: "Cotas", icon: Grid },
+                { id: "planning", label: "Planejamento", icon: Calculator },
                 { id: "winners", label: "Sorteios", icon: Zap },
                 { id: "hall_da_fama", label: "Hall da Fama", icon: Award },
                 { id: "audit", label: "Auditoria", icon: ShieldCheck },
+                { id: "store", label: "Loja Premium", icon: ShoppingBag },
                 { id: "settings", label: "Configurações", icon: Settings },
               ].map((item) => {
                 const IconComponent = item.icon;
@@ -2981,24 +3069,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 return (
                   <button
                     key={item.id}
-                    onClick={() => {
-                      if (item.id === "overview") {
-                        setCurrentAdminTab("overview");
-                        setViewMode("detail");
-                        setActiveTab("dashboard");
-                      } else if (item.id === "rifas") {
-                        setCurrentAdminTab("rifas");
-                        setViewMode("list");
-                        setMainAdminSection("rifas");
-                      } else if (item.id === "hall_da_fama") {
-                        setCurrentAdminTab("hall_da_fama");
-                        setViewMode("list");
-                        setMainAdminSection("winners_hall");
-                      } else {
-                        setCurrentAdminTab(item.id as any);
-                        setViewMode("detail");
-                      }
-                    }}
+                    onClick={() => handleSwitchAdminTab(item.id)}
                     className={`w-full flex justify-between items-center px-3.5 py-3 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer font-bebas ${
                       isActive
                         ? "bg-[#A3E635] text-black shadow-md shadow-[#A3E635]/15 font-extrabold"
@@ -3009,11 +3080,6 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                       <IconComponent className="w-4 h-4 shrink-0" />
                       <span>{item.label}</span>
                     </div>
-                    {item.badge ? (
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] flex items-center justify-center ${isActive ? 'bg-black text-[#A3E635]' : 'bg-[#A3E635] text-black'}`}>
-                        {item.badge}
-                      </span>
-                    ) : null}
                   </button>
                 );
               })}
@@ -3049,67 +3115,26 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
             </div>
 
             <div className="flex items-center gap-2">
-              <select
-                value={currentAdminTab}
-                onChange={(e) => {
-                  const val = e.target.value as any;
-                  if (val === "overview") {
-                    setCurrentAdminTab("overview");
-                    setViewMode("detail");
-                    setActiveTab("dashboard");
-                  } else if (val === "rifas") {
-                    setCurrentAdminTab("rifas");
-                    setViewMode("list");
-                    setMainAdminSection("rifas");
-                  } else if (val === "orders") {
-                    setCurrentAdminTab("orders");
-                    setViewMode("detail");
-                    setActiveTab("orders");
-                  } else if (val === "customers") {
-                    setCurrentAdminTab("customers");
-                    setViewMode("detail");
-                    setActiveTab("customers");
-                  } else if (val === "cotas") {
-                    setCurrentAdminTab("cotas");
-                    setViewMode("detail");
-                    setActiveTab("dashboard");
-                  } else if (val === "winners") {
-                    setCurrentAdminTab("winners");
-                    setViewMode("detail");
-                  } else if (val === "hall_da_fama") {
-                    setCurrentAdminTab("hall_da_fama");
-                    setViewMode("list");
-                    setMainAdminSection("winners_hall");
-                  } else if (val === "planning") {
-                    setCurrentAdminTab("planning");
-                    setViewMode("detail");
-                    setActiveTab("dashboard");
-                  } else if (val === "audit") {
-                    setCurrentAdminTab("audit");
-                  } else if (val === "store") {
-                    setCurrentAdminTab("store");
-                    setViewMode("list");
-                    setMainAdminSection("loja");
-                  } else if (val === "settings") {
-                    setCurrentAdminTab("settings");
-                    setViewMode("detail");
-                    setActiveTab("settings");
-                  }
-                }}
-                className="bg-[#1A1F1B] border border-[#1A1F1B] text-xs font-black uppercase text-white rounded-xl px-3 py-2 outline-none cursor-pointer font-bebas"
+              <button
+                onClick={() => setMobileNavOpen(!mobileNavOpen)}
+                className="flex items-center gap-2 bg-[#1A1F1B] border border-[#A3E635]/30 text-xs font-black uppercase text-white rounded-xl px-3 py-2 outline-none cursor-pointer font-bebas active:scale-95 transition-all"
               >
-                <option value="overview">Visão Geral</option>
-                <option value="rifas">Minhas Rifas</option>
-                <option value="orders">Pedidos</option>
-                <option value="customers">Top Clientes</option>
-                <option value="cotas">Cotas</option>
-                <option value="winners">Sorteios</option>
-                <option value="hall_da_fama">Hall da Fama</option>
-                <option value="planning">Planejamento</option>
-                <option value="audit">Auditoria</option>
-                <option value="store">Loja Premium</option>
-                <option value="settings">Configurações</option>
-              </select>
+                <span className="text-[#A3E635]">
+                  {currentAdminTab === "overview" && "Dashboard"}
+                  {currentAdminTab === "rifas" && "Minhas Rifas"}
+                  {currentAdminTab === "orders" && "Pedidos"}
+                  {currentAdminTab === "customers" && "Top Clientes"}
+                  {currentAdminTab === "cotas" && "Cotas"}
+                  {currentAdminTab === "winners" && "Sorteios"}
+                  {currentAdminTab === "hall_da_fama" && "Hall da Fama"}
+                  {currentAdminTab === "planning" && "Planejamento"}
+                  {currentAdminTab === "audit" && "Auditoria"}
+                  {currentAdminTab === "store" && "Loja Premium"}
+                  {currentAdminTab === "settings" && "Configurações"}
+                </span>
+                <ChevronDown className={`w-3.5 h-3.5 text-zinc-400 transition-transform ${mobileNavOpen ? 'rotate-180' : ''}`} />
+              </button>
+
               <button
                 onClick={logout}
                 className="p-2 bg-red-500/10 text-red-400 rounded-xl"
@@ -3118,6 +3143,59 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
               </button>
             </div>
           </header>
+
+          {/* Mobile Dropdown Menu Overlay */}
+          {mobileNavOpen && (
+            <div className="md:hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col justify-end">
+              <div className="bg-[#111513] border-t border-[#1A1F1B] rounded-t-3xl p-5 space-y-3 max-h-[85vh] overflow-y-auto">
+                <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
+                  <span className="text-xs font-black uppercase tracking-widest text-[#A3E635] font-bebas">Navegação do Painel</span>
+                  <button
+                    onClick={() => setMobileNavOpen(false)}
+                    className="p-1.5 text-zinc-400 hover:text-white bg-zinc-900 rounded-xl text-xs font-bold"
+                  >
+                    ✕ Fechar
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 gap-1.5 pt-1">
+                  {[
+                    { id: "overview", label: "Dashboard", icon: LayoutDashboard },
+                    { id: "rifas", label: "Minhas Rifas", icon: Ticket },
+                    { id: "orders", label: "Compras / Pedidos", icon: ClipboardList },
+                    { id: "customers", label: "Top Clientes", icon: Users },
+                    { id: "cotas", label: "Cotas", icon: Grid },
+                    { id: "planning", label: "Planejamento & Cálculos", icon: Calculator },
+                    { id: "winners", label: "Sorteios", icon: Zap },
+                    { id: "hall_da_fama", label: "Hall da Fama", icon: Award },
+                    { id: "audit", label: "Auditoria", icon: ShieldCheck },
+                    { id: "store", label: "Loja Premium", icon: ShoppingBag },
+                    { id: "settings", label: "Configurações", icon: Settings },
+                  ].map((item) => {
+                    const IconComp = item.icon;
+                    const isActive = currentAdminTab === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => handleSwitchAdminTab(item.id)}
+                        className={`w-full flex items-center justify-between px-4 py-3.5 rounded-2xl text-xs font-black uppercase tracking-wider font-bebas transition-all cursor-pointer ${
+                          isActive
+                            ? "bg-[#A3E635] text-black font-extrabold shadow-lg shadow-[#A3E635]/20"
+                            : "bg-[#1A1F1B] text-zinc-300 hover:bg-zinc-800"
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <IconComp className="w-4 h-4 shrink-0" />
+                          <span>{item.label}</span>
+                        </div>
+                        {isActive && <span className="text-xs">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex-1 overflow-y-auto">
             {children}
