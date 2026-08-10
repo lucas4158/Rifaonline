@@ -49,9 +49,21 @@ export const NumberCell = memo(
           </span>
         )}
 
-        {status === "pending_payment" && (
+        {status === "bonus_paid" && (
+          <span translate="no" className="notranslate text-[7px] sm:text-[9px] font-black uppercase tracking-wider text-fuchsia-300 mt-1 sm:mt-1.5 relative z-10 select-none text-center leading-none">
+            Bônus Pago
+          </span>
+        )}
+
+        {(status === "pending_payment" || status === "reserved") && (
           <span translate="no" className="notranslate text-[7px] sm:text-[9px] font-black uppercase tracking-wider text-orange-400 mt-1 sm:mt-1.5 relative z-10 select-none text-center leading-none">
             Reservado
+          </span>
+        )}
+
+        {status === "bonus_reserved" && (
+          <span translate="no" className="notranslate text-[7px] sm:text-[9px] font-black uppercase tracking-wider text-purple-300 mt-1 sm:mt-1.5 relative z-10 select-none text-center leading-none">
+            Bônus Reservado
           </span>
         )}
 

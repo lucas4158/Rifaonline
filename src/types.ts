@@ -5,7 +5,9 @@ export type Status =
   | "selected"
   | "pending_payment"
   | "expired"
-  | "cancelled";
+  | "cancelled"
+  | "bonus_reserved"
+  | "bonus_paid";
 
 export interface NumberItem {
   id: string;

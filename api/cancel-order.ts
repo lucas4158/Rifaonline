@@ -42,15 +42,16 @@ export default async function handler(req: any, res: any) {
     const db = getAdminFirestore();
     const nowIso = new Date().toISOString();
 
-    // 1. Process order cancellation inside an ATOMIC TRANSACTION
     if (orderId) {
       let cancelError: string | null = null;
+      let transactionFailed = false;
 
       try {
         await db.runTransaction(async (transaction: any) => {
           const orderRef = db.collection("orders").doc(orderId);
           const reservationRef = db.collection("reservations").doc(orderId);
 
+          // READ 1: Order snapshot
           const orderSnap = await transaction.get(orderRef);
           if (!orderSnap.exists) {
             return;
@@ -70,17 +71,26 @@ export default async function handler(req: any, res: any) {
             throw new Error("ORDER_ALREADY_PAID");
           }
 
-          // Cancel order & reservation
-          transaction.update(orderRef, { status: "Cancelado", canceledAt: nowIso });
-          transaction.update(reservationRef, { status: "Cancelado", canceledAt: nowIso });
-
           const orderNums: string[] = orderData?.nums || [];
           const orderRaffleId = orderData?.raffleId || targetRaffleId;
 
-          // Delete numbers associated with this order IF NOT PAID
-          for (const num of orderNums) {
-            const numRef = db.collection("raffles").doc(orderRaffleId).collection("numbers").doc(num);
-            const numSnap = await transaction.get(numRef);
+          // READ 2: ALL number and lock snapshots BEFORE ANY WRITES
+          const numRefs = orderNums.map((num: string) =>
+            db.collection("raffles").doc(orderRaffleId).collection("numbers").doc(num)
+          );
+          const lockRefs = orderNums.map((num: string) =>
+            db.collection("locks").doc(num)
+          );
+
+          const numSnaps = await Promise.all(numRefs.map((ref: any) => transaction.get(ref)));
+          const lockSnaps = await Promise.all(lockRefs.map((ref: any) => transaction.get(ref)));
+
+          // NOW PERFORM ALL WRITES (Zero reads after this point)
+          transaction.update(orderRef, { status: "Cancelado", canceledAt: nowIso });
+          transaction.update(reservationRef, { status: "Cancelado", canceledAt: nowIso });
+
+          for (let i = 0; i < orderNums.length; i++) {
+            const numSnap = numSnaps[i];
             if (numSnap.exists) {
               const numData = numSnap.data();
               const nStatus = (numData?.status || "").toLowerCase();
@@ -89,16 +99,18 @@ export default async function handler(req: any, res: any) {
                 nStatus !== "pago" &&
                 (numData?.orderId === orderId || (sessionId && numData?.sessionId === sessionId))
               ) {
-                transaction.delete(numRef);
+                transaction.delete(numRefs[i]);
+                if (numData?.isBonus) {
+                  console.log(`[BONUS_RELEASED] Bonus cota ${orderNums[i]} released for order ${orderId}`);
+                }
               }
             }
 
-            const lockRef = db.collection("locks").doc(num);
-            const lockSnap = await transaction.get(lockRef);
+            const lockSnap = lockSnaps[i];
             if (lockSnap.exists) {
               const lockData = lockSnap.data();
               if (lockData?.sessionId === sessionId || lockData?.orderId === orderId) {
-                transaction.delete(lockRef);
+                transaction.delete(lockRefs[i]);
               }
             }
           }
@@ -107,14 +119,16 @@ export default async function handler(req: any, res: any) {
         console.log(`[ORDER_CANCELLED] orderId: ${orderId}, sessionId: ${sessionId || "N/A"}`);
         console.log(`[LOCK_RELEASED] Locks released for order ${orderId}`);
       } catch (txErr: any) {
+        transactionFailed = true;
         if (cancelError) {
           return res.status(400).json({ error: cancelError });
         }
-        console.error(`❌ [CancelOrder Transaction] Error processing order ${orderId}:`, txErr);
+        console.error(`❌ [CancelOrder Transaction Error] Order ${orderId}:`, txErr);
+        return res.status(500).json({ error: "Falha ao processar cancelamento no banco de dados." });
       }
     }
 
-    // 2. Process additional sessionId locks cleanup if provided
+    // Process additional sessionId locks cleanup if provided
     if (sessionId) {
       try {
         const locksSnap = await db

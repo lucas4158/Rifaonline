@@ -2235,8 +2235,9 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
       const dbNum = dbNumbers[num];
       if (dbNum) {
+        const isBonus = !!dbNum.isBonus;
         if (dbNum.status === "paid" || dbNum.status === "Pago") {
-          status = "paid";
+          status = isBonus ? "bonus_paid" : "paid";
         } else if (
           dbNum.status === "reserved" ||
           dbNum.status === "pending_payment" ||
@@ -2244,8 +2245,9 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         ) {
           const hasExpired = dbNum.expiresAt ? dbNum.expiresAt < now : false;
           if (!hasExpired) {
-            // Only block for OTHER sessions
-            if (dbNum.sessionId !== sessionId) {
+            if (isBonus) {
+              status = "bonus_reserved";
+            } else if (dbNum.sessionId !== sessionId) {
               status = "pending_payment";
             }
           }
@@ -2916,6 +2918,10 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       switch (status) {
         case "paid":
           return "bg-emerald-500/10 border-emerald-500/25 text-emerald-400 cursor-not-allowed";
+        case "bonus_paid":
+          return "bg-fuchsia-600/20 border-fuchsia-500/50 text-fuchsia-300 font-black cursor-not-allowed shadow-md shadow-fuchsia-500/15";
+        case "bonus_reserved":
+          return "bg-purple-500/20 border-purple-500/40 text-purple-300 font-bold cursor-not-allowed shadow-sm shadow-purple-500/10";
         case "reserved":
         case "pending_payment":
           return "bg-orange-500/10 border-orange-500/25 text-orange-400 cursor-not-allowed";
@@ -2937,7 +2943,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
   const totalAmount =
     paymentStep === "finished"
-      ? submittedNumbers.length * raffleConfig.price
+      ? (mpPaymentInfo?.val ?? (submittedNumbers.filter((n) => !mpPaymentInfo?.bonusNums?.includes(n)).length * raffleConfig.price))
       : selectedNumbers.length * raffleConfig.price;
 
   const whatsappPhone = useMemo(() => {

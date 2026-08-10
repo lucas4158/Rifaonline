@@ -251,6 +251,9 @@ export default async function handler(req: any, res: any) {
           }, { merge: true });
 
           const bonusNumsSet = new Set<string>(order.bonusNums || []);
+          if (bonusNumsSet.size > 0) {
+            console.log(`[BONUS_PAID] orderId: ${orderId}, bonusNums: ${Array.from(bonusNumsSet).join(", ")}`);
+          }
           let mainPaidCount = 0;
 
           for (let i = 0; i < orderNums.length; i++) {

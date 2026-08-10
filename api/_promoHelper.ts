@@ -1,5 +1,3 @@
-
-
 console.log("🚀 [PROMO_HELPER_LOADED] Promotional helper loading successfully into current thread context.");
 
 export async function allocatePromotionalBonus(
@@ -10,7 +8,6 @@ export async function allocatePromotionalBonus(
   raffleId: string = "current"
 ) {
   const targetRaffleId = orderData.raffleId || raffleId || "current";
-  // 1. Fetch current configuration
   const configRef = db.collection("raffles").doc(targetRaffleId);
   const configSnap = await configRef.get();
   if (!configSnap.exists) {
@@ -37,28 +34,25 @@ export async function allocatePromotionalBonus(
     return;
   }
 
-  // Calculate bonus count
+  // Generic calculation: works for 2x1, 5x1, 2x3, 5x5, etc.
   const calculatedBonus = Math.floor(originalNums.length / buy) * bonus;
+  console.log(`[PROMO_CALCULATED] orderId: ${orderId}, boughtCount: ${originalNums.length}, buyRule: ${buy}, bonusRatio: ${bonus}, calculatedBonus: ${calculatedBonus}`);
+
   if (calculatedBonus <= 0) {
-    console.log(`[PROMOTION_DISABLED] Order has ${originalNums.length} bought numbers. Below buy threshold of ${buy}.`);
     return;
   }
 
-  // If we already have preallocated the correct number of bonus numbers, do not generate new random ones!
   const preallocatedBonus = orderData.bonusNums || [];
   if (preallocatedBonus.length >= calculatedBonus) {
-    console.log(`[PROMOTION_ALREADY_ALLOCATED] Order ${orderId} already has ${preallocatedBonus.length} preallocated bonus numbers. Skipping regeneration.`);
+    console.log(`[BONUS_ALREADY_ALLOCATED] orderId: ${orderId}, existingBonusCount: ${preallocatedBonus.length}, calculatedBonus: ${calculatedBonus}, bonusNums: ${preallocatedBonus.join(", ")}`);
     return;
   }
-
-  console.log(`[PROMOTION_APPLIED] Order ${orderId} has ${originalNums.length} bought numbers. Eligible for ${calculatedBonus} bonus numbers.`);
 
   // Find free available numbers from the database
   const numbersCollection = db.collection("raffles").doc(targetRaffleId).collection("numbers");
   const numbersSnap = await numbersCollection.get();
   const busy = new Set<string>();
 
-  // Mark already used/reserved numbers as busy (excluding expired reservations)
   const now = Date.now();
   numbersSnap.forEach((docSnap) => {
     const d = docSnap.data();
@@ -78,29 +72,28 @@ export async function allocatePromotionalBonus(
     }
   });
 
-  // Gather free numbers
   const available: string[] = [];
-  const requiredPad = 3; // ALWAYS match the frontend's padStart(3, "0") padding
+  const padLen = String(totalNumbers).length < 3 ? 3 : String(totalNumbers).length;
 
   for (let i = 1; i <= totalNumbers; i++) {
-    const formatted = String(i).padStart(requiredPad, "0");
+    const formatted = String(i).padStart(padLen, "0");
     if (!busy.has(formatted)) {
       available.push(formatted);
     }
   }
 
-  if (available.length < calculatedBonus) {
-    console.warn(`[INSUFFICIENT_PROMOTION_CAPACITY] Not enough available numbers for promotional allocation! Free available: ${available.length}, Requested bonus: ${calculatedBonus}`);
+  const neededNewBonusCount = calculatedBonus - preallocatedBonus.length;
+
+  if (available.length < neededNewBonusCount) {
+    console.warn(`[INSUFFICIENT_PROMOTION_CAPACITY] Not enough available numbers for promotional allocation! Free available: ${available.length}, Needed: ${neededNewBonusCount}`);
     return;
   }
 
-  // Shuffled and select
   const shuffled = available.sort(() => 0.5 - Math.random());
-  const selectedBonus = shuffled.slice(0, calculatedBonus);
+  const selectedBonus = shuffled.slice(0, neededNewBonusCount);
+  console.log(`[BONUS_SELECTED] orderId: ${orderId}, newlySelectedBonus: ${selectedBonus.join(", ")}`);
 
-  // Update order doc in the batch
-  const existingBonus = orderData.bonusNums || [];
-  const mergedBonus = Array.from(new Set([...existingBonus, ...selectedBonus]));
+  const mergedBonus = Array.from(new Set([...preallocatedBonus, ...selectedBonus]));
   const existingNums = orderData.nums || [];
   const mergedNums = Array.from(new Set([...existingNums, ...selectedBonus]));
 
@@ -115,7 +108,6 @@ export async function allocatePromotionalBonus(
     bonusNums: mergedBonus
   });
 
-  // Assign individual bonus cota markers
   selectedBonus.forEach((num) => {
     const numDocRef = db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
     batch.set(numDocRef, {
@@ -127,8 +119,7 @@ export async function allocatePromotionalBonus(
       isBonus: true,
       updatedAt: new Date().toISOString()
     });
-    console.log(`[BONUS_GENERATED] Bonus cota generated successfully for num: ${num} linked to order: ${orderId}`);
   });
 
-  console.log(`[PROMOTION_APPLIED] Finished allocation of ${selectedBonus.length} bonus numbers: ${selectedBonus.join(", ")}`);
+  console.log(`[BONUS_PAID] orderId: ${orderId}, totalBonusNums: ${mergedBonus.join(", ")}`);
 }

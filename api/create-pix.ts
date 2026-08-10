@@ -119,6 +119,7 @@ export default async function handler(req: any, res: any) {
 
     // Bonus numbers prediction (Bonus numbers DO NOT add to charge amount!)
     const predictedBonus = promotionEnabled ? Math.floor(nums.length / buy) * promoBonus : 0;
+    console.log(`[PROMO_CALCULATED] orderId: ${orderId}, boughtCount: ${nums.length}, buyRule: ${buy}, bonusRatio: ${promoBonus}, predictedBonus: ${predictedBonus}`);
 
     const candidateBonusPool: string[] = [];
     const retainedBonus: string[] = [];
@@ -262,6 +263,11 @@ export default async function handler(req: any, res: any) {
 
       bonusNums = selectedBonus;
       allNums = [...nums, ...bonusNums];
+
+      if (bonusNums.length > 0) {
+        console.log(`[BONUS_SELECTED] orderId: ${orderId}, selectedBonus: ${bonusNums.join(", ")}`);
+        console.log(`[BONUS_RESERVED] orderId: ${orderId}, reservedBonusNums: ${bonusNums.join(", ")}`);
+      }
 
       // Reserve all numbers (purchased + bonus)
       for (const num of allNums) {
