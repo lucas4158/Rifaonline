@@ -1832,28 +1832,37 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
     }
   }, [paymentStep]);
 
-  // Active frontend polling for MercadoPago webhook (Accelerates confirmation in case of webhook delays)
+  // Active frontend status check via secure /api/check-payment
   useEffect(() => {
     if (paymentStep === "pix" && mpPaymentInfo?.paymentId) {
       const paymentId = mpPaymentInfo.paymentId;
       if (String(paymentId).startsWith("SIM_")) return; // Do not poll for simulated tests
       
-      console.log(`🔄 [Frontend Poller] Initiating polling for payment ID ${paymentId}`);
+      console.log(`🔄 [Frontend Poller] Initiating status check for payment ID ${paymentId}`);
       const pollInterval = setInterval(() => {
-        console.log(`🔄 [Frontend Poller] Requesting manual check from MercadoPago for payment ${paymentId}...`);
-        fetch("/api/webhook", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data: { id: paymentId } })
-        }).catch(err => {
-          // Gracefully suppress alarmist logs for transient background network drops
-          console.debug("🔄 [Frontend Poller] Background manual check did not respond yet:", err);
+        pixService.checkPayment({
+          paymentId: String(paymentId),
+          orderId: mpPaymentInfo.orderId,
+          raffleId: selectedCustomerRaffleId || raffleConfig.id || "current",
+        }).then((res) => {
+          if (res.approved || res.orderStatus === "Pago" || res.orderStatus === "paid") {
+            console.log(`✅ [Frontend Poller] Payment ${paymentId} approved!`);
+            setPaymentStep("finished");
+            if (res.bonusNums && res.bonusNums.length > 0) {
+              setMpPaymentInfo((prev) => prev ? { ...prev, bonusNums: res.bonusNums } : prev);
+            }
+            if (res.nums && res.nums.length > 0) {
+              setSubmittedNumbers(res.nums);
+            }
+          }
+        }).catch((err) => {
+          console.debug("🔄 [Frontend Poller] Background check error:", err);
         });
-      }, 12000); // Fallback check every 12 seconds if direct webhook is delayed
+      }, 8000);
 
       return () => clearInterval(pollInterval);
     }
-  }, [paymentStep, mpPaymentInfo?.paymentId]);
+  }, [paymentStep, mpPaymentInfo?.paymentId, selectedCustomerRaffleId, raffleConfig.id]);
 
   // Instant direct document listener for the active order to confirm payment < 1s
   useEffect(() => {
@@ -1869,16 +1878,17 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         if (docSnap.exists()) {
           const data = docSnap.data();
 
-          // Strict Security Checklist on Snapshot Trigger to prevent concurrency bugs and double bookings
+          // Strict Security Checklist on Snapshot Trigger
           const currentRaffleId = selectedCustomerRaffleId || raffleConfig.id || "current";
           const userPhoneNorm = String(userData.phone || "").replace(/\D/g, "");
           const orderPhoneNorm = String(data?.phone || "").replace(/\D/g, "");
           
-          const isRaffleMatch = data?.raffleId === currentRaffleId;
-          const isPaymentIdMatch = String(data?.paymentId) === String(mpPaymentInfo?.paymentId);
+          const isRaffleMatch = !data?.raffleId || data?.raffleId === currentRaffleId;
+          const isPaymentIdMatch = !data?.paymentId || String(data?.paymentId) === String(mpPaymentInfo?.paymentId);
           const isOwnerBySession = sessionId && data?.sessionId === sessionId;
           const isOwnerByPhone = userPhoneNorm && orderPhoneNorm && (userPhoneNorm === orderPhoneNorm);
-          const hasOwnership = isOwnerBySession || isOwnerByPhone;
+          const isOwnerByOrder = mpPaymentInfo?.orderId && (data?.id === mpPaymentInfo.orderId || docSnap.id === mpPaymentInfo.orderId);
+          const hasOwnership = isOwnerBySession || isOwnerByPhone || isOwnerByOrder;
 
           if (!isRaffleMatch || !isPaymentIdMatch || !hasOwnership) {
             console.error("[Instant Order Sync] SECURITY VIOLATION / MISMATCH DETECTED!", {
@@ -1906,6 +1916,12 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
           const s = (data?.status || "").toLowerCase();
           if (s === "pago" || s === "paid" || s === "confirmed") {
             console.log("💰 [Instant Order Sync] Payment approved! Advancing to finished step.");
+            if (data?.bonusNums) {
+              setMpPaymentInfo((prev) => prev ? { ...prev, bonusNums: data.bonusNums } : prev);
+            }
+            if (data?.nums) {
+              setSubmittedNumbers(data.nums);
+            }
             setPaymentStep("finished");
           } else if (s === "expired" || s === "canceled" || s === "cancelado") {
             if (

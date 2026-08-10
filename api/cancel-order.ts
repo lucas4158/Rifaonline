@@ -40,127 +40,98 @@ export default async function handler(req: any, res: any) {
 
   try {
     const db = getAdminFirestore();
-    const now = new Date().toISOString();
-    const promises: Promise<any>[] = [];
+    const nowIso = new Date().toISOString();
 
-    // 1. Process orderId if provided
+    // 1. Process order cancellation inside an ATOMIC TRANSACTION
     if (orderId) {
-      const orderRef = db.collection("orders").doc(orderId);
-      const reservationRef = db.collection("reservations").doc(orderId);
+      let cancelError: string | null = null;
 
-      const orderSnap = await orderRef.get();
-      if (orderSnap.exists) {
-        const orderData = orderSnap.data();
-        const statusLower = (orderData?.status || "").toLowerCase();
-        
-        // NEVER cancel paid orders
-        if (
-          statusLower === "pago" || 
-          statusLower === "paid" || 
-          statusLower === "confirmed" || 
-          statusLower === "approved"
-        ) {
-          return res.status(400).json({ error: "Este pedido já está pago e confirmado. Não pode ser cancelado." });
-        }
+      try {
+        await db.runTransaction(async (transaction: any) => {
+          const orderRef = db.collection("orders").doc(orderId);
+          const reservationRef = db.collection("reservations").doc(orderId);
 
-        const realPayId = orderData?.paymentId;
-        if (realPayId && !String(realPayId).startsWith("SIM_") && process.env.MP_ACCESS_TOKEN && mpPayment) {
-          try {
-            await mpPayment.cancel({ id: Number(realPayId) });
-          } catch (mpErr: any) {
-            console.error(`❌ [CancelOrder MP Cancel] Failed payment cancel ${realPayId}:`, mpErr?.message || mpErr);
+          const orderSnap = await transaction.get(orderRef);
+          if (!orderSnap.exists) {
+            return;
           }
-        }
 
-        promises.push(
-          orderRef.update({ status: "Cancelado", canceledAt: now }).catch(() => {})
-        );
-        promises.push(
-          reservationRef.update({ status: "Cancelado", canceledAt: now }).catch(() => {})
-        );
+          const orderData = orderSnap.data();
+          const statusLower = (orderData?.status || "").toLowerCase();
 
-        const orderNums: string[] = orderData?.nums || [];
-        const orderRaffleId = orderData?.raffleId || targetRaffleId;
+          // CRITICAL: NEVER cancel paid orders
+          if (
+            statusLower === "pago" ||
+            statusLower === "paid" ||
+            statusLower === "confirmed" ||
+            statusLower === "approved"
+          ) {
+            cancelError = "Este pedido já está pago e confirmado. Não pode ser cancelado.";
+            throw new Error("ORDER_ALREADY_PAID");
+          }
 
-        orderNums.forEach((num: string) => {
-          const numDocRef = db.collection("raffles").doc(orderRaffleId).collection("numbers").doc(num);
-          promises.push(
-            numDocRef.get().then((numSnap) => {
-              if (numSnap.exists) {
-                const data = numSnap.data();
-                if (data?.orderId === orderId || (sessionId && data?.sessionId === sessionId)) {
-                  const status = (data?.status || "").toLowerCase();
-                  if (status !== "paid" && status !== "pago") {
-                    return numDocRef.delete();
-                  }
-                }
+          // Cancel order & reservation
+          transaction.update(orderRef, { status: "Cancelado", canceledAt: nowIso });
+          transaction.update(reservationRef, { status: "Cancelado", canceledAt: nowIso });
+
+          const orderNums: string[] = orderData?.nums || [];
+          const orderRaffleId = orderData?.raffleId || targetRaffleId;
+
+          // Delete numbers associated with this order IF NOT PAID
+          for (const num of orderNums) {
+            const numRef = db.collection("raffles").doc(orderRaffleId).collection("numbers").doc(num);
+            const numSnap = await transaction.get(numRef);
+            if (numSnap.exists) {
+              const numData = numSnap.data();
+              const nStatus = (numData?.status || "").toLowerCase();
+              if (
+                nStatus !== "paid" &&
+                nStatus !== "pago" &&
+                (numData?.orderId === orderId || (sessionId && numData?.sessionId === sessionId))
+              ) {
+                transaction.delete(numRef);
               }
-            }).catch(() => {})
-          );
+            }
 
-          const lockDocRef = db.collection("locks").doc(num);
-          promises.push(
-            lockDocRef.get().then((lockSnap) => {
-              if (lockSnap.exists) {
-                const lData = lockSnap.data();
-                if (lData?.sessionId === sessionId || lData?.orderId === orderId) {
-                  return lockDocRef.delete();
-                }
+            const lockRef = db.collection("locks").doc(num);
+            const lockSnap = await transaction.get(lockRef);
+            if (lockSnap.exists) {
+              const lockData = lockSnap.data();
+              if (lockData?.sessionId === sessionId || lockData?.orderId === orderId) {
+                transaction.delete(lockRef);
               }
-            }).catch(() => {})
-          );
+            }
+          }
         });
+
+        console.log(`[ORDER_CANCELLED] orderId: ${orderId}, sessionId: ${sessionId || "N/A"}`);
+        console.log(`[LOCK_RELEASED] Locks released for order ${orderId}`);
+      } catch (txErr: any) {
+        if (cancelError) {
+          return res.status(400).json({ error: cancelError });
+        }
+        console.error(`❌ [CancelOrder Transaction] Error processing order ${orderId}:`, txErr);
       }
     }
 
-    // 2. Process sessionId if provided (e.g., clearing locks without orderId or before order creation)
+    // 2. Process additional sessionId locks cleanup if provided
     if (sessionId) {
-      try {
-        const pendingOrdersSnap = await db
-          .collection("orders")
-          .where("sessionId", "==", sessionId)
-          .get();
-
-        pendingOrdersSnap.forEach((docSnap) => {
-          const d = docSnap.data();
-          const st = (d.status || "").toLowerCase();
-          if (st !== "pago" && st !== "paid" && st !== "confirmed" && st !== "approved") {
-            promises.push(docSnap.ref.update({ status: "Cancelado", canceledAt: now }).catch(() => {}));
-          }
-        });
-      } catch (e) {
-        console.warn("⚠️ Failed to query orders by sessionId during cancel-order:", e);
-      }
-
       try {
         const locksSnap = await db
           .collection("locks")
           .where("sessionId", "==", sessionId)
           .get();
 
+        const batch = db.batch();
         locksSnap.forEach((docSnap) => {
-          const num = docSnap.id;
-          promises.push(docSnap.ref.delete().catch(() => {}));
-
-          const numRef = db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
-          promises.push(
-            numRef.get().then((numSnap) => {
-              if (numSnap.exists) {
-                const d = numSnap.data();
-                const st = (d.status || "").toLowerCase();
-                if (st !== "pago" && st !== "paid") {
-                  return numRef.delete();
-                }
-              }
-            }).catch(() => {})
-          );
+          batch.delete(docSnap.ref);
         });
+        await batch.commit();
       } catch (e) {
         console.warn("⚠️ Failed to query locks by sessionId during cancel-order:", e);
       }
     }
 
-    await Promise.all(promises);
     return res.status(200).json({ success: true, message: "Cancelamento concluído e cotas liberadas com sucesso." });
   } catch (error: any) {
     console.error("❌ [CancelOrder API] Internal error:", error);

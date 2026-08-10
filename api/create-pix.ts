@@ -1,11 +1,5 @@
 import "dotenv/config";
-import path from "path";
-import fs from "fs";
-
-
-
-import { getAdminFirestore, isAdminInitialized } from "./_firebaseAdmin.js";
-
+import { getAdminFirestore } from "./_firebaseAdmin.js";
 import { MercadoPagoConfig, Payment } from "mercadopago";
 
 // Initialize Mercado Pago
@@ -19,9 +13,7 @@ if (process.env.MP_ACCESS_TOKEN) {
   }
 }
 
-
-
-// Simple memory rate-limiter map for anti-flood / security protection
+// Memory rate-limiter map for anti-flood / security protection
 const requestTimestamps = new Map<string, number>();
 const FLOOD_COOLDOWN_MS = 4000; // 4 seconds request lock cooldown
 
@@ -81,7 +73,6 @@ export default async function handler(req: any, res: any) {
     return res.status(429).json({ error: "Muitos pedidos sendo gerados para o mesmo telefone. Aguarde alguns segundos (Anti-Spam)." });
   }
 
-  // Register state
   requestTimestamps.set(clientIp, currentNow);
   if (dNormPhone) requestTimestamps.set(dNormPhone, currentNow);
 
@@ -91,110 +82,165 @@ export default async function handler(req: any, res: any) {
   const orderId = Math.random().toString(36).substring(2, 7).toUpperCase();
   const expiresAt = currentNow + 10 * 60 * 1000; // 10 minutes
   let raffleTitle = "Rifa";
+  let finalAmount = 0;
 
-  // Atomic Double Check and Immediate Lock Reservation using Firestore runTransaction
-  if (true) {
-    try {
-      // 1. Fetch config (single document getDoc, eliminating getDocs scan)
-      const tRaffleStart = Date.now();
-      const configRef = getAdminFirestore().collection("raffles").doc(targetRaffleId);
-      const configSnap = await configRef.get();
-      tRaffle = Date.now() - tRaffleStart;
+  try {
+    // 1. Fetch raffle config to recalculate transaction_amount server-side
+    const tRaffleStart = Date.now();
+    const configRef = getAdminFirestore().collection("raffles").doc(targetRaffleId);
+    const configSnap = await configRef.get();
+    tRaffle = Date.now() - tRaffleStart;
 
-      const configData = configSnap.exists ? configSnap.data() : {};
-      if (configData.title) {
-        raffleTitle = configData.title;
-      }
+    const configData = configSnap.exists ? configSnap.data() : {};
+    if (configData.title) {
+      raffleTitle = configData.title;
+    }
 
-      const promotionEnabled = !!configData.promotionEnabled;
-      const buy = Number(configData.promotionBuy || 5);
-      const promoBonus = Number(configData.promotionBonus || 1);
-      const totalRaffleNumbers = Number(configData.totalNumbers || 150);
-      const padLen = String(totalRaffleNumbers).length < 3 ? 3 : String(totalRaffleNumbers).length;
+    // SERVER-SIDE RECALCULATION OF TRANSACTION_AMOUNT (Fixes Error 4037)
+    // Price per quota from config, fallback to request body price
+    const unitPrice = Number(configData.price || price || 0);
+    const calculatedAmount = Number((nums.length * unitPrice).toFixed(2));
 
-      const predictedBonus = promotionEnabled ? Math.floor(nums.length / buy) * promoBonus : 0;
+    // Validate calculated finalAmount
+    if (Number.isFinite(calculatedAmount) && calculatedAmount > 0) {
+      finalAmount = calculatedAmount;
+    } else if (Number.isFinite(Number(totalAmount)) && Number(totalAmount) > 0) {
+      finalAmount = Number(totalAmount);
+    } else {
+      console.warn(`❌ [TRANSACTION_AMOUNT_INVALID] Invalid total calculated for ${nums.length} numbers @ unit price ${unitPrice}`);
+      return res.status(400).json({ error: "O valor total do pedido é inválido. Por favor, selecione as cotas novamente." });
+    }
 
-      // Prepare candidate pool for bonus allocation without getDocs scanning all numbers
-      const candidateBonusPool: string[] = [];
-      const retainedBonus: string[] = [];
+    const promotionEnabled = !!configData.promotionEnabled;
+    const buy = Number(configData.promotionBuy || 5);
+    const promoBonus = Number(configData.promotionBonus || 1);
+    const totalRaffleNumbers = Number(configData.totalNumbers || 150);
+    const padLen = String(totalRaffleNumbers).length < 3 ? 3 : String(totalRaffleNumbers).length;
 
-      if (predictedBonus > 0) {
-        // Retain any existing bonus numbers provided by user session if not in purchased nums
-        existingBonusNums.forEach((num: string) => {
-          if (!nums.includes(num) && !retainedBonus.includes(num)) {
-            retainedBonus.push(num);
-          }
-        });
+    // Bonus numbers prediction (Bonus numbers DO NOT add to charge amount!)
+    const predictedBonus = promotionEnabled ? Math.floor(nums.length / buy) * promoBonus : 0;
 
-        // Pick random candidates from 1..totalRaffleNumbers if retained bonus isn't enough
-        const excludedSet = new Set([...nums, ...retainedBonus]);
-        let attempts = 0;
-        const maxAttempts = totalRaffleNumbers * 2;
-        const maxNeededCandidates = predictedBonus + 2;
-        while (
-          retainedBonus.length + candidateBonusPool.length < maxNeededCandidates &&
-          attempts < maxAttempts
-        ) {
-          attempts++;
-          const randomVal = Math.floor(Math.random() * totalRaffleNumbers) + 1;
-          const formatted = String(randomVal).padStart(padLen, "0");
-          if (!excludedSet.has(formatted) && !candidateBonusPool.includes(formatted)) {
-            candidateBonusPool.push(formatted);
-          }
+    const candidateBonusPool: string[] = [];
+    const retainedBonus: string[] = [];
+
+    if (predictedBonus > 0) {
+      existingBonusNums.forEach((num: string) => {
+        if (!nums.includes(num) && !retainedBonus.includes(num)) {
+          retainedBonus.push(num);
+        }
+      });
+
+      const excludedSet = new Set([...nums, ...retainedBonus]);
+      let attempts = 0;
+      const maxAttempts = totalRaffleNumbers * 2;
+      const maxNeededCandidates = predictedBonus + 2;
+      while (
+        retainedBonus.length + candidateBonusPool.length < maxNeededCandidates &&
+        attempts < maxAttempts
+      ) {
+        attempts++;
+        const randomVal = Math.floor(Math.random() * totalRaffleNumbers) + 1;
+        const formatted = String(randomVal).padStart(padLen, "0");
+        if (!excludedSet.has(formatted) && !candidateBonusPool.includes(formatted)) {
+          candidateBonusPool.push(formatted);
         }
       }
+    }
 
-      // Collect all distinct numbers that need lock & status verification in parallel
-      const allCheckNumbers = Array.from(new Set([...nums, ...retainedBonus, ...candidateBonusPool]));
+    const allCheckNumbers = Array.from(new Set([...nums, ...retainedBonus, ...candidateBonusPool]));
 
-      // 2. Execute parallelized read-before-write transaction
-      const tTransStart = Date.now();
-      const transactionResult = await getAdminFirestore().runTransaction(async (transaction: any) => {
-        // Single batch read for all lock and number documents using transaction.getAll
-        const lockRefs = allCheckNumbers.map((n) => getAdminFirestore().collection("locks").doc(n));
-        const numRefs = allCheckNumbers.map((n) => getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(n));
+    // 2. Execute parallelized read-before-write transaction
+    const tTransStart = Date.now();
+    const transactionResult = await getAdminFirestore().runTransaction(async (transaction: any) => {
+      const lockRefs = allCheckNumbers.map((n) => getAdminFirestore().collection("locks").doc(n));
+      const numRefs = allCheckNumbers.map((n) => getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(n));
 
-        const allSnaps = await transaction.getAll(...lockRefs, ...numRefs);
-        const lockSnaps = allSnaps.slice(0, lockRefs.length);
-        const numSnaps = allSnaps.slice(lockRefs.length);
+      const allSnaps = await transaction.getAll(...lockRefs, ...numRefs);
+      const lockSnaps = allSnaps.slice(0, lockRefs.length);
+      const numSnaps = allSnaps.slice(lockRefs.length);
 
-        // Map snapshots by number for fast evaluation
-        const lockMap = new Map<string, any>();
-        lockSnaps.forEach((snap: any, idx: number) => {
-          if (snap.exists) {
-            lockMap.set(allCheckNumbers[idx], snap.data());
+      const lockMap = new Map<string, any>();
+      lockSnaps.forEach((snap: any, idx: number) => {
+        if (snap.exists) {
+          lockMap.set(allCheckNumbers[idx], snap.data());
+        }
+      });
+
+      const numMap = new Map<string, any>();
+      numSnaps.forEach((snap: any, idx: number) => {
+        if (snap.exists) {
+          numMap.set(allCheckNumbers[idx], snap.data());
+        }
+      });
+
+      // Evaluate requested numbers (nums) for conflicts
+      const conflicts: string[] = [];
+      for (const num of nums) {
+        const lockData = lockMap.get(num);
+        if (lockData) {
+          const isLockExpired = currentNow >= (lockData.expiresAt || 0);
+          if (!isLockExpired && lockData.sessionId && lockData.sessionId !== sessionId) {
+            conflicts.push(num);
+            continue;
           }
-        });
+        }
 
-        const numMap = new Map<string, any>();
-        numSnaps.forEach((snap: any, idx: number) => {
-          if (snap.exists) {
-            numMap.set(allCheckNumbers[idx], snap.data());
+        const numData = numMap.get(num);
+        if (numData) {
+          const status = (numData.status || "").toLowerCase().trim();
+          const expiresAtValue = numData.expiresAt || 0;
+          const isExpired = expiresAtValue > 0 && currentNow >= expiresAtValue;
+
+          if (status === "paid" || status === "pago") {
+            conflicts.push(num);
+            continue;
           }
-        });
 
-        // Evaluate requested numbers (nums) for conflicts
-        const conflicts: string[] = [];
-        for (const num of nums) {
-          const lockData = lockMap.get(num);
-          if (lockData) {
-            const isLockExpired = currentNow >= (lockData.expiresAt || 0);
-            if (!isLockExpired && lockData.sessionId && lockData.sessionId !== sessionId) {
+          if (
+            (status === "reserved" || status === "pending_payment" || status === "aguardando") &&
+            !isExpired
+          ) {
+            const isSameSession = numData.sessionId && sessionId && numData.sessionId === sessionId;
+            const isSamePhone =
+              numData.phone &&
+              phone &&
+              String(numData.phone).replace(/\D/g, "") === String(phone).replace(/\D/g, "");
+
+            if (!isSameSession && !isSamePhone) {
               conflicts.push(num);
               continue;
             }
           }
+        }
+      }
 
-          const numData = numMap.get(num);
+      if (conflicts.length > 0) {
+        console.warn(`⚠️ [CONFLICT_DETECTED] Conflict detected for cotas: ${conflicts.join(", ")} on session: ${sessionId}`);
+        return { success: false, conflicts };
+      }
+
+      // Evaluate and select free bonus numbers
+      const selectedBonus: string[] = [];
+      if (predictedBonus > 0) {
+        const candidateList = [...retainedBonus, ...candidateBonusPool];
+        for (const cand of candidateList) {
+          if (selectedBonus.length >= predictedBonus) break;
+
+          const lockData = lockMap.get(cand);
+          if (lockData) {
+            const isLockExpired = currentNow >= (lockData.expiresAt || 0);
+            if (!isLockExpired && lockData.sessionId && lockData.sessionId !== sessionId) {
+              continue;
+            }
+          }
+
+          const numData = numMap.get(cand);
           if (numData) {
             const status = (numData.status || "").toLowerCase().trim();
             const expiresAtValue = numData.expiresAt || 0;
             const isExpired = expiresAtValue > 0 && currentNow >= expiresAtValue;
 
-            if (status === "paid" || status === "pago") {
-              conflicts.push(num);
-              continue;
-            }
+            if (status === "paid" || status === "pago") continue;
 
             if (
               (status === "reserved" || status === "pending_payment" || status === "aguardando") &&
@@ -206,125 +252,68 @@ export default async function handler(req: any, res: any) {
                 phone &&
                 String(numData.phone).replace(/\D/g, "") === String(phone).replace(/\D/g, "");
 
-              if (!isSameSession && !isSamePhone) {
-                conflicts.push(num);
-                continue;
-              }
+              if (!isSameSession && !isSamePhone) continue;
             }
           }
+
+          selectedBonus.push(cand);
         }
+      }
 
-        if (conflicts.length > 0) {
-          console.warn(`⚠️ [CONFLICT_DETECTED] Conflict detected for cotas: ${conflicts.join(", ")} on session: ${sessionId}`);
-          return { success: false, conflicts };
-        }
+      bonusNums = selectedBonus;
+      allNums = [...nums, ...bonusNums];
 
-        // Evaluate and select free bonus numbers up to predictedBonus
-        const selectedBonus: string[] = [];
-        if (predictedBonus > 0) {
-          const candidateList = [...retainedBonus, ...candidateBonusPool];
-          for (const cand of candidateList) {
-            if (selectedBonus.length >= predictedBonus) break;
+      // Reserve all numbers (purchased + bonus)
+      for (const num of allNums) {
+        const numDocRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
+        transaction.set(numDocRef, {
+          id: num,
+          status: "reserved",
+          orderId: orderId,
+          sessionId: sessionId,
+          name: name,
+          phone: dNormPhone,
+          expiresAt: expiresAt,
+          isBonus: bonusNums.includes(num),
+          updatedAt: new Date().toISOString(),
+        });
+      }
 
-            const lockData = lockMap.get(cand);
-            if (lockData) {
-              const isLockExpired = currentNow >= (lockData.expiresAt || 0);
-              if (!isLockExpired && lockData.sessionId && lockData.sessionId !== sessionId) {
-                continue;
-              }
-            }
+      // Delete selection locks for requested numbers
+      for (const num of nums) {
+        const lockDocRef = getAdminFirestore().collection("locks").doc(num);
+        transaction.delete(lockDocRef);
+      }
 
-            const numData = numMap.get(cand);
-            if (numData) {
-              const status = (numData.status || "").toLowerCase().trim();
-              const expiresAtValue = numData.expiresAt || 0;
-              const isExpired = expiresAtValue > 0 && currentNow >= expiresAtValue;
+      return { success: true };
+    });
 
-              if (status === "paid" || status === "pago") continue;
+    tValAndTrans = Date.now() - tTransStart;
 
-              if (
-                (status === "reserved" || status === "pending_payment" || status === "aguardando") &&
-                !isExpired
-              ) {
-                const isSameSession = numData.sessionId && sessionId && numData.sessionId === sessionId;
-                const isSamePhone =
-                  numData.phone &&
-                  phone &&
-                  String(numData.phone).replace(/\D/g, "") === String(phone).replace(/\D/g, "");
-
-                if (!isSameSession && !isSamePhone) continue;
-              }
-            }
-
-            selectedBonus.push(cand);
-          }
-        }
-
-        bonusNums = selectedBonus;
-        allNums = [...nums, ...bonusNums];
-
-        // All numbers validated! Reserve atomically inside transaction
-        for (const num of allNums) {
-          const numDocRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
-          transaction.set(numDocRef, {
-            id: num,
-            status: "reserved",
-            orderId: orderId,
-            sessionId: sessionId,
-            name: name,
-            phone: dNormPhone,
-            expiresAt: expiresAt,
-            isBonus: bonusNums.includes(num),
-            updatedAt: new Date().toISOString(),
-          });
-        }
-
-        // Delete selection locks for requested numbers
-        for (const num of nums) {
-          const lockDocRef = getAdminFirestore().collection("locks").doc(num);
-          transaction.delete(lockDocRef);
-        }
-
-        return { success: true };
+    if (!transactionResult.success) {
+      return res.status(400).json({
+        error: `As seguintes cotas acabaram de ser adquiridas ou reservadas por outro cliente: ${transactionResult.conflicts?.join(", ")}. Por favor, escolha outros números.`,
+        conflicts: transactionResult.conflicts,
       });
-
-      tValAndTrans = Date.now() - tTransStart;
-
-      if (!transactionResult.success) {
-        return res.status(400).json({
-          error: `As seguintes cotas acabaram de ser adquiridas ou reservadas por outro cliente: ${transactionResult.conflicts?.join(", ")}. Por favor, escolha outros números.`,
-          conflicts: transactionResult.conflicts,
-        });
-      }
-    } catch (dbErr: any) {
-      console.error("❌ [Firestore Serverless] Error checking/locking numbers atomically:", dbErr);
-      const errStr = String(dbErr) + " " + String(dbErr?.message || "");
-      if (errStr.includes("RESOURCE_EXHAUSTED") || errStr.includes("Quota exceeded") || dbErr?.code === 8) {
-        return res.status(429).json({
-          error: "O sistema está com alta demanda de reservas no momento. Por favor, tente novamente em alguns segundos."
-        });
-      }
-      return res.status(500).json({ error: "Erro ao processar as cotas em lote no banco de dados. Por favor, tente novamente." });
     }
+  } catch (dbErr: any) {
+    console.error("❌ [Firestore Serverless] Error checking/locking numbers atomically:", dbErr);
+    return res.status(500).json({ error: "Erro ao processar as cotas em lote no banco de dados. Por favor, tente novamente." });
   }
 
-  // Check if we use real Mercado Pago or simulation fallback
+  // Check Mercado Pago configuration
   const hasMP = !!process.env.MP_ACCESS_TOKEN && mpPayment;
 
-  // Block simulated payments when running on Vercel if Mercado Pago is not configured
   if (!hasMP && process.env.VERCEL === "1") {
     console.warn("⚠️ [Mercado Pago Unconfigured] Simulated payment mode is blocked on Vercel environment.");
-    if (true) {
-      try {
-        const cleanupBatch = getAdminFirestore().batch();
-        allNums.forEach((num: string) => {
-          cleanupBatch.delete(getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num));
-        });
-        await cleanupBatch.commit();
-        console.log(`🧹 [Simulated Mode Blocked Rollback] Cleaned up reservation holds for cotas: ${allNums.join(", ")} in raffle ${targetRaffleId}`);
-      } catch (cleanErr) {
-        console.error("❌ [Simulated Mode Blocked Rollback] Error cleaning up holds:", cleanErr);
-      }
+    try {
+      const cleanupBatch = getAdminFirestore().batch();
+      allNums.forEach((num: string) => {
+        cleanupBatch.delete(getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num));
+      });
+      await cleanupBatch.commit();
+    } catch (cleanErr) {
+      console.error("❌ [Simulated Mode Blocked Rollback] Error cleaning up holds:", cleanErr);
     }
     return res.status(503).json({
       error: "O sistema de pagamento por PIX está temporariamente indisponível. Por favor, tente novamente em alguns instantes.",
@@ -336,7 +325,6 @@ export default async function handler(req: any, res: any) {
   let qrCodeBase64 = "";
   let isSimulated = true;
 
-  // Simple, lightweight CPF Generator so users don't have to input CPF on checkout
   const generateValidCPF = (): string => {
     const rnt = (max: number) => Math.floor(Math.random() * max);
     const n = Array.from({ length: 9 }, () => rnt(10));
@@ -366,12 +354,10 @@ export default async function handler(req: any, res: any) {
       const mpPayerFirstName = name.split(" ")[0] || "Cliente";
       const mpPayerLastName = name.split(" ").slice(1).join(" ") || "Rifa";
 
-      // Detect current application URL dynamically for the webhooks
       const requestHost = req.headers.host || "";
       const dynamicProtocol = req.headers["x-forwarded-proto"] || "https";
       const webhookUrl = `${dynamicProtocol}://${requestHost}/api/webhook`;
 
-      // Validate webhook URL before sending to Mercado Pago
       const isValidWebhookUrl =
         webhookUrl.startsWith("https://") &&
         !webhookUrl.includes("localhost") &&
@@ -380,19 +366,15 @@ export default async function handler(req: any, res: any) {
         !webhookUrl.includes(".local") &&
         !webhookUrl.includes("ais-dev-");
 
-      // Configure absolute expiration on Mercado Pago API
       const expirationDateStr = new Date(expiresAt).toISOString();
-
-      // Deterministic Idempotency Key for Mercado Pago call
       const idempotencyKey =
         req.body.idempotencyKey ||
         req.body.orderId ||
         `pix_${targetRaffleId}_${orderId}_${dNormPhone}_${nums.slice().sort().join("-")}`;
 
-      // Call MP official API with idempotencyKey in requestOptions
       const mpResponse = await mpPayment.create({
         body: {
-          transaction_amount: Number(totalAmount),
+          transaction_amount: finalAmount,
           description: `Rifa: ${raffleTitle || "Venda"} - Cotas: ${nums.join(", ")}${
             bonusNums.length > 0 ? ` + Bônus: ${bonusNums.join(", ")}` : ""
           }`,
@@ -434,44 +416,21 @@ export default async function handler(req: any, res: any) {
       qrCodeBase64 = mpResponse.point_of_interaction?.transaction_data?.qr_code_base64 || "";
       isSimulated = false;
 
-      console.log(`✅ [MercadoPago Serverless] Real payment generated! ID: ${paymentId} (Key: ${idempotencyKey})`);
+      console.log(`✅ [MercadoPago Serverless] Real payment generated! ID: ${paymentId} (Amount: R$${finalAmount})`);
     } catch (mpError: any) {
       console.error("❌ [MercadoPago Serverless] API creation failed:", mpError);
 
-      // Clean up / rollback the reserved numbers we created in the transaction
-      if (true) {
-        try {
-          const cleanupBatch = getAdminFirestore().batch();
-          allNums.forEach((num: string) => {
-            cleanupBatch.delete(getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num));
-          });
-          await cleanupBatch.commit();
-          console.log(`🧹 [MercadoPago Failure Rollback] Cleaned up reservation holds for cotas: ${allNums.join(", ")} in raffle ${targetRaffleId}`);
-        } catch (cleanErr) {
-          console.error("❌ [MercadoPago Failure Rollback] Error cleaning up holds:", cleanErr);
-        }
+      try {
+        const cleanupBatch = getAdminFirestore().batch();
+        allNums.forEach((num: string) => {
+          cleanupBatch.delete(getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num));
+        });
+        await cleanupBatch.commit();
+      } catch (cleanErr) {
+        console.error("❌ [MercadoPago Failure Rollback] Error cleaning up holds:", cleanErr);
       }
 
       let detailMsg = mpError.message || String(mpError);
-
-      if (mpError.api_response) {
-        try {
-          const apiData = mpError.api_response;
-          if (apiData.message) {
-            detailMsg += ` (${apiData.message})`;
-          }
-        } catch (_) {}
-      }
-
-      if (mpError.cause && Array.isArray(mpError.cause)) {
-        const causes = mpError.cause.map((c: any) => c.description || c.code).join(", ");
-        if (causes) {
-          detailMsg += ` - Causa: ${causes}`;
-        }
-      } else if (mpError.cause) {
-        detailMsg += ` - Causa: ${JSON.stringify(mpError.cause)}`;
-      }
-
       return res.status(400).json({
         error: `Falha na API do Mercado Pago: ${detailMsg}. Verifique as credenciais ou as informações digitadas.`,
       });
@@ -485,72 +444,64 @@ export default async function handler(req: any, res: any) {
     console.log(`🧪 [MercadoPago Serverless] Simulated payment generated! ID: ${paymentId}`);
   }
 
-  // Create order and all associated documents in Firestore using high performance Batch Writes
+  // Create order documents in Firestore using batch write
   try {
     const tSaveStart = Date.now();
-    if (true) {
-      const batch = getAdminFirestore().batch();
+    const batch = getAdminFirestore().batch();
 
-      // 1. Setup legacy/compatibility Order document
-      const orderRef = getAdminFirestore().collection("orders").doc(orderId);
-      const newOrder = {
-        id: orderId,
-        raffleId: targetRaffleId,
-        name,
-        phone: dNormPhone,
-        nums: allNums,
-        bonusNums: bonusNums,
-        val: Number(totalAmount),
-        status: "pending_payment",
-        createdAt: new Date().toISOString(),
-        expiresAt: expiresAt,
-        paymentId,
-        paymentType: isSimulated ? "SimulatedPix" : "MercadoPagoPix",
-        qrCode,
-        qrCodeBase64,
-        isSimulated,
-      };
-      batch.set(orderRef, newOrder);
+    const orderRef = getAdminFirestore().collection("orders").doc(orderId);
+    const newOrder = {
+      id: orderId,
+      raffleId: targetRaffleId,
+      name,
+      phone: dNormPhone,
+      nums: allNums,
+      purchasedNums: nums,
+      bonusNums: bonusNums,
+      val: finalAmount,
+      status: "pending_payment",
+      createdAt: new Date().toISOString(),
+      expiresAt: expiresAt,
+      paymentId,
+      paymentType: isSimulated ? "SimulatedPix" : "MercadoPagoPix",
+      qrCode,
+      qrCodeBase64,
+      isSimulated,
+    };
+    batch.set(orderRef, newOrder);
 
-      // 2. Setup scalable Reservation document
-      const reservationRef = getAdminFirestore().collection("reservations").doc(orderId);
-      const newReservation = {
-        id: orderId,
-        raffleId: targetRaffleId,
-        name,
-        phone: dNormPhone,
-        nums: allNums,
-        bonusNums: bonusNums,
-        val: Number(totalAmount),
-        status: "pending_payment",
-        createdAt: new Date().toISOString(),
-        expiresAt: expiresAt,
-      };
-      batch.set(reservationRef, newReservation);
+    const reservationRef = getAdminFirestore().collection("reservations").doc(orderId);
+    const newReservation = {
+      id: orderId,
+      raffleId: targetRaffleId,
+      name,
+      phone: dNormPhone,
+      nums: allNums,
+      purchasedNums: nums,
+      bonusNums: bonusNums,
+      val: finalAmount,
+      status: "pending_payment",
+      createdAt: new Date().toISOString(),
+      expiresAt: expiresAt,
+    };
+    batch.set(reservationRef, newReservation);
 
-      // 3. Setup scalable Payment logs document
-      const paymentRef = getAdminFirestore().collection("payments").doc(paymentId);
-      const newPayment = {
-        id: paymentId,
-        orderId: orderId,
-        raffleId: targetRaffleId,
-        status: "pending_payment",
-        amount: Number(totalAmount),
-        createdAt: new Date().toISOString(),
-        isSimulated,
-      };
-      batch.set(paymentRef, newPayment);
+    const paymentRef = getAdminFirestore().collection("payments").doc(paymentId);
+    const newPayment = {
+      id: paymentId,
+      orderId: orderId,
+      raffleId: targetRaffleId,
+      status: "pending_payment",
+      amount: finalAmount,
+      createdAt: new Date().toISOString(),
+      isSimulated,
+    };
+    batch.set(paymentRef, newPayment);
 
-      await batch.commit();
-      tFinalSave = Date.now() - tSaveStart;
+    await batch.commit();
+    tFinalSave = Date.now() - tSaveStart;
 
-      const tTotal = Date.now() - tStart;
-      console.log(
-        `⏱️ [PERF_METRICS] Total: ${tTotal}ms | RaffleRead: ${tRaffle}ms | Val&Trans: ${tValAndTrans}ms | MP: ${tMercadoPago}ms | Save: ${tFinalSave}ms`
-      );
-    } else {
-      console.error("❌ [Firestore Serverless] Connection not initialized!");
-    }
+    console.log(`[PAYMENT_CREATED] orderId: ${orderId}, paymentId: ${paymentId}, sessionId: ${sessionId}, raffleId: ${targetRaffleId}, amount: ${finalAmount}`);
 
     return res.status(200).json({
       success: true,
@@ -561,6 +512,8 @@ export default async function handler(req: any, res: any) {
       isSimulated,
       expiresAt,
       bonusNums,
+      nums: allNums,
+      val: finalAmount,
       perf: {
         totalMs: Date.now() - tStart,
         raffleMs: tRaffle,

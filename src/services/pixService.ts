@@ -156,5 +156,32 @@ export const pixService = {
 
   logPixExpired(orderId: string, paymentId: string) {
     console.log(`[PIX_EXPIRED] Order expired or late check-in. orderId: ${orderId}, paymentId: ${paymentId}`);
+  },
+
+  async checkPayment(params: {
+    paymentId: string;
+    orderId?: string;
+    raffleId?: string;
+  }): Promise<any> {
+    console.log(`[PAYMENT_STATUS_CHECKED] Requesting check-payment for paymentId: ${params.paymentId}, orderId: ${params.orderId || "N/A"}`);
+    try {
+      const response = await fetch("/api/check-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentId: params.paymentId,
+          orderId: params.orderId,
+          raffleId: params.raffleId || "current",
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Erro ao consultar status do pagamento");
+      }
+      return data;
+    } catch (err: any) {
+      console.error("[PAYMENT_STATUS_CHECK_ERROR]", err);
+      throw err;
+    }
   }
 };
