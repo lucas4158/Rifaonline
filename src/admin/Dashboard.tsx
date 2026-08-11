@@ -4838,7 +4838,13 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         )}
 
         {/* ORDERS TAB WITH SUPABASE PURCHASES */}
-        {currentAdminTab === "orders" && <PurchasesView selectedRaffleId={selectedRaffleId} />}
+        {currentAdminTab === "orders" && (
+          <PurchasesView
+            selectedRaffleId={selectedRaffleId}
+            raffles={raffles}
+            onSelectRaffle={(id) => setSelectedRaffleId(id)}
+          />
+        )}
 
         {/* CUSTOMERS TAB (NEW) */}
         {currentAdminTab === "customers" && (
