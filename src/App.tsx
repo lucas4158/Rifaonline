@@ -2335,7 +2335,9 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         (o) => o.status === "Aguardando" || o.status === "pending_payment",
       )
       .reduce((acc, curr) => acc + curr.val, 0);
-    const countPaid = numbers.filter((n) => n.status === "paid").length;
+    const countPaid = numbers.filter(
+      (n) => n.status === "paid" || n.status === "bonus_paid",
+    ).length;
     const countReserved = numbers.filter(
       (n) =>
         n.status === "reserved" ||
@@ -2357,7 +2359,9 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
   const progressPercentage = useMemo(() => {
     const total = raffleConfig.totalNumbers || 100;
-    const occupied = numbers.filter((n) => n.status === "paid").length;
+    const occupied = numbers.filter(
+      (n) => n.status === "paid" || n.status === "bonus_paid",
+    ).length;
     return total > 0 ? (occupied / total) * 100 : 0;
   }, [numbers, raffleConfig.totalNumbers]);
 
@@ -2553,7 +2557,9 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
     if (isDrawing) return;
 
     // Strict validation: draw only if ALL quotas are paid
-    const paidCount = numbers.filter((n) => n.status === "paid").length;
+    const paidCount = numbers.filter(
+      (n) => n.status === "paid" || n.status === "bonus_paid",
+    ).length;
     if (paidCount < raffleConfig.totalNumbers) {
       alert(
         `O sorteio só é permitido se TODAS as cotas estiverem preenchidas e PAGAS!\n\nCotas pagas: ${paidCount} de ${raffleConfig.totalNumbers} (${raffleConfig.totalNumbers - paidCount} restantes).`,
@@ -2616,7 +2622,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       const matchesFilter =
         filter === "Todos" ||
         (filter === "Disponíveis" && (n.status === "available" || n.isGhost)) ||
-        (filter === "Pagos" && n.status === "paid") ||
+        (filter === "Pagos" && (n.status === "paid" || n.status === "bonus_paid")) ||
         (filter === "Reservados" &&
           (n.status === "reserved" || n.status === "pending_payment") &&
           !n.isGhost);
@@ -2722,7 +2728,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         const totalRaffleNumbers = Number(raffleConfig.totalNumbers || 150);
 
         const busyByOthersCount = numbers.filter((n) => {
-          if (n.status === "paid") return true;
+          if (n.status === "paid" || n.status === "bonus_paid") return true;
           if (n.status === "reserved" || n.status === "pending_payment") {
             const expired = n.expiresAt && Date.now() >= n.expiresAt;
             return !expired && n.sessionId !== sessionId;
@@ -2799,7 +2805,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       const totalRaffleNumbers = Number(raffleConfig.totalNumbers || 150);
 
       const busyByOthersCount = numbers.filter((n) => {
-        if (n.status === "paid") return true;
+        if (n.status === "paid" || n.status === "bonus_paid") return true;
         if (n.status === "reserved" || n.status === "pending_payment") {
           const expired = n.expiresAt && Date.now() >= n.expiresAt;
           return !expired && n.sessionId !== sessionId;
@@ -5587,7 +5593,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                             <div className="bg-zinc-950/70 border border-zinc-900 p-5 rounded-2xl flex flex-col items-center justify-center gap-4 relative overflow-hidden shadow-inner">
                               {(() => {
                                 const paidCount = numbers.filter(
-                                  (n) => n.status === "paid",
+                                  (n) => n.status === "paid" || n.status === "bonus_paid",
                                 ).length;
                                 const total = raffleConfig.totalNumbers || 100;
                                 const allPaid = paidCount === total;
@@ -5819,7 +5825,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                   };
 
                                   const paidCount = numbers.filter(
-                                    (n) => n.status === "paid",
+                                    (n) => n.status === "paid" || n.status === "bonus_paid",
                                   ).length;
                                   const total = raffleConfig.totalNumbers || 100;
                                   if (
