@@ -81,6 +81,8 @@ export interface RaffleConfig {
   federalRegra?: string;
   pixKeyType?: string;
   pixBankLogo?: string;
+  isDestaque?: boolean;
+  isFeatured?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }

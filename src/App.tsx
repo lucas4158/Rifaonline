@@ -23,6 +23,7 @@ import {
   CreditCard,
   QrCode,
   Trophy,
+  Star,
   PartyPopper,
   Trash2,
   RefreshCw,
@@ -800,7 +801,8 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
   // Featured raffle helper for Hero banner & highlights
   const featuredRaffle = useMemo(() => {
     if (activeRaffles && activeRaffles.length > 0) {
-      return activeRaffles[0];
+      const highlighted = activeRaffles.find(r => r.isDestaque || r.isFeatured);
+      return highlighted || activeRaffles[0];
     }
     return raffleConfig;
   }, [activeRaffles, raffleConfig]);
@@ -1052,6 +1054,13 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         } else {
           console.log(`✅ [DIAGNOSTICO] ${list.length} rifa(s) ativa(s) encontrada(s). Exibindo os cards das rifas ativas.`);
         }
+
+        // Sort active raffles list so Destaque raffles appear first
+        list.sort((a, b) => {
+          const destA = (a.isDestaque || a.isFeatured) ? 1 : 0;
+          const destB = (b.isDestaque || b.isFeatured) ? 1 : 0;
+          return destB - destA;
+        });
 
         // Update active raffles list
         setActiveRaffles(list);
@@ -3222,7 +3231,13 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                             <div className="absolute inset-0 bg-gradient-to-t from-[#0A0A0A] via-transparent to-black/30 pointer-events-none" />
                             
                             {/* Status Badge */}
-                            <div className="absolute top-4 left-4 z-10">
+                            <div className="absolute top-4 left-4 z-10 flex flex-col gap-1.5 items-start">
+                              {(raffle.isDestaque || raffle.isFeatured) && (
+                                <div className="bg-gradient-to-r from-amber-400 to-amber-500 text-black text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full shadow-lg shadow-amber-500/20 flex items-center gap-1 border border-amber-300">
+                                  <Star className="w-3 h-3 fill-black text-black" />
+                                  <span>Destaque</span>
+                                </div>
+                              )}
                               {isQuaseEncerrada ? (
                                 <div className="bg-amber-500 text-black text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full shadow-lg flex items-center gap-1">
                                   <span className="w-1.5 h-1.5 rounded-full bg-black animate-ping" />

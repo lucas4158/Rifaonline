@@ -5,8 +5,22 @@ import {
   DollarSign, Check, Calendar, Phone, ArrowLeft, LogOut, MessageCircle, CheckCircle2,
   Image as ImageIcon, Loader2, Play, LayoutDashboard, ClipboardList, PlusCircle, Award, Settings,
   Copy, Edit3, Archive, Power, Sparkles, Eye, CheckCircle, Pause, ShoppingBag, Ticket, Save, FolderOpen,
-  Calculator, Users, Grid
+  Calculator, Users, Grid, Star, BarChart3, TrendingUp, PieChart as PieChartIcon
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip as RechartsTooltip,
+  Cell,
+  PieChart as RechartsPieChart,
+  Pie,
+  Legend,
+  AreaChart,
+  Area
+} from "recharts";
 import { db } from "../services/firebase";
 import { adminService } from "../services/adminService";
 import { performRobustImageUpload } from "../services/uploadService";
@@ -164,6 +178,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   const [modalFederalConcurso, setModalFederalConcurso] = useState<string>("");
   const [modalFederalData, setModalFederalData] = useState<string>("");
   const [modalFederalRegra, setModalFederalRegra] = useState<string>("Último dígito do 1º prêmio");
+  const [modalIsDestaque, setModalIsDestaque] = useState<boolean>(true);
   const [isSubmittingRaffleModal, setIsSubmittingRaffleModal] = useState<boolean>(false);
   const [uploadingModalImage, setUploadingModalImage] = useState<boolean>(false);
   const [uploadingWinnerImage, setUploadingWinnerImage] = useState<boolean>(false);
@@ -590,6 +605,57 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     });
   }, [raffles, orders]);
 
+  const CHART_COLORS = ['#A3E635', '#38BDF8', '#F59E0B', '#EC4899', '#8B5CF6', '#10B981', '#F43F5E', '#06B6D4'];
+
+  const analyticsData = useMemo(() => {
+    const totalGlobalRevenue = rafflesWithStats.reduce((acc, r) => acc + (r.totalRevenue || 0), 0);
+    const totalGlobalTickets = rafflesWithStats.reduce((acc, r) => acc + (r.totalSoldNumbers || 0), 0);
+
+    const sortedByRevenue = [...rafflesWithStats].sort((a, b) => (b.totalRevenue || 0) - (a.totalRevenue || 0));
+    const topRaffle = sortedByRevenue[0] || null;
+
+    const pieData = rafflesWithStats.map((r, idx) => {
+      const rev = r.totalRevenue || 0;
+      const pct = totalGlobalRevenue > 0 ? (rev / totalGlobalRevenue) * 100 : 0;
+      return {
+        name: r.title && r.title.length > 20 ? r.title.substring(0, 18) + "..." : (r.title || "Rifa"),
+        fullTitle: r.title || "Rifa",
+        value: rev,
+        percent: parseFloat(pct.toFixed(1)),
+        color: CHART_COLORS[idx % CHART_COLORS.length],
+        id: r.id
+      };
+    });
+
+    const barData = rafflesWithStats.map((r) => {
+      const sold = r.totalSoldNumbers || 0;
+      const total = Number(r.totalNumbers) || 100;
+      const price = Number(r.price) || 10;
+      const potential = total * price;
+      return {
+        name: r.title && r.title.length > 18 ? r.title.substring(0, 16) + "..." : (r.title || "Rifa"),
+        fullTitle: r.title || "Rifa",
+        Arrecadado: r.totalRevenue || 0,
+        Potencial: potential,
+        CotasVendidas: sold,
+        TotalCotas: total,
+        PrecoCota: price,
+        isDestaque: Boolean(r.isDestaque || r.isFeatured)
+      };
+    });
+
+    const activeCount = rafflesWithStats.filter(r => r.status === "ativa" || (r.isRaffleActive !== false && r.status !== "encerrada")).length;
+
+    return {
+      totalGlobalRevenue,
+      totalGlobalTickets,
+      topRaffle,
+      pieData,
+      barData,
+      activeCount
+    };
+  }, [rafflesWithStats]);
+
   // Filtered list of raffles for "Minhas Rifas" screen
   const filteredRafflesList = useMemo(() => {
     let result = rafflesWithStats;
@@ -666,6 +732,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     setModalFederalConcurso("");
     setModalFederalData("");
     setModalFederalRegra("Último dígito do 1º prêmio");
+    setModalIsDestaque(true);
     setShowRaffleModal(true);
   };
 
@@ -761,6 +828,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     setModalFederalConcurso(raffle.federalConcurso || "");
     setModalFederalData(raffle.federalData || "");
     setModalFederalRegra(raffle.federalRegra || "Último dígito do 1º prêmio");
+    setModalIsDestaque(Boolean(raffle.isDestaque ?? raffle.isFeatured ?? true));
     setShowRaffleModal(true);
   };
 
@@ -792,6 +860,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         federalConcurso: modalFederalConcurso.trim(),
         federalData: modalFederalData.trim(),
         federalRegra: modalFederalRegra.trim(),
+        isDestaque: modalIsDestaque,
+        isFeatured: modalIsDestaque,
         status: editingRaffleItem ? (editingRaffleItem.status || "ativa") : "ativa",
         isActive: editingRaffleItem ? (editingRaffleItem.isActive !== false) : true,
         isRaffleActive: editingRaffleItem ? (editingRaffleItem.isRaffleActive !== false) : true,
@@ -4077,6 +4147,50 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   )}
                 </div>
 
+                {/* POSICIONAMENTO: DESTAQUE VS RIFA COMUM */}
+                <div className="space-y-2 pt-2 border-t border-zinc-900">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-amber-400 font-bebas flex items-center gap-1.5">
+                    <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" /> Posicionamento na Página Principal
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setModalIsDestaque(true)}
+                      className={`p-3.5 rounded-2xl border text-left flex items-center gap-3 transition-all cursor-pointer ${
+                        modalIsDestaque
+                          ? "bg-amber-500/10 border-amber-500 text-amber-400 shadow-md shadow-amber-500/10"
+                          : "bg-zinc-900/50 border-zinc-800 text-zinc-400 hover:border-zinc-700"
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${modalIsDestaque ? "bg-amber-500 text-black font-black" : "bg-zinc-800 text-zinc-400"}`}>
+                        <Star className="w-4 h-4 fill-current" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-black uppercase font-bebas tracking-wide">Rifa em Destaque</div>
+                        <div className="text-[9px] text-zinc-400 leading-tight">Card principal destacado no topo da Home</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setModalIsDestaque(false)}
+                      className={`p-3.5 rounded-2xl border text-left flex items-center gap-3 transition-all cursor-pointer ${
+                        !modalIsDestaque
+                          ? "bg-violet-500/10 border-violet-500 text-violet-300 shadow-md shadow-violet-500/10"
+                          : "bg-zinc-900/50 border-zinc-800 text-zinc-400 hover:border-zinc-700"
+                      }`}
+                    >
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${!modalIsDestaque ? "bg-violet-500 text-white font-black" : "bg-zinc-800 text-zinc-400"}`}>
+                        <Ticket className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-black uppercase font-bebas tracking-wide">Rifa Comum</div>
+                        <div className="text-[9px] text-zinc-400 leading-tight">Exibição padrão no catálogo de rifas</div>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+
                 <button
                   type="submit"
                   disabled={isSubmittingRaffleModal}
@@ -4262,6 +4376,206 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
       {/* TAB CONDITIONAL RENDERING */}
       {currentAdminTab === "overview" && activeTab === "dashboard" && (
           <div className="space-y-6">
+            {/* GLOBAL REVENUE ANALYTICS & CHARTS SECTION */}
+            <div className="space-y-6">
+              {/* GLOBAL KPIS ROW */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-gradient-to-br from-emerald-950/40 via-zinc-950 to-zinc-950 border border-emerald-500/20 rounded-2xl p-5 relative overflow-hidden">
+                  <div className="flex justify-between items-start">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-emerald-400 font-bebas">Receita Global Acumulada</span>
+                    <div className="p-2 bg-emerald-500/10 rounded-xl text-emerald-400">
+                      <TrendingUp className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="text-2xl font-black font-mono text-white mt-2">
+                    R$ {analyticsData.totalGlobalRevenue.toFixed(2).replace(".", ",")}
+                  </div>
+                  <p className="text-[10px] text-zinc-500 mt-1">Soma de todas as rifas e pedidos pagos</p>
+                </div>
+
+                <div className="bg-gradient-to-br from-amber-950/40 via-zinc-950 to-zinc-950 border border-amber-500/20 rounded-2xl p-5 relative overflow-hidden">
+                  <div className="flex justify-between items-start">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-amber-400 font-bebas">Rifa Líder (Campeã)</span>
+                    <div className="p-2 bg-amber-500/10 rounded-xl text-amber-400">
+                      <Trophy className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="text-lg font-black text-amber-300 mt-2 truncate">
+                    {analyticsData.topRaffle?.title || "Nenhuma Rifa"}
+                  </div>
+                  <p className="text-[10px] text-amber-400/80 font-mono mt-1">
+                    R$ {(analyticsData.topRaffle?.totalRevenue || 0).toFixed(2).replace(".", ",")} arrecadados
+                  </p>
+                </div>
+
+                <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-5">
+                  <div className="flex justify-between items-start">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400 font-bebas">Total Cotas Vendidas</span>
+                    <div className="p-2 bg-violet-500/10 rounded-xl text-violet-400">
+                      <Ticket className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="text-2xl font-black font-mono text-violet-400 mt-2">
+                    {analyticsData.totalGlobalTickets} <span className="text-xs text-zinc-500">cotas</span>
+                  </div>
+                  <p className="text-[10px] text-zinc-500 mt-1">Total acumulado de números pagos</p>
+                </div>
+
+                <div className="bg-zinc-950 border border-zinc-900 rounded-2xl p-5">
+                  <div className="flex justify-between items-start">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400 font-bebas">Rifas no Catálogo</span>
+                    <div className="p-2 bg-cyan-500/10 rounded-xl text-cyan-400">
+                      <BarChart3 className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="text-2xl font-black font-mono text-white mt-2">
+                    {analyticsData.activeCount} <span className="text-xs text-zinc-500">ativas ({rafflesWithStats.length} total)</span>
+                  </div>
+                  <p className="text-[10px] text-zinc-500 mt-1">Campanhas cadastradas no sistema</p>
+                </div>
+              </div>
+
+              {/* CHARTS GRID: BAR CHART & PIE CHART */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                {/* CHART 1: REVENUE BAR CHART (7 COLUMNS) */}
+                <div className="lg:col-span-7 bg-zinc-950 border border-zinc-900 rounded-3xl p-6 space-y-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-zinc-900 pb-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <BarChart3 className="w-4 h-4 text-[#A3E635]" />
+                        <h3 className="text-xs font-black uppercase tracking-wider text-white font-bebas">
+                          Arrecadação Financeira por Rifa
+                        </h3>
+                      </div>
+                      <p className="text-[10px] text-zinc-500 mt-0.5">Comparativo de faturamento (R$) de todas as campanhas</p>
+                    </div>
+                    <span className="text-[10px] font-mono text-[#A3E635] bg-[#A3E635]/10 border border-[#A3E635]/20 px-2.5 py-1 rounded-full font-bold">
+                      Tempo Real
+                    </span>
+                  </div>
+
+                  {analyticsData.barData.length === 0 ? (
+                    <div className="h-64 flex flex-col items-center justify-center text-zinc-600 space-y-2">
+                      <BarChart3 className="w-8 h-8 opacity-40" />
+                      <p className="text-xs">Nenhuma rifa cadastrada para exibir o gráfico.</p>
+                    </div>
+                  ) : (
+                    <div className="h-72 w-full pt-2">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={analyticsData.barData} margin={{ top: 10, right: 10, left: 0, bottom: 25 }}>
+                          <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} interval={0} />
+                          <YAxis stroke="#52525b" fontSize={10} tickLine={false} tickFormatter={(v) => `R$${v}`} />
+                          <RechartsTooltip
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                const data = payload[0].payload;
+                                return (
+                                  <div className="bg-zinc-900 border border-zinc-700 p-3 rounded-xl shadow-xl space-y-1 text-xs">
+                                    <p className="font-bold text-white uppercase">{data.fullTitle}</p>
+                                    <p className="text-emerald-400 font-mono font-black">
+                                      Arrecadado: R$ {data.Arrecadado.toFixed(2).replace(".", ",")}
+                                    </p>
+                                    <p className="text-zinc-400 font-mono text-[10px]">
+                                      Vendas: {data.CotasVendidas} / {data.TotalCotas} cotas (R$ {data.PrecoCota}/cada)
+                                    </p>
+                                    <p className="text-amber-400 text-[10px]">
+                                      Potencial Máximo: R$ {data.Potencial.toFixed(2).replace(".", ",")}
+                                    </p>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <Bar dataKey="Arrecadado" radius={[8, 8, 0, 0]}>
+                            {analyticsData.barData.map((entry, index) => (
+                              <Cell
+                                key={`cell-${index}`}
+                                fill={entry.isDestaque ? "#F59E0B" : "#A3E635"}
+                              />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
+                </div>
+
+                {/* CHART 2: PIE CHART - REVENUE SHARE & TOP RAFFLE (5 COLUMNS) */}
+                <div className="lg:col-span-5 bg-zinc-950 border border-zinc-900 rounded-3xl p-6 space-y-4 flex flex-col justify-between">
+                  <div className="border-b border-zinc-900 pb-4">
+                    <div className="flex items-center gap-2">
+                      <PieChartIcon className="w-4 h-4 text-amber-400" />
+                      <h3 className="text-xs font-black uppercase tracking-wider text-white font-bebas">
+                        Distribuição da Arrecadação (%)
+                      </h3>
+                    </div>
+                    <p className="text-[10px] text-zinc-500 mt-0.5">Participação relativa de cada rifa no faturamento</p>
+                  </div>
+
+                  {analyticsData.totalGlobalRevenue === 0 ? (
+                    <div className="h-64 flex flex-col items-center justify-center text-zinc-600 text-center px-4 space-y-2">
+                      <PieChartIcon className="w-8 h-8 opacity-40 text-amber-400" />
+                      <p className="text-xs">Ainda não há receitas registradas para montar o gráfico de pizza.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="h-48 w-full relative flex items-center justify-center">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RechartsPieChart>
+                            <Pie
+                              data={analyticsData.pieData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={45}
+                              outerRadius={75}
+                              paddingAngle={4}
+                              dataKey="value"
+                            >
+                              {analyticsData.pieData.map((entry, index) => (
+                                <Cell key={`pie-cell-${index}`} fill={entry.color} />
+                              ))}
+                            </Pie>
+                            <RechartsTooltip
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  const data = payload[0].payload;
+                                  return (
+                                    <div className="bg-zinc-900 border border-zinc-700 p-2.5 rounded-xl shadow-xl text-xs space-y-0.5">
+                                      <p className="font-bold text-white">{data.fullTitle}</p>
+                                      <p className="text-emerald-400 font-mono font-bold">
+                                        R$ {data.value.toFixed(2).replace(".", ",")} ({data.percent}%)
+                                      </p>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                          </RechartsPieChart>
+                        </ResponsiveContainer>
+                      </div>
+
+                      {/* PIE LEGEND */}
+                      <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                        {analyticsData.pieData.map((item, i) => (
+                          <div key={i} className="flex items-center justify-between text-[11px] bg-zinc-900/50 p-2 rounded-xl border border-zinc-850">
+                            <div className="flex items-center gap-2 truncate">
+                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                              <span className="font-bold text-zinc-300 truncate">{item.fullTitle}</span>
+                            </div>
+                            <span className="font-mono font-black text-amber-400 shrink-0 ml-2">
+                              R$ {item.value.toFixed(2).replace(".", ",")} ({item.percent}%)
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <div className="bg-gradient-to-r from-violet-950/40 via-zinc-950 to-zinc-950 border border-violet-500/10 rounded-3xl p-6 flex flex-col md:flex-row items-center justify-between gap-4">
               <div>
                 <div className="flex items-center gap-2">
