@@ -1086,13 +1086,26 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
           return null;
         });
 
-        // Summary stats for each active raffle card (without unnecessary Firestore subcollection queries)
+        // Summary stats for each active raffle card (accounting for promotional capacity and completed raffles)
         const statsMap: Record<string, { soldCount: number; percentSold: number; remainingCount: number }> = {};
         list.forEach((rf) => {
           const paidCount = Number(rf.soldCount || 0);
           const total = Number(rf.totalNumbers || 100);
-          const percent = Math.min(100, (paidCount / total) * 100);
-          const remaining = Math.max(0, total - paidCount);
+
+          let capacity = total;
+          const promoEnabled = !!rf.promotionEnabled;
+          const buy = Number(rf.promotionBuy || 0);
+          const promoBonus = Number(rf.promotionBonus || 0);
+          if (promoEnabled && buy > 0 && promoBonus > 0) {
+            const groupSize = buy + promoBonus;
+            const groups = Math.floor(total / groupSize);
+            const rem = total % groupSize;
+            capacity = groups * buy + Math.min(buy, rem);
+          }
+
+          const isEncerradaOrWinner = rf.status === "encerrada" || Boolean(rf.winnerNumber);
+          const percent = isEncerradaOrWinner ? 100 : Math.min(100, capacity > 0 ? (paidCount / capacity) * 100 : 0);
+          const remaining = Math.max(0, capacity - paidCount);
           statsMap[rf.id] = { soldCount: paidCount, percentSold: percent, remainingCount: remaining };
         });
         setActiveRafflesStats(statsMap);
@@ -2349,13 +2362,29 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
   }, [orders, numbers, selectedNumbersSet, raffleConfig.totalNumbers, raffleConfig.soldCount]);
 
   const progressPercentage = useMemo(() => {
-    const total = raffleConfig.totalNumbers || 100;
+    const total = Number(raffleConfig.totalNumbers || 100);
     const paidFromDbNumbers = numbers.filter(
       (n) => n.status === "paid" || n.status === "bonus_paid",
     ).length;
     const occupied = Math.max(Number(raffleConfig.soldCount || 0), paidFromDbNumbers);
-    return total > 0 ? (occupied / total) * 100 : 0;
-  }, [numbers, raffleConfig.totalNumbers, raffleConfig.soldCount]);
+
+    if (raffleConfig.status === "encerrada" || Boolean(raffleConfig.winnerNumber)) {
+      return 100;
+    }
+
+    let capacity = total;
+    const promoEnabled = !!raffleConfig.promotionEnabled;
+    const buy = Number(raffleConfig.promotionBuy || 0);
+    const promoBonus = Number(raffleConfig.promotionBonus || 0);
+    if (promoEnabled && buy > 0 && promoBonus > 0) {
+      const groupSize = buy + promoBonus;
+      const groups = Math.floor(total / groupSize);
+      const rem = total % groupSize;
+      capacity = groups * buy + Math.min(buy, rem);
+    }
+
+    return capacity > 0 ? Math.min(100, (occupied / capacity) * 100) : 0;
+  }, [numbers, raffleConfig.totalNumbers, raffleConfig.soldCount, raffleConfig.promotionEnabled, raffleConfig.promotionBuy, raffleConfig.promotionBonus, raffleConfig.status, raffleConfig.winnerNumber]);
 
   const characterProgressBar = useCallback((percentage: number) => {
     const totalBlocks = 10;

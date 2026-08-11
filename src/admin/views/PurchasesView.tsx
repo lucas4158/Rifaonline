@@ -316,8 +316,15 @@ export function PurchasesView({
                   const normStatus = getNormalizedStatus(ord.status);
                   const isPaid = normStatus === "pago";
                   const isPending = normStatus === "pendente";
-                  const numsList = Array.isArray(ord.nums) ? ord.nums : [];
-                  const cleanPhone = String(ord.phone || "").replace(/\D/g, "");
+                  const numsList = Array.from(new Set([
+                    ...(Array.isArray(ord.nums) ? ord.nums : []),
+                    ...(Array.isArray(ord.purchasedNums) ? ord.purchasedNums : []),
+                    ...(Array.isArray(ord.bonusNums) ? ord.bonusNums : []),
+                    ...(Array.isArray(ord.numbers) ? ord.numbers : []),
+                  ]));
+                  const clientName = ord.name || ord.customerName || ord.userName || ord.buyerName || "Cliente sem nome";
+                  const rawPhone = ord.phone || ord.customerPhone || ord.whatsapp || "";
+                  const cleanPhone = String(rawPhone).replace(/\D/g, "");
                   const whatsappUrl = cleanPhone ? `https://wa.me/55${cleanPhone}` : null;
 
                   return (
@@ -343,7 +350,7 @@ export function PurchasesView({
                       {/* CLIENTE */}
                       <td className="p-3.5">
                         <div className="font-bold text-zinc-200 uppercase text-xs truncate max-w-[150px]">
-                          {ord.name || ord.customerName || "Cliente sem nome"}
+                          {clientName}
                         </div>
                         {whatsappUrl && (
                           <a
@@ -353,7 +360,7 @@ export function PurchasesView({
                             className="inline-flex items-center gap-1 text-[10px] text-emerald-400 hover:text-emerald-300 font-mono mt-0.5 hover:underline"
                           >
                             <Phone className="w-3 h-3 text-emerald-500" />
-                            {ord.phone}
+                            {rawPhone}
                           </a>
                         )}
                       </td>

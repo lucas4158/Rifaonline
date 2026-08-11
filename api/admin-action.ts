@@ -890,24 +890,55 @@ export default async function handler(req: any, res: any) {
           };
           const normalizedWinner = normalizeQuota(winnerNum);
 
-          // Find the matching paid order for this number (normalizing quotas to compare only numeric values)
-          const matchingOrder = orders.find((o) => 
-            (o.raffleId || "current") === targetRaffleId &&
-            (o.status === "Pago" || o.status === "paid" || o.status === "approved") && 
-            (o.nums || []).map(normalizeQuota).includes(normalizedWinner)
-          );
+          // Find the matching paid order for this number (normalizing quotas to compare only numeric values across all number arrays)
+          let matchingOrder = orders.find((o) => {
+            const matchesRaffle = !targetRaffleId || targetRaffleId === "all" || o.raffleId === targetRaffleId || o.raffleId === "current" || !o.raffleId;
+            const isPaid = o.status === "Pago" || o.status === "paid" || o.status === "approved" || o.status === "confirmed";
+            if (!matchesRaffle || !isPaid) return false;
+
+            const allNums = [
+              ...(Array.isArray(o.nums) ? o.nums : []),
+              ...(Array.isArray(o.purchasedNums) ? o.purchasedNums : []),
+              ...(Array.isArray(o.bonusNums) ? o.bonusNums : []),
+              ...(Array.isArray(o.numbers) ? o.numbers : [])
+            ];
+
+            return allNums.map(normalizeQuota).includes(normalizedWinner);
+          });
 
           if (matchingOrder) {
-            winnerName = matchingOrder.name;
-            // Let's use the actual matching cota from the buyer's order so it is fully correct (e.g. padded "007")
-            const actualCota = (matchingOrder.nums || []).find(n => normalizeQuota(n) === normalizedWinner);
+            winnerName = matchingOrder.name || matchingOrder.customerName || "Ganhador Registrado";
+            const allNums = [
+              ...(Array.isArray(matchingOrder.nums) ? matchingOrder.nums : []),
+              ...(Array.isArray(matchingOrder.purchasedNums) ? matchingOrder.purchasedNums : []),
+              ...(Array.isArray(matchingOrder.bonusNums) ? matchingOrder.bonusNums : []),
+              ...(Array.isArray(matchingOrder.numbers) ? matchingOrder.numbers : [])
+            ];
+            const actualCota = allNums.find(n => normalizeQuota(n) === normalizedWinner);
             if (actualCota) {
               winnerNum = actualCota;
             }
           } else {
-            // Cota was not sold or not paid
-            winnerName = "Cota Livre / Não Vendida";
-            isNotSold = true;
+            // Fallback check against numbers subcollection in Firestore
+            try {
+              const cotaSnap = await getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(winnerNum).get();
+              if (cotaSnap.exists) {
+                const cotaData = cotaSnap.data() || {};
+                if (cotaData.name && cotaData.name !== "Cota Livre / Não Vendida") {
+                  winnerName = cotaData.name;
+                  isNotSold = false;
+                } else {
+                  winnerName = "Cota Livre / Não Vendida";
+                  isNotSold = true;
+                }
+              } else {
+                winnerName = "Cota Livre / Não Vendida";
+                isNotSold = true;
+              }
+            } catch (err) {
+              winnerName = "Cota Livre / Não Vendida";
+              isNotSold = true;
+            }
           }
         } else {
           // Automated selection (RifaMaster Automático) - NOW fully deterministic using SeededPRNG and Fisher-Yates
@@ -2453,7 +2484,7 @@ export default async function handler(req: any, res: any) {
       }
 
       case "backfill-sold-count": {
-        const { targetRaffleId, forceOverride } = req.body;
+        const { targetRaffleId } = req.body;
         if (!targetRaffleId) {
           return res.status(400).json({ error: "targetRaffleId is required" });
         }
@@ -2471,10 +2502,6 @@ export default async function handler(req: any, res: any) {
         }
 
         const raffleData = raffleSnap.data() || {};
-        
-        if (raffleData.soldCount !== undefined && raffleData.soldCount !== null && !forceOverride) {
-           return res.status(400).json({ error: "Rifa já possui soldCount inicializado.", soldCount: raffleData.soldCount });
-        }
 
         const ordersSnap = await adminDb.collection("orders")
           .where("raffleId", "==", targetRaffleId)
@@ -2490,10 +2517,26 @@ export default async function handler(req: any, res: any) {
           const effectivelyPaidCount = Math.max(0, totalNumsCount - bonusNumsCount);
           totalSoldCount += effectivelyPaidCount;
         });
+
+        // Also count paid numbers in numbers subcollection as secondary verification
+        let numbersSubcolPaid = 0;
+        try {
+          const numbersSnap = await adminDb.collection("raffles").doc(targetRaffleId).collection("numbers").get();
+          numbersSnap.forEach((d) => {
+            const st = String(d.data()?.status || "").toLowerCase();
+            if (st === "paid" || st === "pago" || st === "approved") {
+              numbersSubcolPaid++;
+            }
+          });
+        } catch (e) {
+          console.warn("Subcol count notice:", e);
+        }
+
+        const calculatedSoldCount = Math.max(totalSoldCount, numbersSubcolPaid, Number(raffleData.soldCount || 0));
         
-        await raffleRef.update({ soldCount: totalSoldCount });
+        await raffleRef.update({ soldCount: calculatedSoldCount });
         
-        return res.status(200).json({ success: true, calculatedSoldCount: totalSoldCount, previousSoldCount: raffleData.soldCount });
+        return res.status(200).json({ success: true, calculatedSoldCount, previousSoldCount: raffleData.soldCount });
       }
 
       default:

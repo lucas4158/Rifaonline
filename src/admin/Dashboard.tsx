@@ -1364,11 +1364,47 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
       const normalizedWinner = normalizeQuota(finalCotaStr);
 
       // Find the matching paid/pending order for this number, using normalized comparison
-      const matchingOrder = currentOrders.find(
-        (o) =>
-          ((o.raffleId || "current") === (selectedRaffleId || "current") || o.raffleId === selectedRaffleId) &&
-          (o.nums || []).map(normalizeQuota).includes(normalizedWinner)
-      );
+      let matchingOrder = currentOrders.find((o) => {
+        const matchesRaffle =
+          !selectedRaffleId ||
+          selectedRaffleId === "all" ||
+          o.raffleId === selectedRaffleId ||
+          o.raffleId === "current" ||
+          !o.raffleId;
+
+        if (!matchesRaffle) return false;
+
+        const allOrderNums = [
+          ...(Array.isArray(o.nums) ? o.nums : []),
+          ...(Array.isArray(o.purchasedNums) ? o.purchasedNums : []),
+          ...(Array.isArray(o.bonusNums) ? o.bonusNums : []),
+          ...(Array.isArray(o.numbers) ? o.numbers : []),
+        ];
+
+        return allOrderNums.map(normalizeQuota).includes(normalizedWinner);
+      });
+
+      // Fallback: Check numbers subcollection directly if order array lookup didn't find the buyer
+      if (!matchingOrder && selectedRaffleId && selectedRaffleId !== "all") {
+        try {
+          const cotaDocSnap = await getDoc(doc(db, "raffles", selectedRaffleId, "numbers", finalCotaStr));
+          if (cotaDocSnap.exists()) {
+            const cData = cotaDocSnap.data();
+            if (cData && cData.name && cData.name !== "Cota Livre / Não Vendida") {
+              matchingOrder = {
+                id: cData.orderId || `COTA_${finalCotaStr}`,
+                name: cData.name,
+                phone: cData.phone || "",
+                status: cData.status === "paid" || cData.status === "pago" ? "Pago" : cData.status || "Pago",
+                val: 0,
+                nums: [finalCotaStr],
+              };
+            }
+          }
+        } catch (err) {
+          console.info("Fallback cota doc lookup notice:", err);
+        }
+      }
 
       if (matchingOrder) {
         const statusStr = (matchingOrder.status || "").toLowerCase();
@@ -1379,11 +1415,14 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         }
         
         // Select the exact cota as recorded in the user's purchased array
-        const actualCota = (matchingOrder.nums || []).find(n => normalizeQuota(n) === normalizedWinner);
-        if (actualCota) {
-          setCalculatedCota(actualCota);
-        }
-        
+        const allNums = [
+          ...(Array.isArray(matchingOrder.nums) ? matchingOrder.nums : []),
+          ...(Array.isArray(matchingOrder.purchasedNums) ? matchingOrder.purchasedNums : []),
+          ...(Array.isArray(matchingOrder.bonusNums) ? matchingOrder.bonusNums : []),
+          ...(Array.isArray(matchingOrder.numbers) ? matchingOrder.numbers : []),
+        ];
+        const actualCota = allNums.find(n => normalizeQuota(n) === normalizedWinner) || finalCotaStr;
+        setCalculatedCota(actualCota);
         setFoundBuyer(matchingOrder);
       } else {
         setBuyerStatus("livre");
@@ -3618,9 +3657,22 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredRafflesList.map((raffle) => {
-                const totalN = raffle.totalNumbers || 100;
-                const soldN = raffle.totalSoldNumbers || 0;
-                const percentSold = Math.min(100, Math.round((soldN / totalN) * 100));
+                const totalN = Number(raffle.totalNumbers || 100);
+                const soldN = Number(raffle.totalSoldNumbers || 0);
+
+                let capacity = totalN;
+                const promoEnabled = !!raffle.promotionEnabled;
+                const buy = Number(raffle.promotionBuy || 0);
+                const promoBonus = Number(raffle.promotionBonus || 0);
+                if (promoEnabled && buy > 0 && promoBonus > 0) {
+                  const groupSize = buy + promoBonus;
+                  const groups = Math.floor(totalN / groupSize);
+                  const rem = totalN % groupSize;
+                  capacity = groups * buy + Math.min(buy, rem);
+                }
+
+                const isEncerradaOrWinner = raffle.status === "encerrada" || Boolean(raffle.winnerNumber);
+                const percentSold = isEncerradaOrWinner ? 100 : Math.min(100, Math.round((soldN / (capacity || 1)) * 100));
 
                 return (
                   <div
@@ -5092,11 +5144,46 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                           };
                           const normalizedWinner = normalizeQuota(finalCotaStr);
 
-                          const matchingOrder = currentOrders.find(
-                            (o) =>
-                              ((o.raffleId || "current") === (selectedRaffleId || "current") || o.raffleId === selectedRaffleId) &&
-                              (o.nums || []).map(normalizeQuota).includes(normalizedWinner)
-                          );
+                          let matchingOrder = currentOrders.find((o) => {
+                            const matchesRaffle =
+                              !selectedRaffleId ||
+                              selectedRaffleId === "all" ||
+                              o.raffleId === selectedRaffleId ||
+                              o.raffleId === "current" ||
+                              !o.raffleId;
+
+                            if (!matchesRaffle) return false;
+
+                            const allOrderNums = [
+                              ...(Array.isArray(o.nums) ? o.nums : []),
+                              ...(Array.isArray(o.purchasedNums) ? o.purchasedNums : []),
+                              ...(Array.isArray(o.bonusNums) ? o.bonusNums : []),
+                              ...(Array.isArray(o.numbers) ? o.numbers : []),
+                            ];
+
+                            return allOrderNums.map(normalizeQuota).includes(normalizedWinner);
+                          });
+
+                          if (!matchingOrder && selectedRaffleId && selectedRaffleId !== "all") {
+                            try {
+                              const cotaDocSnap = await getDoc(doc(db, "raffles", selectedRaffleId, "numbers", finalCotaStr));
+                              if (cotaDocSnap.exists()) {
+                                const cData = cotaDocSnap.data();
+                                if (cData && cData.name && cData.name !== "Cota Livre / Não Vendida") {
+                                  matchingOrder = {
+                                    id: cData.orderId || `COTA_${finalCotaStr}`,
+                                    name: cData.name,
+                                    phone: cData.phone || "",
+                                    status: cData.status === "paid" || cData.status === "pago" ? "Pago" : cData.status || "Pago",
+                                    val: 0,
+                                    nums: [finalCotaStr],
+                                  };
+                                }
+                              }
+                            } catch (err) {
+                              console.info("Fallback cota doc lookup notice:", err);
+                            }
+                          }
                           
                           if (matchingOrder) {
                             const statusStr = (matchingOrder.status || "").toLowerCase();
@@ -5105,10 +5192,14 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                             } else {
                               setBuyerStatus("pendente");
                             }
-                            const actualCota = (matchingOrder.nums || []).find(n => normalizeQuota(n) === normalizedWinner);
-                            if (actualCota) {
-                              setCalculatedCota(actualCota);
-                            }
+                            const allNums = [
+                              ...(Array.isArray(matchingOrder.nums) ? matchingOrder.nums : []),
+                              ...(Array.isArray(matchingOrder.purchasedNums) ? matchingOrder.purchasedNums : []),
+                              ...(Array.isArray(matchingOrder.bonusNums) ? matchingOrder.bonusNums : []),
+                              ...(Array.isArray(matchingOrder.numbers) ? matchingOrder.numbers : []),
+                            ];
+                            const actualCota = allNums.find(n => normalizeQuota(n) === normalizedWinner) || finalCotaStr;
+                            setCalculatedCota(actualCota);
                             setFoundBuyer(matchingOrder);
                           } else if (res.winnerName && res.winnerName !== "Cota Livre / Não Vendida") {
                             setBuyerStatus("pago");
