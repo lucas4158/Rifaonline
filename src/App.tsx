@@ -1022,12 +1022,21 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
           if (isActive) {
             list.push({
+              ...data,
               id: docSnap.id,
               slug: data.slug || slugify(data.title || ""),
               title: data.title || "Rifa Sem Título",
               description: data.description || "",
               price: Number(data.price) || 10,
               totalNumbers: Number(data.totalNumbers) || 100,
+              soldCount: Number(data.soldCount || 0),
+              purchaseMode: data.purchaseMode || "manual",
+              drawMode: data.drawMode || "automatico",
+              federalConcurso: data.federalConcurso || "",
+              federalData: data.federalData || "",
+              federalRegra: data.federalRegra || "",
+              isDestaque: data.isDestaque ?? data.isFeatured ?? true,
+              isFeatured: data.isDestaque ?? data.isFeatured ?? true,
               imageUrl: data.imageUrl || "",
               status: "ativa",
               isActive: true,
@@ -1077,34 +1086,15 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
           return null;
         });
 
-        // Fetch summary stats for each active raffle card
+        // Summary stats for each active raffle card (without unnecessary Firestore subcollection queries)
         const statsMap: Record<string, { soldCount: number; percentSold: number; remainingCount: number }> = {};
-        await Promise.all(
-          list.map(async (rf) => {
-            try {
-              let paidCount = Number(rf.soldCount || 0);
-
-              // Subcollection check if soldCount is 0 or unpopulated to prevent 0% before participating
-              try {
-                const numbersColRef = collection(db, "raffles", rf.id, "numbers");
-                const qPaid = query(numbersColRef, where("status", "==", "paid"));
-                const paidSnap = await getDocs(qPaid);
-                paidCount = Math.max(paidCount, paidSnap.size);
-              } catch (subErr) {
-                // Keep paidCount from rf.soldCount if subcollection query fails
-              }
-
-              const total = Number(rf.totalNumbers || 100);
-              // Progress reflects only paid cotas
-              const percent = Math.min(100, (paidCount / total) * 100);
-              const remaining = Math.max(0, total - paidCount);
-              statsMap[rf.id] = { soldCount: paidCount, percentSold: percent, remainingCount: remaining };
-            } catch (e) {
-              const total = Number(rf.totalNumbers || 100);
-              statsMap[rf.id] = { soldCount: 0, percentSold: 0, remainingCount: total };
-            }
-          })
-        );
+        list.forEach((rf) => {
+          const paidCount = Number(rf.soldCount || 0);
+          const total = Number(rf.totalNumbers || 100);
+          const percent = Math.min(100, (paidCount / total) * 100);
+          const remaining = Math.max(0, total - paidCount);
+          statsMap[rf.id] = { soldCount: paidCount, percentSold: percent, remainingCount: remaining };
+        });
         setActiveRafflesStats(statsMap);
       },
       (error) => {
@@ -2335,9 +2325,10 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         (o) => o.status === "Aguardando" || o.status === "pending_payment",
       )
       .reduce((acc, curr) => acc + curr.val, 0);
-    const countPaid = numbers.filter(
+    const paidFromDbNumbers = numbers.filter(
       (n) => n.status === "paid" || n.status === "bonus_paid",
     ).length;
+    const countPaid = Math.max(Number(raffleConfig.soldCount || 0), paidFromDbNumbers);
     const countReserved = numbers.filter(
       (n) =>
         n.status === "reserved" ||
@@ -2355,15 +2346,16 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         raffleConfig.totalNumbers - countPaid - countReserved,
       ),
     };
-  }, [orders, numbers, selectedNumbersSet, raffleConfig.totalNumbers]);
+  }, [orders, numbers, selectedNumbersSet, raffleConfig.totalNumbers, raffleConfig.soldCount]);
 
   const progressPercentage = useMemo(() => {
     const total = raffleConfig.totalNumbers || 100;
-    const occupied = numbers.filter(
+    const paidFromDbNumbers = numbers.filter(
       (n) => n.status === "paid" || n.status === "bonus_paid",
     ).length;
+    const occupied = Math.max(Number(raffleConfig.soldCount || 0), paidFromDbNumbers);
     return total > 0 ? (occupied / total) * 100 : 0;
-  }, [numbers, raffleConfig.totalNumbers]);
+  }, [numbers, raffleConfig.totalNumbers, raffleConfig.soldCount]);
 
   const characterProgressBar = useCallback((percentage: number) => {
     const totalBlocks = 10;
