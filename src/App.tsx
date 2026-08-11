@@ -2341,13 +2341,37 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
   const stats = useMemo(() => {
     const paid = orders
-      .filter((o) => o.status === "Pago" || o.status === "paid")
-      .reduce((acc, curr) => acc + curr.val, 0);
+      .filter((o) => {
+        const s = String(o.status || "").toLowerCase().trim();
+        return (
+          s === "pago" ||
+          s === "paid" ||
+          s === "approved" ||
+          s === "aprovado" ||
+          s === "confirmed" ||
+          s === "paga" ||
+          s === "pagas" ||
+          s === "concluido" ||
+          s === "concluído"
+        );
+      })
+      .reduce((acc, curr) => {
+        const raw = Number(curr.val || curr.amount || curr.total || curr.totalValue || 0);
+        if (raw > 0) return acc + raw;
+        const numCount = (Array.isArray(curr.nums) ? curr.nums : (Array.isArray(curr.purchasedNums) ? curr.purchasedNums : [])).length || 1;
+        return acc + (numCount * (Number(raffleConfig.price) || 10));
+      }, 0);
     const pending = orders
-      .filter(
-        (o) => o.status === "Aguardando" || o.status === "pending_payment",
-      )
-      .reduce((acc, curr) => acc + curr.val, 0);
+      .filter((o) => {
+        const s = String(o.status || "").toLowerCase().trim();
+        return s === "aguardando" || s === "pending_payment" || s === "reserved" || s === "pendente";
+      })
+      .reduce((acc, curr) => {
+        const raw = Number(curr.val || curr.amount || curr.total || curr.totalValue || 0);
+        if (raw > 0) return acc + raw;
+        const numCount = (Array.isArray(curr.nums) ? curr.nums : (Array.isArray(curr.purchasedNums) ? curr.purchasedNums : [])).length || 1;
+        return acc + (numCount * (Number(raffleConfig.price) || 10));
+      }, 0);
     const paidFromDbNumbers = numbers.filter(
       (n) => n.status === "paid" || n.status === "bonus_paid",
     ).length;

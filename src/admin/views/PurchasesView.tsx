@@ -49,9 +49,7 @@ export function PurchasesView({
 
   // Synchronize with parent's selectedRaffleId if it changes
   useEffect(() => {
-    if (selectedRaffleId) {
-      setActiveRaffleFilter(selectedRaffleId);
-    }
+    setActiveRaffleFilter(selectedRaffleId || "all");
   }, [selectedRaffleId]);
 
   // Modals & Action States
@@ -249,11 +247,15 @@ export function PurchasesView({
 
     raffleMatchedOrders.forEach((o) => {
       const st = getNormalizedStatus(o.status);
-      const val = Number(o.val || o.amount || o.total || o.totalValue || o.valAmount || 0);
+      const rawVal = Number(o.val || o.amount || o.total || o.totalValue || o.valAmount || 0);
       const numsList = Array.isArray(o.nums)
         ? o.nums
         : (Array.isArray(o.purchasedNums) ? o.purchasedNums : (Array.isArray(o.numbers) ? o.numbers : []));
       const cotaQty = numsList.length || 1;
+
+      const orderRaffle = allRaffles.find((r) => r.id === o.raffleId) || currentRaffleObj;
+      const itemPrice = orderRaffle?.price || 10;
+      const val = rawVal > 0 ? rawVal : cotaQty * itemPrice;
 
       if (st === "pago") {
         paidCount++;
@@ -662,7 +664,10 @@ export function PurchasesView({
                   // Pre-filled WhatsApp message for payment reminders
                   const orderRaffle = allRaffles.find(r => r.id === ord.raffleId) || currentRaffleObj;
                   const raffleTitle = orderRaffle?.title || "Rifa";
-                  const totalValFormatted = Number(ord.val || ord.amount || ord.total || ord.totalValue || 0).toFixed(2).replace(".", ",");
+                  const itemPrice = orderRaffle?.price || 10;
+                  const rawOrdVal = Number(ord.val || ord.amount || ord.total || ord.totalValue || 0);
+                  const computedOrdVal = rawOrdVal > 0 ? rawOrdVal : (numsList.length || 1) * itemPrice;
+                  const totalValFormatted = computedOrdVal.toFixed(2).replace(".", ",");
                   const cotasStr = numsList.slice(0, 5).join(", ") + (numsList.length > 5 ? ` e +${numsList.length - 5}` : "");
 
                   const whatsappMessage = encodeURIComponent(

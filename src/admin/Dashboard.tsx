@@ -553,15 +553,35 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   const stats = useMemo(() => {
     const paidOrders = raffleOrders.filter((o) => {
       const s = String(o.status || "").toLowerCase().trim();
-      return s === "pago" || s === "paid" || s === "approved" || s === "confirmed" || s === "paga" || s === "pagas";
+      return (
+        s === "pago" ||
+        s === "paid" ||
+        s === "approved" ||
+        s === "aprovado" ||
+        s === "confirmed" ||
+        s === "paga" ||
+        s === "pagas" ||
+        s === "concluido" ||
+        s === "concluído"
+      );
     });
-    const paidAmount = paidOrders.reduce((acc, curr) => acc + (Number(curr.val || curr.amount || curr.total || curr.totalValue || curr.valAmount || 0) || 0), 0);
+    const paidAmount = paidOrders.reduce((acc, curr) => {
+      const raw = Number(curr.val || curr.amount || curr.total || curr.totalValue || curr.valAmount || 0);
+      if (raw > 0) return acc + raw;
+      const numCount = (Array.isArray(curr.nums) ? curr.nums : (Array.isArray(curr.purchasedNums) ? curr.purchasedNums : [])).length || 1;
+      return acc + (numCount * (raffleConfig?.price || 10));
+    }, 0);
 
     const pendingOrders = raffleOrders.filter((o) => {
       const s = String(o.status || "").toLowerCase().trim();
       return s === "aguardando" || s === "pending_payment" || s === "reserved" || s === "pendente";
     });
-    const pendingAmount = pendingOrders.reduce((acc, curr) => acc + (Number(curr.val || curr.amount || curr.total || curr.totalValue || curr.valAmount || 0) || 0), 0);
+    const pendingAmount = pendingOrders.reduce((acc, curr) => {
+      const raw = Number(curr.val || curr.amount || curr.total || curr.totalValue || curr.valAmount || 0);
+      if (raw > 0) return acc + raw;
+      const numCount = (Array.isArray(curr.nums) ? curr.nums : (Array.isArray(curr.purchasedNums) ? curr.purchasedNums : [])).length || 1;
+      return acc + (numCount * (raffleConfig?.price || 10));
+    }, 0);
 
     let countPaid = 0;
     let countReserved = 0;
@@ -640,7 +660,12 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
       });
 
       const revenueFromOrders = paidOrders.reduce((acc, curr) => {
-        return acc + (Number(curr.val || curr.total || curr.amount || curr.totalValue || 0) || 0);
+        const raw = Number(curr.val || curr.total || curr.amount || curr.totalValue || 0);
+        if (raw > 0) return acc + raw;
+        const numsList = Array.isArray(curr.nums)
+          ? curr.nums
+          : (Array.isArray(curr.purchasedNums) ? curr.purchasedNums : (Array.isArray(curr.numbers) ? curr.numbers : []));
+        return acc + ((numsList.length || 1) * (Number(r.price) || 10));
       }, 0);
 
       let soldFromOrders = 0;
