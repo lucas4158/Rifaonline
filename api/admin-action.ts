@@ -791,11 +791,18 @@ export default async function handler(req: any, res: any) {
         console.log(`🎲 [Admin Action] Processing server-side draw of winner for raffle ${targetRaffleId}...`);
         
         // Fetch current orders to calculate candidates
-        const ordersQuery = getAdminFirestore().collection("orders").where("raffleId", "==", targetRaffleId);
-        const ordersSnap = await ordersQuery.get();
+        let ordersQuerySnap: any;
+        if (targetRaffleId === "current") {
+          ordersQuerySnap = await getAdminFirestore().collection("orders").get();
+        } else {
+          ordersQuerySnap = await getAdminFirestore().collection("orders").where("raffleId", "==", targetRaffleId).get();
+          if (ordersQuerySnap.empty) {
+            ordersQuerySnap = await getAdminFirestore().collection("orders").get();
+          }
+        }
         const orders: any[] = [];
-        ordersSnap.forEach((docSnap) => {
-          orders.push(docSnap.data());
+        ordersQuerySnap.forEach((docSnap: any) => {
+          orders.push({ id: docSnap.id, ...docSnap.data() });
         });
 
         // Fetch config for totalNumbers bounds
@@ -852,9 +859,28 @@ export default async function handler(req: any, res: any) {
 
         // Filter eligible candidates: strictly paid quotas ("Pago" or "paid") for THIS raffle
         // and ensure duplicates are removed to avoid uneven probabilities.
-        const paidNumsUnique = Array.from(new Set(orders
-          .filter((o) => (o.raffleId || "current") === targetRaffleId && (o.status === "Pago" || o.status === "paid"))
-          .flatMap((o) => o.nums || [])
+        const isRaffleMatch = (o: any) =>
+          !targetRaffleId ||
+          targetRaffleId === "all" ||
+          targetRaffleId === "current" ||
+          o.raffleId === targetRaffleId ||
+          o.raffleId === "current" ||
+          !o.raffleId;
+
+        const isOrderPaid = (o: any) => {
+          const s = String(o.status || "").toLowerCase();
+          return s === "pago" || s === "paid" || s === "approved" || s === "confirmed" || s === "paga" || s === "pagas";
+        };
+
+        const paidNumsUnique = Array.from(new Set(
+          orders
+            .filter((o) => isRaffleMatch(o) && isOrderPaid(o))
+            .flatMap((o) => [
+              ...(Array.isArray(o.nums) ? o.nums : []),
+              ...(Array.isArray(o.purchasedNums) ? o.purchasedNums : []),
+              ...(Array.isArray(o.bonusNums) ? o.bonusNums : []),
+              ...(Array.isArray(o.numbers) ? o.numbers : [])
+            ])
         ));
 
         // Start drawing audit log
@@ -2127,14 +2153,15 @@ export default async function handler(req: any, res: any) {
         const { raffleId, limitCount } = req.body;
         console.log(`📋 [Admin Action] Listing orders (raffleId: ${raffleId || "all"})...`);
         const adminDb = getAdminFirestore();
-        let query: any = adminDb.collection("orders");
-        if (raffleId && raffleId !== "all") {
-          query = query.where("raffleId", "==", raffleId);
-        }
-        const snap = await query.get();
+        let snap = await adminDb.collection("orders").get();
         const ordersList: any[] = [];
         snap.forEach((docSnap: any) => {
-          ordersList.push({ id: docSnap.id, ...docSnap.data() });
+          const data = docSnap.data();
+          const orderRaffleId = data.raffleId || "current";
+          const isMatch = !raffleId || raffleId === "all" || orderRaffleId === raffleId || orderRaffleId === "current" || !data.raffleId;
+          if (isMatch) {
+            ordersList.push({ id: docSnap.id, ...data });
+          }
         });
         ordersList.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
         const maxLimit = Number(limitCount) || 200;

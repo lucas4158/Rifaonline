@@ -76,7 +76,11 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
         const list: any[] = [];
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
-          if ((data.raffleId || "current") === activeRaffleId) {
+          const orderRaffleId = data.raffleId || "current";
+          const isMatch =
+            orderRaffleId === activeRaffleId ||
+            ((orderRaffleId === "current" || !data.raffleId) && (activeRaffleId === "current" || raffles.length <= 1 || activeRaffleId === raffles[0]?.id));
+          if (isMatch) {
             list.push({ id: docSnap.id, ...data });
           }
         });
@@ -151,9 +155,10 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
     const totalNumbers = Number(currentRaffle?.totalNumbers || 100);
     
     // Eligible paid orders
-    const paidOrders = orders.filter((o) => 
-      o.status === "Pago" || o.status === "paid" || o.status === "approved" || o.status === "pago" || o.status === "confirmed"
-    );
+    const paidOrders = orders.filter((o) => {
+      const s = String(o.status || "").toLowerCase();
+      return s === "pago" || s === "paid" || s === "approved" || s === "confirmed" || s === "paga" || s === "pagas";
+    });
 
     // Normalize number strings (e.g. "007" -> "7")
     const normalizeQuota = (q: string): string => {
@@ -172,9 +177,10 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
       allNums.forEach((n: string) => paidNumbersSet.add(normalizeQuota(String(n))));
     });
 
-    const paidCount = paidNumbersSet.size;
+    const soldCountFromDoc = Number(currentRaffle?.soldCount || currentRaffle?.totalSoldNumbers || 0);
+    const paidCount = Math.max(paidNumbersSet.size, soldCountFromDoc);
 
-    const isFullyPaid = paidCount >= totalNumbers || currentRaffle?.status === "encerrada" || Boolean(currentRaffle?.winnerNumber);
+    const isFullyPaid = paidCount >= totalNumbers || currentRaffle?.status === "encerrada" || currentRaffle?.status === "sorteada" || Boolean(currentRaffle?.winnerNumber);
     const percentPaid = isFullyPaid ? 100 : (totalNumbers > 0 ? Math.min(100, Math.round((paidCount / totalNumbers) * 100)) : 0);
 
     return {
@@ -197,7 +203,8 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
 
     const targetNorm = normalizeQuota(numStr);
     const foundOrder = orders.find((o) => {
-      const isPaid = (o.status === "Pago" || o.status === "paid" || o.status === "approved" || o.status === "pago" || o.status === "confirmed");
+      const s = String(o.status || "").toLowerCase();
+      const isPaid = s === "pago" || s === "paid" || s === "approved" || s === "confirmed" || s === "paga" || s === "pagas";
       if (!isPaid) return false;
       const allNums = [
         ...(Array.isArray(o.nums) ? o.nums : []),
