@@ -524,8 +524,14 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   // Filter orders for the selected raffle in detail view
   const raffleOrders = useMemo(() => {
     return orders.filter((o) => {
+      if (!selectedRaffleId || selectedRaffleId === "all") return true;
       const orderRaffleId = o.raffleId || "current";
-      return orderRaffleId === selectedRaffleId;
+      return (
+        orderRaffleId === selectedRaffleId ||
+        orderRaffleId === "current" ||
+        !o.raffleId ||
+        selectedRaffleId === "current"
+      );
     });
   }, [orders, selectedRaffleId]);
 

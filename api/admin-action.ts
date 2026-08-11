@@ -1483,7 +1483,12 @@ export default async function handler(req: any, res: any) {
 
         const orderData = orderSnap.data() || {};
         const targetRaffleId = req.body.raffleId || orderData.raffleId || "current";
-        const orderNums: string[] = Array.isArray(orderData.nums) ? orderData.nums : [];
+        const orderNums: string[] = Array.from(new Set([
+          ...(Array.isArray(orderData.nums) ? orderData.nums : []),
+          ...(Array.isArray(orderData.purchasedNums) ? orderData.purchasedNums : []),
+          ...(Array.isArray(orderData.bonusNums) ? orderData.bonusNums : []),
+          ...(Array.isArray(orderData.numbers) ? orderData.numbers : [])
+        ]));
         const currentStatus = String(orderData.status || "").toLowerCase();
 
         // 1. Idempotency Check

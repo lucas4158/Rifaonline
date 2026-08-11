@@ -54,13 +54,7 @@ export function PurchasesView({
   useEffect(() => {
     setLoading(true);
     const colRef = collection(db, "orders");
-    let q;
-
-    if (selectedRaffleId && selectedRaffleId !== "all") {
-      q = query(colRef, where("raffleId", "==", selectedRaffleId), limitQuery(limit || 100));
-    } else {
-      q = query(colRef, orderBy("createdAt", "desc"), limitQuery(limit || 100));
-    }
+    const q = query(colRef, orderBy("createdAt", "desc"), limitQuery(limit || 200));
 
     const unsubscribe = onSnapshot(
       q,
@@ -74,14 +68,12 @@ export function PurchasesView({
           });
         });
 
-        // Fallback sort if orderBy was omitted due to composite index constraints
         loadedOrders.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-
         setOrders(loadedOrders);
         setLoading(false);
       },
       async (err) => {
-        console.info("🔒 Firestore direct orders access restricted. Fetching via secure Admin API...");
+        console.info("🔒 Firestore direct orders access restricted or query fallback. Fetching via secure Admin API...");
         try {
           const adminToken = getAdminToken();
           const res = await fetch("/api/admin-action", {
@@ -93,7 +85,7 @@ export function PurchasesView({
             body: JSON.stringify({
               action: "list-orders",
               raffleId: selectedRaffleId,
-              limitCount: limit || 100
+              limitCount: limit || 200
             })
           });
           if (res.ok) {
@@ -116,7 +108,7 @@ export function PurchasesView({
   // Normalize order status
   const getNormalizedStatus = (rawStatus: string): "pago" | "pendente" | "cancelado" => {
     const s = String(rawStatus || "").toLowerCase();
-    if (s === "pago" || s === "paid" || s === "approved" || s === "confirmed") {
+    if (s === "pago" || s === "paid" || s === "approved" || s === "confirmed" || s === "paga" || s === "pagas") {
       return "pago";
     }
     if (s === "cancelado" || s === "canceled" || s === "expired" || s === "reembolsado" || s === "refunded") {
@@ -128,6 +120,17 @@ export function PurchasesView({
   // Filtered orders computation
   const filteredOrders = useMemo(() => {
     return orders.filter((ord) => {
+      // Flexible raffle filter
+      if (selectedRaffleId && selectedRaffleId !== "all") {
+        const orderRaffleId = ord.raffleId || "current";
+        const matchesRaffle =
+          orderRaffleId === selectedRaffleId ||
+          orderRaffleId === "current" ||
+          !ord.raffleId ||
+          selectedRaffleId === "current";
+        if (!matchesRaffle) return false;
+      }
+
       const normStatus = getNormalizedStatus(ord.status);
 
       // Status filter
@@ -138,11 +141,19 @@ export function PurchasesView({
       // Text search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
-        const nameMatch = String(ord.name || "").toLowerCase().includes(q);
-        const phoneMatch = String(ord.phone || "").includes(q);
+        const clientName = ord.name || ord.customerName || ord.userName || ord.buyerName || "";
+        const nameMatch = String(clientName).toLowerCase().includes(q);
+        const phoneMatch = String(ord.phone || ord.customerPhone || ord.whatsapp || "").includes(q);
         const idMatch = String(ord.id || "").toLowerCase().includes(q);
         const payIdMatch = String(ord.paymentId || "").toLowerCase().includes(q);
-        const numsMatch = Array.isArray(ord.nums) && ord.nums.some((n: any) => String(n).includes(q));
+        
+        const allNums = [
+          ...(Array.isArray(ord.nums) ? ord.nums : []),
+          ...(Array.isArray(ord.purchasedNums) ? ord.purchasedNums : []),
+          ...(Array.isArray(ord.bonusNums) ? ord.bonusNums : []),
+          ...(Array.isArray(ord.numbers) ? ord.numbers : []),
+        ];
+        const numsMatch = allNums.some((n: any) => String(n).includes(q));
 
         if (!nameMatch && !phoneMatch && !idMatch && !payIdMatch && !numsMatch) {
           return false;
@@ -151,7 +162,7 @@ export function PurchasesView({
 
       return true;
     });
-  }, [orders, statusFilter, searchQuery]);
+  }, [orders, selectedRaffleId, statusFilter, searchQuery]);
 
   // KPI computations
   const stats = useMemo(() => {
