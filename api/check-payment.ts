@@ -45,7 +45,7 @@ export default async function handler(req: any, res: any) {
     const db = getAdminFirestore();
     const currentNow = Date.now();
 
-    // 1. Locate order by orderId or paymentId
+    // 1. Locate order by orderId or paymentId (O(1) direct lookup priority)
     let targetOrderSnap: any = null;
     let targetOrderId = orderId;
 
@@ -55,7 +55,19 @@ export default async function handler(req: any, res: any) {
     }
 
     if ((!targetOrderSnap || !targetOrderSnap.exists) && paymentId) {
-      const q = db.collection("orders").where("paymentId", "==", String(paymentId));
+      try {
+        const paySnap = await db.collection("payments").doc(String(paymentId)).get();
+        if (paySnap.exists && paySnap.data()?.orderId) {
+          targetOrderId = paySnap.data().orderId;
+          targetOrderSnap = await db.collection("orders").doc(targetOrderId).get();
+        }
+      } catch (payLookErr) {
+        console.warn(`⚠️ [CheckPayment] Payment lookup warning for ${paymentId}:`, payLookErr);
+      }
+    }
+
+    if ((!targetOrderSnap || !targetOrderSnap.exists) && paymentId) {
+      const q = db.collection("orders").where("paymentId", "==", String(paymentId)).limit(1);
       const qSnap = await q.get();
       if (!qSnap.empty) {
         targetOrderSnap = qSnap.docs[0];

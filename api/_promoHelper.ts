@@ -48,49 +48,70 @@ export async function allocatePromotionalBonus(
     return;
   }
 
-  // Find free available numbers from the database
-  const numbersCollection = db.collection("raffles").doc(targetRaffleId).collection("numbers");
-  const numbersSnap = await numbersCollection.get();
-  const busy = new Set<string>();
-
-  const now = Date.now();
-  numbersSnap.forEach((docSnap) => {
-    const d = docSnap.data();
-    if (d) {
-      const status = (d.status || "").toLowerCase().trim();
-      const expires = d.expiresAt || 0;
-      const isExp = expires > 0 && now >= expires;
-
-      if (status === "paid" || status === "pago") {
-        busy.add(docSnap.id);
-      } else if (
-        (status === "reserved" || status === "pending_payment" || status === "aguardando") &&
-        !isExp
-      ) {
-        busy.add(docSnap.id);
-      }
-    }
-  });
-
-  const available: string[] = [];
+  // Find free available numbers from the database WITHOUT full collection scan
+  const neededNewBonusCount = calculatedBonus - preallocatedBonus.length;
   const padLen = String(totalNumbers).length < 3 ? 3 : String(totalNumbers).length;
+  const existingSet = new Set<string>([...(orderData.nums || []), ...preallocatedBonus]);
 
-  for (let i = 1; i <= totalNumbers; i++) {
-    const formatted = String(i).padStart(padLen, "0");
-    if (!busy.has(formatted)) {
-      available.push(formatted);
+  const candidateNumbers: string[] = [];
+  let attempts = 0;
+  const maxAttempts = totalNumbers * 2;
+
+  while (candidateNumbers.length < neededNewBonusCount + 10 && attempts < maxAttempts) {
+    attempts++;
+    const randomVal = Math.floor(Math.random() * totalNumbers) + 1;
+    const formatted = String(randomVal).padStart(padLen, "0");
+    if (!existingSet.has(formatted) && !candidateNumbers.includes(formatted)) {
+      candidateNumbers.push(formatted);
     }
   }
 
-  const neededNewBonusCount = calculatedBonus - preallocatedBonus.length;
-
-  if (available.length < neededNewBonusCount) {
-    console.warn(`[INSUFFICIENT_PROMOTION_CAPACITY] Not enough available numbers for promotional allocation! Free available: ${available.length}, Needed: ${neededNewBonusCount}`);
+  if (candidateNumbers.length === 0) {
+    console.warn(`[INSUFFICIENT_PROMOTION_CAPACITY] No candidates available for bonus allocation.`);
     return;
   }
 
-  const shuffled = available.sort(() => 0.5 - Math.random());
-  const selectedBonus = shuffled.slice(0, neededNewBonusCount);
+  // Fetch candidate document references in parallel (only candidateNumbers.length reads, e.g. 5-10 reads max)
+  const candRefs = candidateNumbers.map((num) =>
+    db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num)
+  );
+  const candSnaps = await Promise.all(candRefs.map((ref: any) => ref.get()));
+
+  const now = Date.now();
+  const selectedBonus: string[] = [];
+
+  for (let i = 0; i < candSnaps.length; i++) {
+    if (selectedBonus.length >= neededNewBonusCount) break;
+    const docSnap = candSnaps[i];
+    const candNum = candidateNumbers[i];
+
+    if (!docSnap.exists) {
+      // Document does not exist in numbers collection -> 100% free!
+      selectedBonus.push(candNum);
+    } else {
+      const d = docSnap.data();
+      if (d) {
+        const status = (d.status || "").toLowerCase().trim();
+        const expires = d.expiresAt || 0;
+        const isExp = expires > 0 && now >= expires;
+
+        const isBusy =
+          status === "paid" ||
+          status === "pago" ||
+          ((status === "reserved" || status === "pending_payment" || status === "aguardando") && !isExp);
+
+        if (!isBusy) {
+          selectedBonus.push(candNum);
+        }
+      }
+    }
+  }
+
+  if (selectedBonus.length < neededNewBonusCount) {
+    console.warn(`[INSUFFICIENT_PROMOTION_CAPACITY] Could not find enough free candidate numbers! Selected: ${selectedBonus.length}, Needed: ${neededNewBonusCount}`);
+    if (selectedBonus.length === 0) return;
+  }
+
   console.log(`[BONUS_SELECTED] orderId: ${orderId}, newlySelectedBonus: ${selectedBonus.join(", ")}`);
 
   const mergedBonus = Array.from(new Set([...preallocatedBonus, ...selectedBonus]));
