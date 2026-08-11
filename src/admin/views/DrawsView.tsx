@@ -148,7 +148,7 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
 
   // Quotas calculations for the active raffle
   const quotaStats = useMemo(() => {
-    const totalNumbers = currentRaffle?.totalNumbers || 100;
+    const totalNumbers = Number(currentRaffle?.totalNumbers || 100);
     
     // Eligible paid orders
     const paidOrders = orders.filter((o) => 
@@ -163,12 +163,30 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
 
     const paidNumbersSet = new Set<string>();
     paidOrders.forEach((o) => {
-      (o.nums || []).forEach((n: string) => paidNumbersSet.add(normalizeQuota(n)));
+      const allNums = [
+        ...(Array.isArray(o.nums) ? o.nums : []),
+        ...(Array.isArray(o.purchasedNums) ? o.purchasedNums : []),
+        ...(Array.isArray(o.bonusNums) ? o.bonusNums : []),
+        ...(Array.isArray(o.numbers) ? o.numbers : []),
+      ];
+      allNums.forEach((n: string) => paidNumbersSet.add(normalizeQuota(String(n))));
     });
 
     const paidCount = paidNumbersSet.size;
-    const percentPaid = totalNumbers > 0 ? Math.min(100, Math.round((paidCount / totalNumbers) * 100)) : 0;
-    const isFullyPaid = paidCount >= totalNumbers;
+
+    let capacity = totalNumbers;
+    const promoEnabled = !!currentRaffle?.promotionEnabled;
+    const buy = Number(currentRaffle?.promotionBuy || 0);
+    const promoBonus = Number(currentRaffle?.promotionBonus || 0);
+    if (promoEnabled && buy > 0 && promoBonus > 0) {
+      const groupSize = buy + promoBonus;
+      const groups = Math.floor(totalNumbers / groupSize);
+      const rem = totalNumbers % groupSize;
+      capacity = groups * buy + Math.min(buy, rem);
+    }
+
+    const isFullyPaid = paidCount >= capacity || paidNumbersSet.size >= totalNumbers || currentRaffle?.status === "encerrada" || Boolean(currentRaffle?.winnerNumber);
+    const percentPaid = isFullyPaid ? 100 : (capacity > 0 ? Math.min(100, Math.round((paidCount / capacity) * 100)) : 0);
 
     return {
       totalNumbers,
@@ -189,15 +207,22 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
     };
 
     const targetNorm = normalizeQuota(numStr);
-    const foundOrder = orders.find((o) => 
-      (o.status === "Pago" || o.status === "paid" || o.status === "approved" || o.status === "pago" || o.status === "confirmed") &&
-      (o.nums || []).map(normalizeQuota).includes(targetNorm)
-    );
+    const foundOrder = orders.find((o) => {
+      const isPaid = (o.status === "Pago" || o.status === "paid" || o.status === "approved" || o.status === "pago" || o.status === "confirmed");
+      if (!isPaid) return false;
+      const allNums = [
+        ...(Array.isArray(o.nums) ? o.nums : []),
+        ...(Array.isArray(o.purchasedNums) ? o.purchasedNums : []),
+        ...(Array.isArray(o.bonusNums) ? o.bonusNums : []),
+        ...(Array.isArray(o.numbers) ? o.numbers : []),
+      ];
+      return allNums.map(normalizeQuota).includes(targetNorm);
+    });
 
     if (foundOrder) {
       return {
-        name: foundOrder.name || "Comprador Registrado",
-        phone: foundOrder.phone || "",
+        name: foundOrder.name || foundOrder.customerName || "Comprador Registrado",
+        phone: foundOrder.phone || foundOrder.customerPhone || "",
         orderId: foundOrder.id
       };
     }

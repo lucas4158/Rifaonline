@@ -1091,6 +1091,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     setSelectedRaffleId(raffleId);
     setViewMode("detail");
     setActiveTab("dashboard");
+    setCurrentAdminTab("overview");
   };
 
   // Status badge renderer helper
@@ -3672,7 +3673,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 }
 
                 const isEncerradaOrWinner = raffle.status === "encerrada" || Boolean(raffle.winnerNumber);
-                const percentSold = isEncerradaOrWinner ? 100 : Math.min(100, Math.round((soldN / (capacity || 1)) * 100));
+                const is100Percent = isEncerradaOrWinner || soldN >= capacity || soldN >= totalN;
+                const percentSold = is100Percent ? 100 : Math.min(100, Math.round((soldN / (capacity || 1)) * 100));
 
                 return (
                   <div
@@ -3681,7 +3683,10 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   >
                     {/* CARD HEADER WITH IMAGE & BADGE */}
                     <div>
-                      <div className="relative h-48 bg-zinc-900 overflow-hidden">
+                      <div 
+                        onClick={() => handleOpenRaffleDetail(raffle.id)}
+                        className="relative h-48 bg-zinc-900 overflow-hidden cursor-pointer"
+                      >
                         {raffle.imageUrl ? (
                           <img
                             src={raffle.imageUrl}
@@ -4434,7 +4439,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
       {currentAdminTab === "winners" && <DrawsView selectedRaffleId={selectedRaffleId} raffleConfig={raffleConfig} />}
 
       {/* TAB CONDITIONAL RENDERING */}
-      {currentAdminTab === "overview" && activeTab === "dashboard" && (
+      {(currentAdminTab === "overview" || currentAdminTab === "rifas") && activeTab === "dashboard" && (
           <div className="space-y-6">
             {/* GLOBAL REVENUE ANALYTICS & CHARTS SECTION */}
             <div className="space-y-6">

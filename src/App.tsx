@@ -3937,7 +3937,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                             {/* Live Sales Badge */}
                             <span className="text-[11px] font-extrabold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                              {(((stats?.countPaid ?? 0) / (raffleConfig?.totalNumbers ?? 1)) * 100).toFixed(1)}% Vendido
+                              {progressPercentage.toFixed(1)}% Vendido
                             </span>
                           </div>
 
@@ -3991,13 +3991,13 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               <span>Progresso das Vendas:</span>
                             </span>
                             <span className="text-amber-400 font-black text-sm">
-                              {(((stats?.countPaid ?? 0) / (raffleConfig?.totalNumbers ?? 1)) * 100).toFixed(1)}%
+                              {progressPercentage.toFixed(1)}%
                             </span>
                           </div>
                           <div className="w-full h-2.5 bg-zinc-900 rounded-full overflow-hidden p-0.5 border border-zinc-800">
                             <motion.div
                               initial={{ width: 0 }}
-                              animate={{ width: `${((stats?.countPaid ?? 0) / (raffleConfig?.totalNumbers ?? 1)) * 100}%` }}
+                              animate={{ width: `${progressPercentage}%` }}
                               transition={{ duration: 1, ease: "easeOut" }}
                               className="h-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-300 rounded-full"
                             />
@@ -5146,20 +5146,16 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               Taxa de Ocupação da Rifa
                             </p>
                             <h3 className="text-3xl sm:text-4xl font-black text-white tracking-tight leading-none flex items-baseline gap-1">
-                              {Math.round(
-                                ((stats.countPaid + stats.countReserved) /
-                                  raffleConfig.totalNumbers) *
-                                  100,
-                              )}
+                              {Math.round(progressPercentage)}
                               <span className="text-lg text-zinc-500 font-bold">%</span>
                             </h3>
                           </div>
                           <div className="mt-4">
                             <div className="relative w-full bg-zinc-900 h-2.5 rounded-full overflow-hidden border border-zinc-800">
                               <div
-                                className="bg-gradient-to-r from-emerald-500 to-indigo-505 h-full transition-all duration-1000"
+                                className="bg-gradient-to-r from-emerald-500 to-indigo-500 h-full transition-all duration-1000"
                                 style={{
-                                  width: `${(stats.countPaid / (raffleConfig.totalNumbers || 1)) * 100}%`,
+                                  width: `${progressPercentage}%`,
                                 }}
                               />
                             </div>
