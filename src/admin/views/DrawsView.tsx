@@ -71,7 +71,7 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
 
     const loadOrders = async () => {
       try {
-        const token = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
+        const token = localStorage.getItem("raffle_admin_token") || "";
         const res = await fetch("/api/admin-action", {
           method: "POST",
           headers: {
@@ -88,6 +88,8 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
           if (Array.isArray(data.orders)) {
             setOrders(data.orders);
           }
+        } else if (res.status === 401 || res.status === 403) {
+          console.warn("🚨 [Admin] Sessão expirada ao buscar pedidos na tela de sorteios.");
         }
       } catch (apiErr) {
         console.error("Failed to fetch orders via Admin API in DrawsView:", apiErr);
@@ -273,7 +275,7 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
     setSuccess("");
 
     try {
-      const adminToken = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
+      const adminToken = localStorage.getItem("raffle_admin_token") || "";
 
       let winnerNumParam: string | undefined = undefined;
       let methodLabel = "AUTOMATIC_RIFAMASTER";

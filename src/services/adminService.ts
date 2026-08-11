@@ -12,7 +12,7 @@ const getActiveToken = async (token: string): Promise<string> => {
     }
   }
   if (typeof window !== "undefined") {
-    return localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
+    return localStorage.getItem("raffle_admin_token") || "";
   }
   return "";
 };

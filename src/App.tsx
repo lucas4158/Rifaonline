@@ -701,6 +701,7 @@ function LayoutWithHeader({
                       <button
                         onClick={() => {
                           setIsMenuOpen(false);
+                          localStorage.removeItem("admin_token");
                           localStorage.removeItem("raffle_admin_token");
                           alert("Sessão encerrada!");
                           window.location.href = "/";
@@ -775,6 +776,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         if (isValid) {
           setIsAdminAuthenticated(true);
         } else {
+          localStorage.removeItem("admin_token");
           localStorage.removeItem("raffle_admin_token");
         }
       }).catch((err) => {
@@ -1255,7 +1257,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       const drawsColsRef = collection(db, "draws");
       const numbersColRef = collection(db, "raffles", "current", "numbers");
 
-      const adminToken = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
+      const adminToken = localStorage.getItem("raffle_admin_token") || "";
 
       const fetchBackupOrders = async () => {
         try {
@@ -1270,6 +1272,8 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
           if (res.ok) {
             const data = await res.json();
             return Array.isArray(data.orders) ? data.orders : [];
+          } else if (res.status === 401 || res.status === 403) {
+            console.warn("🚨 [Admin] Sessão expirada ao buscar backup de pedidos. É necessário fazer login novamente.");
           }
         } catch (e) {
           console.warn("Failed to fetch orders via Admin API during backup:", e);
@@ -5084,6 +5088,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         <button
                           onClick={() => {
                             setIsAdminAuthenticated(false);
+                            localStorage.removeItem("admin_token");
                             localStorage.removeItem("raffle_admin_token");
                           }}
                           className="px-5 py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-350 hover:text-white rounded-xl border border-zinc-800 transition-all text-xs font-black uppercase tracking-wider active:scale-95 cursor-pointer"

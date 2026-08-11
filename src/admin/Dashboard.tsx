@@ -84,7 +84,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   const { logout, navigate } = useAuth();
   const getAdminToken = () => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
+      return localStorage.getItem("raffle_admin_token") || "";
     }
     return "";
   };
@@ -868,7 +868,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
 
     setIsSubmittingGlobalPix(true);
     try {
-      const token = localStorage.getItem("admin_token") || "";
+      const token = getAdminToken();
       const result = await adminService.updateGlobalPix(token, {
         pixKey: globalPixKey.trim(),
         pixReceiver: globalPixReceiver.trim(),
@@ -1262,7 +1262,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
       // Fetch the latest orders via Admin API
       let currentOrders = orders;
       try {
-        const adminToken = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
+        const adminToken = getAdminToken();
         const res = await fetch("/api/admin-action", {
           method: "POST",
           headers: {
@@ -1281,6 +1281,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
             currentOrders = data.orders;
             setOrders(data.orders);
           }
+        } else if (res.status === 401 || res.status === 403) {
+          console.warn("🚨 [Admin] Sessão expirada ao recalcular sorteio.");
         }
       } catch (apiErr) {
         console.error("Erro ao obter pedidos via Admin API:", apiErr);
@@ -5126,8 +5128,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                       // Auto save to raffleConfig
                       setIsSavingDrawMode(true);
                       try {
-                        const token = localStorage.getItem("admin_token") || "";
-                        await adminService.saveConfig(getAdminToken(), { ...raffleConfig, drawMode: newMode }, raffleConfig.isActive, selectedRaffleId);
+                        const token = getAdminToken();
+                        await adminService.saveConfig(token, { ...raffleConfig, drawMode: newMode }, raffleConfig.isActive, selectedRaffleId);
                         if (fetchRaffles) await fetchRaffles();
                       } catch (err) {
                         console.error("Erro ao salvar modo de sorteio:", err);
@@ -5179,7 +5181,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                           // Fetch latest orders via Admin API
                           let currentOrders = orders;
                           try {
-                            const adminToken = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
+                            const adminToken = getAdminToken();
                             const res = await fetch("/api/admin-action", {
                               method: "POST",
                               headers: {
@@ -5198,6 +5200,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                                 currentOrders = data.orders;
                                 setOrders(data.orders);
                               }
+                            } else if (res.status === 401 || res.status === 403) {
+                              console.warn("🚨 [Admin] Sessão expirada ao buscar pedidos mais recentes.");
                             }
                           } catch (apiErr) {
                             console.error("Erro ao obter pedidos via Admin API:", apiErr);
@@ -5339,8 +5343,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                           // Auto save rule
                           setIsSavingDrawMode(true);
                           try {
-                            const token = localStorage.getItem("admin_token") || "";
-                            await adminService.saveConfig(getAdminToken(), { ...raffleConfig, federalRegra: newRegra }, raffleConfig.isActive, selectedRaffleId);
+                            const token = getAdminToken();
+                            await adminService.saveConfig(token, { ...raffleConfig, federalRegra: newRegra }, raffleConfig.isActive, selectedRaffleId);
                             if (fetchRaffles) await fetchRaffles();
                           } catch (err) {
                             console.error("Erro ao salvar regra de sorteio:", err);

@@ -181,7 +181,7 @@ export const realtimeService = {
       try {
         const token =
           (typeof window !== "undefined" &&
-            (localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token"))) ||
+            localStorage.getItem("raffle_admin_token")) ||
           "";
         const res = await fetch("/api/admin-action", {
           method: "POST",
@@ -201,6 +201,8 @@ export const realtimeService = {
           if (Array.isArray(data.orders)) {
             processOrders(data.orders);
           }
+        } else if (res.status === 401 || res.status === 403) {
+          console.warn("🚨 [Admin] Sessão expirada ou inválida. É necessário fazer login novamente.");
         }
       } catch (err) {
         // Silently catch network errors in background poll

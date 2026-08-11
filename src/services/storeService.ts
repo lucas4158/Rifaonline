@@ -256,7 +256,7 @@ class StoreService {
 
     const now = new Date().toISOString();
     const finalProduct = {
-      adminToken: localStorage.getItem("raffle_admin_token") || localStorage.getItem("admin_token") || "",
+      adminToken: localStorage.getItem("raffle_admin_token") || "",
       id,
       name: productData.name?.trim() || "Produto sem nome",
       category: productData.category || "Carretilhas",
@@ -331,7 +331,7 @@ class StoreService {
 
     try {
       await updateDoc(doc(db, COLLECTION_NAME, id), {
-        adminToken: localStorage.getItem("raffle_admin_token") || localStorage.getItem("admin_token") || "",
+        adminToken: localStorage.getItem("raffle_admin_token") || "",
         isActive,
         updatedAt: new Date().toISOString(),
       });
@@ -408,7 +408,7 @@ class StoreService {
 
   public async setStoreEnabled(isEnabled: boolean): Promise<void> {
     const newConfig: StoreConfig & { adminToken?: string } = {
-      adminToken: localStorage.getItem("raffle_admin_token") || localStorage.getItem("admin_token") || "",
+      adminToken: localStorage.getItem("raffle_admin_token") || "",
       isEnabled,
       updatedAt: new Date().toISOString(),
     };

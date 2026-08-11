@@ -77,7 +77,7 @@ export function RaffleConfigProvider({ children }: { children: React.ReactNode }
 
   const fetchRaffles = async () => {
     try {
-      const adminToken = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
+      const adminToken = localStorage.getItem("raffle_admin_token") || "";
       if (!adminToken) return;
       const list = await adminService.listRaffles(adminToken);
       if (Array.isArray(list)) {

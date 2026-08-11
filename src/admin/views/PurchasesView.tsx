@@ -73,7 +73,6 @@ export function PurchasesView({
   const getAdminToken = () => {
     if (typeof window !== "undefined") {
       return (
-        localStorage.getItem("admin_token") ||
         localStorage.getItem("raffle_admin_token") ||
         ""
       );
@@ -108,6 +107,8 @@ export function PurchasesView({
             if (Array.isArray(data.raffles)) {
               setFetchedRaffles(data.raffles);
             }
+          } else if (res.status === 401 || res.status === 403) {
+            console.warn("🚨 [Admin] Sessão expirada ou inválida ao listar rifas. É necessário fazer login novamente.");
           }
         } catch (e) {
           console.error("Failed to fetch raffles list for PurchasesView:", e);
@@ -140,6 +141,8 @@ export function PurchasesView({
         if (Array.isArray(data.orders)) {
           setApiFetchedOrders(data.orders);
         }
+      } else if (res.status === 401 || res.status === 403) {
+        console.warn("🚨 [Admin] Sessão expirada ou inválida ao listar pedidos. É necessário fazer login novamente.");
       }
     } catch (apiErr) {
       console.error("Failed to fetch orders via Admin API:", apiErr);
