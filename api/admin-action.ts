@@ -2158,18 +2158,49 @@ export default async function handler(req: any, res: any) {
         const { raffleId, limitCount } = req.body;
         console.log(`📋 [Admin Action] Listing orders (raffleId: ${raffleId || "all"})...`);
         const adminDb = getAdminFirestore();
-        let snap = await adminDb.collection("orders").get();
+        
+        const ordersMap = new Map<string, any>();
+
+        // 1. Fetch from orders collection
+        try {
+          const snap = await adminDb.collection("orders").get();
+          snap.forEach((docSnap: any) => {
+            ordersMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+          });
+        } catch (e) {
+          console.warn("Error reading orders collection:", e);
+        }
+
+        // 2. Fetch from reservations collection as fallback/supplement
+        try {
+          const resSnap = await adminDb.collection("reservations").get();
+          resSnap.forEach((docSnap: any) => {
+            if (!ordersMap.has(docSnap.id)) {
+              ordersMap.set(docSnap.id, { id: docSnap.id, ...docSnap.data() });
+            }
+          });
+        } catch (e) {
+          console.warn("Error reading reservations collection:", e);
+        }
+
         const ordersList: any[] = [];
-        snap.forEach((docSnap: any) => {
-          const data = docSnap.data();
+        ordersMap.forEach((data, id) => {
           const orderRaffleId = data.raffleId || "current";
-          const isMatch = !raffleId || raffleId === "all" || orderRaffleId === raffleId || orderRaffleId === "current" || !data.raffleId;
+          const isMatch =
+            !raffleId ||
+            raffleId === "all" ||
+            raffleId === "current" ||
+            orderRaffleId === raffleId ||
+            orderRaffleId === "current" ||
+            !data.raffleId;
+
           if (isMatch) {
-            ordersList.push({ id: docSnap.id, ...data });
+            ordersList.push({ id, ...data });
           }
         });
+
         ordersList.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-        const maxLimit = Number(limitCount) || 200;
+        const maxLimit = Number(limitCount) || 500;
         return res.status(200).json({ success: true, orders: ordersList.slice(0, maxLimit) });
       }
 

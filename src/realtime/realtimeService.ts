@@ -89,92 +89,137 @@ export const realtimeService = {
 
     const limitCount = options?.limitCount || 500;
     const targetRaffleId = options?.raffleId;
+
+    let previousOrdersMap = new Map<string, string>();
+    let isInitialLoad = true;
+
+    const processOrders = (rawOrdersList: any[]) => {
+      const processedList: any[] = [];
+      const currentMap = new Map<string, string>();
+
+      rawOrdersList.forEach((data) => {
+        let status = data.status;
+        if (status === "pending_payment" || status === "Aguardando") {
+          status = "Aguardando";
+        } else if (status === "paid" || status === "Pago" || status === "confirmed") {
+          status = "Pago";
+        } else if (status === "canceled" || status === "Cancelado") {
+          status = "Cancelado";
+        } else if (status === "expired") {
+          status = "expired";
+        } else if (status === "refunded" || status === "Reembolsado") {
+          status = "Reembolsado";
+        } else if (status === "PAYMENT_AFTER_EXPIRATION") {
+          status = "PAYMENT_AFTER_EXPIRATION";
+        } else {
+          status = "Aguardando";
+        }
+
+        const id = data.id;
+        const statusRaw = String(data.status || "").toLowerCase();
+        currentMap.set(id, statusRaw);
+
+        if (!isInitialLoad && onPaidOrderNotification) {
+          const prevStatus = previousOrdersMap.get(id);
+          const isPaid = statusRaw === "paid" || statusRaw === "pago" || statusRaw === "confirmed" || statusRaw === "approved";
+          const numsList = Array.isArray(data.nums) ? data.nums : (Array.isArray(data.purchasedNums) ? data.purchasedNums : []);
+
+          if (!prevStatus) {
+            // New order added
+            onPaidOrderNotification({
+              orderId: id,
+              name: data.name || data.customerName || "Cliente",
+              total: Number(data.total || data.totalValue || data.val || data.amount || 0),
+              numsCount: numsList.length,
+              raffleTitle: data.raffleTitle || "",
+              raffleId: data.raffleId || "current",
+              type: isPaid ? "paid" : "pending",
+            });
+          } else if (prevStatus !== statusRaw && isPaid) {
+            // Status changed to paid
+            onPaidOrderNotification({
+              orderId: id,
+              name: data.name || data.customerName || "Cliente",
+              total: Number(data.total || data.totalValue || data.val || data.amount || 0),
+              numsCount: numsList.length,
+              raffleTitle: data.raffleTitle || "",
+              raffleId: data.raffleId || "current",
+              type: "paid",
+            });
+          }
+        }
+
+        processedList.push({ ...data, id, status });
+      });
+
+      previousOrdersMap = currentMap;
+      isInitialLoad = false;
+
+      processedList.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      onSync(processedList);
+    };
+
+    const fetchViaAdminApi = async () => {
+      try {
+        const token =
+          (typeof window !== "undefined" &&
+            (localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token"))) ||
+          "";
+        const res = await fetch("/api/admin-action", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            action: "list-orders",
+            raffleId: targetRaffleId,
+            limitCount,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.orders)) {
+            processOrders(data.orders);
+          }
+        }
+      } catch (err) {
+        // Silently catch network errors in background poll
+      }
+    };
+
+    // Initial fetch via Admin API
+    fetchViaAdminApi();
+
+    // Setup periodic 4s poll interval for real-time responsiveness
+    const pollInterval = setInterval(() => {
+      fetchViaAdminApi();
+    }, 4000);
+
+    // Secondary Firestore listener if direct client access permissions exist
     const colRef = collection(db, "orders");
     const q = (targetRaffleId && targetRaffleId !== "all")
       ? query(colRef, where("raffleId", "==", targetRaffleId), limit(limitCount))
       : query(colRef, orderBy("createdAt", "desc"), limit(limitCount));
 
-    let isInitialLoad = true;
-
-    const unsub = onSnapshot(
+    const unsubFirestore = onSnapshot(
       q,
       (querySnap) => {
-        if (!isInitialLoad && onPaidOrderNotification) {
-          querySnap.docChanges().forEach((change) => {
-            if (change.type === "added" || change.type === "modified") {
-              const data = change.doc.data() as any;
-              const statusRaw = String(data.status || "").toLowerCase();
-              const isPaid =
-                statusRaw === "paid" ||
-                statusRaw === "pago" ||
-                statusRaw === "confirmed" ||
-                statusRaw === "approved";
-
-              const numsList = Array.isArray(data.nums)
-                ? data.nums
-                : (Array.isArray(data.purchasedNums) ? data.purchasedNums : []);
-
-              if (change.type === "added") {
-                onPaidOrderNotification({
-                  orderId: change.doc.id,
-                  name: data.name || data.customerName || "Cliente",
-                  total: Number(data.total || data.totalValue || data.val || data.amount || 0),
-                  numsCount: numsList.length,
-                  raffleTitle: data.raffleTitle || "",
-                  raffleId: data.raffleId || "current",
-                  type: isPaid ? "paid" : "pending",
-                });
-              } else if (change.type === "modified" && isPaid) {
-                onPaidOrderNotification({
-                  orderId: change.doc.id,
-                  name: data.name || data.customerName || "Cliente",
-                  total: Number(data.total || data.totalValue || data.val || data.amount || 0),
-                  numsCount: numsList.length,
-                  raffleTitle: data.raffleTitle || "",
-                  raffleId: data.raffleId || "current",
-                  type: "paid",
-                });
-              }
-            }
-          });
-        }
-        isInitialLoad = false;
-
         const ordersList: any[] = [];
         querySnap.forEach((doc) => {
-          const data = doc.data() as any;
-          let status = data.status;
-          if (status === "pending_payment" || status === "Aguardando") {
-            status = "Aguardando";
-          } else if (status === "paid" || status === "Pago" || status === "confirmed") {
-            status = "Pago";
-          } else if (status === "canceled" || status === "Cancelado") {
-            status = "Cancelado";
-          } else if (status === "expired" || status === "expired") {
-            status = "expired";
-          } else if (status === "refunded" || status === "Reembolsado") {
-            status = "Reembolsado";
-          } else if (status === "PAYMENT_AFTER_EXPIRATION") {
-            status = "PAYMENT_AFTER_EXPIRATION";
-          } else {
-            status = "Aguardando";
-          }
-          ordersList.push({ ...data, id: doc.id, status });
+          ordersList.push({ id: doc.id, ...doc.data() });
         });
-
-        ordersList.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-        onSync(ordersList);
-        console.log(`[REALTIME_SYNC] Syncing administrative orders list (limit ${limitCount}). Count: ${querySnap.size}`);
+        processOrders(ordersList);
       },
       (error) => {
-        try {
-          handleFirestoreError(error, OperationType.LIST, "orders");
-        } catch (e) {
-          console.error("Orders realtime sync error:", e);
-        }
+        // Handled silently by polling loop
       }
     );
-    return unsub;
+
+    return () => {
+      clearInterval(pollInterval);
+      unsubFirestore();
+    };
   },
 
   subscribeLocks(

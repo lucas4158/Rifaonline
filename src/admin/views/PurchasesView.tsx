@@ -18,7 +18,8 @@ import {
   DollarSign,
   Ticket,
   User,
-  Filter
+  Filter,
+  RefreshCw
 } from "lucide-react";
 
 export function PurchasesView({
@@ -50,9 +51,49 @@ export function PurchasesView({
     return "";
   };
 
-  // Realtime subscription to Firestore orders
+  // Fetch orders helper via Admin API
+  const fetchOrdersFromApi = async (isManual = false) => {
+    if (isManual) setLoading(true);
+    try {
+      const adminToken = getAdminToken();
+      const res = await fetch("/api/admin-action", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminToken}`
+        },
+        body: JSON.stringify({
+          action: "list-orders",
+          raffleId: selectedRaffleId,
+          limitCount: limit || 500
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data.orders)) {
+          setOrders(data.orders);
+        }
+      }
+    } catch (apiErr) {
+      console.error("Failed to fetch orders via Admin API:", apiErr);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Realtime subscription + background polling for live orders sync
   useEffect(() => {
     setLoading(true);
+
+    // Initial fetch via API
+    fetchOrdersFromApi();
+
+    // Setup periodic polling every 4 seconds to catch new orders in real-time
+    const intervalId = setInterval(() => {
+      fetchOrdersFromApi();
+    }, 4000);
+
+    // Attempt direct Firestore realtime subscription as secondary listener if client rules allow
     const colRef = collection(db, "orders");
     const q = query(colRef, orderBy("createdAt", "desc"), limitQuery(limit || 500));
 
@@ -72,37 +113,15 @@ export function PurchasesView({
         setOrders(loadedOrders);
         setLoading(false);
       },
-      async (err) => {
-        console.info("🔒 Firestore direct orders access restricted or query fallback. Fetching via secure Admin API...");
-        try {
-          const adminToken = getAdminToken();
-          const res = await fetch("/api/admin-action", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${adminToken}`
-            },
-            body: JSON.stringify({
-              action: "list-orders",
-              raffleId: selectedRaffleId,
-              limitCount: limit || 200
-            })
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.orders) {
-              setOrders(data.orders);
-            }
-          }
-        } catch (apiErr) {
-          console.error("Failed to fetch orders via Admin API:", apiErr);
-        } finally {
-          setLoading(false);
-        }
+      (err) => {
+        // Silently handled by polling loop
       }
     );
 
-    return () => unsubscribe();
+    return () => {
+      clearInterval(intervalId);
+      unsubscribe();
+    };
   }, [selectedRaffleId, limit]);
 
   // Normalize order status
@@ -267,6 +286,18 @@ export function PurchasesView({
 
           {!compact && (
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              {/* REFRESH BUTTON */}
+              <button
+                type="button"
+                onClick={() => fetchOrdersFromApi(true)}
+                disabled={loading}
+                className="px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                title="Atualizar lista de pedidos"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-emerald-400" : ""}`} />
+                <span className="hidden sm:inline">Atualizar</span>
+              </button>
+
               {/* SEARCH INPUT */}
               <div className="relative">
                 <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-1/2 -translate-y-1/2" />
