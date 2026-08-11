@@ -98,11 +98,21 @@ export function PurchasesView({
 
   // Normalize order status
   const getNormalizedStatus = (rawStatus: string): "pago" | "pendente" | "cancelado" => {
-    const s = String(rawStatus || "").toLowerCase();
-    if (s === "pago" || s === "paid" || s === "approved" || s === "confirmed" || s === "paga" || s === "pagas") {
+    const s = String(rawStatus || "").toLowerCase().trim();
+    if (
+      s === "pago" ||
+      s === "paid" ||
+      s === "approved" ||
+      s === "aprovado" ||
+      s === "confirmed" ||
+      s === "paga" ||
+      s === "pagas" ||
+      s === "concluido" ||
+      s === "concluído"
+    ) {
       return "pago";
     }
-    if (s === "cancelado" || s === "canceled" || s === "expired" || s === "reembolsado" || s === "refunded") {
+    if (s === "cancelado" || s === "canceled" || s === "cancelled" || s === "expired" || s === "reembolsado" || s === "refunded") {
       return "cancelado";
     }
     return "pendente";

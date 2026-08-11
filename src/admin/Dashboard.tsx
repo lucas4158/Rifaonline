@@ -279,8 +279,21 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
       if (!rawPhone) return;
       const key = rawPhone;
       const name = String(ord.name || "Cliente sem Nome").trim();
-      const isPaid = (ord.status || "").toLowerCase() === "pago" || (ord.status || "").toLowerCase() === "paid" || (ord.status || "").toLowerCase() === "approved";
-      const numsCount = Array.isArray(ord.nums) ? ord.nums.length : 0;
+      const st = String(ord.status || "").toLowerCase().trim();
+      const isPaid =
+        st === "pago" ||
+        st === "paid" ||
+        st === "approved" ||
+        st === "aprovado" ||
+        st === "confirmed" ||
+        st === "paga" ||
+        st === "pagas" ||
+        st === "concluido" ||
+        st === "concluído";
+      const numsList = Array.isArray(ord.nums)
+        ? ord.nums
+        : (Array.isArray(ord.purchasedNums) ? ord.purchasedNums : (Array.isArray(ord.numbers) ? ord.numbers : []));
+      const numsCount = numsList.length;
       const val = Number(ord.val || ord.totalValue || ord.totalAmount || 0) || 0;
       const orderTime = ord.createdAt ? new Date(ord.createdAt).getTime() : Date.now();
 
@@ -607,21 +620,35 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   // Compute stats for all raffles (used in "Minhas Rifas" cards and Global Dashboard)
   const rafflesWithStats = useMemo(() => {
     return raffles.map((r) => {
-      const rOrders = orders.filter((o) => (o.raffleId || "current") === r.id);
+      const rOrders = orders.filter((o) => {
+        const oRaffleId = o.raffleId || "current";
+        return oRaffleId === r.id || oRaffleId === "current" || !o.raffleId || raffles.length <= 1;
+      });
       const paidOrders = rOrders.filter((o) => {
         const s = String(o.status || "").toLowerCase().trim();
-        return s === "pago" || s === "paid" || s === "approved" || s === "confirmed";
+        return (
+          s === "pago" ||
+          s === "paid" ||
+          s === "approved" ||
+          s === "aprovado" ||
+          s === "confirmed" ||
+          s === "paga" ||
+          s === "pagas" ||
+          s === "concluido" ||
+          s === "concluído"
+        );
       });
 
       const revenueFromOrders = paidOrders.reduce((acc, curr) => {
-        return acc + (Number(curr.val || curr.total || curr.amount || 0) || 0);
+        return acc + (Number(curr.val || curr.total || curr.amount || curr.totalValue || 0) || 0);
       }, 0);
 
       let soldFromOrders = 0;
       paidOrders.forEach((o) => {
-        if (Array.isArray(o.nums)) {
-          soldFromOrders += o.nums.length;
-        }
+        const numsList = Array.isArray(o.nums)
+          ? o.nums
+          : (Array.isArray(o.purchasedNums) ? o.purchasedNums : (Array.isArray(o.numbers) ? o.numbers : []));
+        soldFromOrders += numsList.length;
       });
 
       const soldCountFromDoc = Number(r.soldCount || 0);

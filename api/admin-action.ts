@@ -213,7 +213,7 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: "Missing action in request body" });
   }
 
-  const clientIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "Unknown IP";
+  const clientIp = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "Unknown IP";
   const userAgent = req.headers["user-agent"] || "Unknown User-Agent";
 
   const computedLegacyToken = crypto.createHash("sha256").update((process.env.ADMIN_PASSWORD || "admin").trim() + "RifaMasterSaltSecureAudit").digest("hex");

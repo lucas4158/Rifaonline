@@ -98,18 +98,27 @@ export const realtimeService = {
       const currentMap = new Map<string, string>();
 
       rawOrdersList.forEach((data) => {
+        const sLower = String(data.status || "").toLowerCase().trim();
         let status = data.status;
-        if (status === "pending_payment" || status === "Aguardando") {
-          status = "Aguardando";
-        } else if (status === "paid" || status === "Pago" || status === "confirmed") {
+        if (
+          sLower === "pago" ||
+          sLower === "paid" ||
+          sLower === "approved" ||
+          sLower === "aprovado" ||
+          sLower === "confirmed" ||
+          sLower === "paga" ||
+          sLower === "pagas" ||
+          sLower === "concluido" ||
+          sLower === "concluído"
+        ) {
           status = "Pago";
-        } else if (status === "canceled" || status === "Cancelado") {
+        } else if (sLower === "cancelado" || sLower === "canceled" || sLower === "cancelled") {
           status = "Cancelado";
-        } else if (status === "expired") {
+        } else if (sLower === "expired") {
           status = "expired";
-        } else if (status === "refunded" || status === "Reembolsado") {
+        } else if (sLower === "refunded" || sLower === "reembolsado") {
           status = "Reembolsado";
-        } else if (status === "PAYMENT_AFTER_EXPIRATION") {
+        } else if (data.status === "PAYMENT_AFTER_EXPIRATION") {
           status = "PAYMENT_AFTER_EXPIRATION";
         } else {
           status = "Aguardando";
@@ -121,7 +130,16 @@ export const realtimeService = {
 
         if (!isInitialLoad && onPaidOrderNotification) {
           const prevStatus = previousOrdersMap.get(id);
-          const isPaid = statusRaw === "paid" || statusRaw === "pago" || statusRaw === "confirmed" || statusRaw === "approved";
+          const isPaid =
+            statusRaw === "paid" ||
+            statusRaw === "pago" ||
+            statusRaw === "confirmed" ||
+            statusRaw === "approved" ||
+            statusRaw === "aprovado" ||
+            statusRaw === "paga" ||
+            statusRaw === "pagas" ||
+            statusRaw === "concluido" ||
+            statusRaw === "concluído";
           const numsList = Array.isArray(data.nums) ? data.nums : (Array.isArray(data.purchasedNums) ? data.purchasedNums : []);
 
           if (!prevStatus) {
