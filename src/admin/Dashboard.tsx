@@ -500,7 +500,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         setPaidToasts((prev) => [toastItem, ...prev].slice(0, 5));
         setUnreadPaidCount((prev) => prev + 1);
       },
-      { limitCount: 50, raffleId: selectedRaffleId }
+      { limitCount: 200 }
     );
 
     return () => {
@@ -580,22 +580,30 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     };
   }, [raffleOrders, dbNumbers, raffleConfig.totalNumbers]);
 
-  // Compute stats for all raffles (used in "Minhas Rifas" cards)
+  // Compute stats for all raffles (used in "Minhas Rifas" cards and Global Dashboard)
   const rafflesWithStats = useMemo(() => {
     return raffles.map((r) => {
       const rOrders = orders.filter((o) => (o.raffleId || "current") === r.id);
-      const paidOrders = rOrders.filter(
-        (o) => o.status === "Pago" || o.status === "paid" || o.status === "approved"
-      );
-      const totalRevenue = paidOrders.reduce((acc, curr) => acc + (Number(curr.val) || 0), 0);
-      
-      // Calculate total paid numbers across paid orders
-      let totalSoldNumbers = 0;
+      const paidOrders = rOrders.filter((o) => {
+        const s = String(o.status || "").toLowerCase().trim();
+        return s === "pago" || s === "paid" || s === "approved" || s === "confirmed";
+      });
+
+      const revenueFromOrders = paidOrders.reduce((acc, curr) => {
+        return acc + (Number(curr.val || curr.total || curr.amount || 0) || 0);
+      }, 0);
+
+      let soldFromOrders = 0;
       paidOrders.forEach((o) => {
         if (Array.isArray(o.nums)) {
-          totalSoldNumbers += o.nums.length;
+          soldFromOrders += o.nums.length;
         }
       });
+
+      const soldCountFromDoc = Number(r.soldCount || 0);
+      const pricePerCota = Number(r.price) || 0;
+      const totalSoldNumbers = Math.max(soldCountFromDoc, soldFromOrders);
+      const totalRevenue = Math.max(revenueFromOrders, totalSoldNumbers * pricePerCota);
 
       return {
         ...r,
