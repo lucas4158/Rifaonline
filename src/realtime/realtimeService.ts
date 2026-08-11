@@ -189,6 +189,7 @@ export const realtimeService = {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
+          credentials: "include",
           body: JSON.stringify({
             action: "list-orders",
             raffleId: targetRaffleId,

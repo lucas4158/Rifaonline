@@ -1269,6 +1269,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
             "Content-Type": "application/json",
             Authorization: `Bearer ${adminToken}`
           },
+          credentials: "include",
           body: JSON.stringify({
             action: "list-orders",
             raffleId: selectedRaffleId || "current"
@@ -4858,7 +4859,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
               </div>
             </div>
 
-            <PurchasesView selectedRaffleId={selectedRaffleId} limit={5} compact />
+            <PurchasesView selectedRaffleId={selectedRaffleId} orders={orders} limit={5} compact />
           </div>
         )}
 
@@ -4866,6 +4867,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         {currentAdminTab === "orders" && (
           <PurchasesView
             selectedRaffleId={selectedRaffleId}
+            orders={orders}
             raffles={raffles}
             onSelectRaffle={(id) => setSelectedRaffleId(id)}
           />
@@ -5184,6 +5186,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                                 "Content-Type": "application/json",
                                 Authorization: `Bearer ${adminToken}`
                               },
+                              credentials: "include",
                               body: JSON.stringify({
                                 action: "list-orders",
                                 raffleId: selectedRaffleId || "current"

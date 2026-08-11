@@ -27,23 +27,33 @@ import {
 
 export function PurchasesView({
   selectedRaffleId,
+  orders: propOrders,
   raffles: propRaffles,
   onSelectRaffle,
   limit,
   compact
 }: {
   selectedRaffleId: string | null;
+  orders?: any[];
   raffles?: any[];
   onSelectRaffle?: (id: string) => void;
   limit?: number;
   compact?: boolean;
 }) {
-  const [orders, setOrders] = useState<any[]>([]);
+  const [apiFetchedOrders, setApiFetchedOrders] = useState<any[]>([]);
   const [fetchedRaffles, setFetchedRaffles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<"Todos" | "Pendentes" | "Pagos" | "Cancelados">("Todos");
   const [searchQuery, setSearchQuery] = useState("");
   
+  // Combine orders from props (realtime/parent) or API fetch
+  const orders = useMemo(() => {
+    if (Array.isArray(propOrders) && propOrders.length > 0) {
+      return propOrders;
+    }
+    return apiFetchedOrders;
+  }, [propOrders, apiFetchedOrders]);
+
   // Active Raffle Filter state inside PurchasesView (default to passed selectedRaffleId or 'all')
   const [activeRaffleFilter, setActiveRaffleFilter] = useState<string>(selectedRaffleId || "all");
 
@@ -85,12 +95,12 @@ export function PurchasesView({
       const fetchRafflesList = async () => {
         try {
           const token = getAdminToken();
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          if (token) headers["Authorization"] = `Bearer ${token}`;
           const res = await fetch("/api/admin-action", {
             method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`
-            },
+            headers,
+            credentials: "include",
             body: JSON.stringify({ action: "list-raffles" })
           });
           if (res.ok) {
@@ -113,12 +123,12 @@ export function PurchasesView({
     try {
       const adminToken = getAdminToken();
       const targetRaffle = activeRaffleFilter === "all" ? null : activeRaffleFilter;
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${adminToken}`
-        },
+        headers,
+        credentials: "include",
         body: JSON.stringify({
           action: "list-orders",
           raffleId: targetRaffle,
@@ -128,7 +138,7 @@ export function PurchasesView({
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.orders)) {
-          setOrders(data.orders);
+          setApiFetchedOrders(data.orders);
         }
       }
     } catch (apiErr) {
