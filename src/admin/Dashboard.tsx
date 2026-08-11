@@ -1207,57 +1207,30 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
       
       const padSize = String(raffleConfig.totalNumbers || 100).length;
 
-      // Fetch the latest orders in real-time from Firestore to ensure no sync latency
+      // Fetch the latest orders via Admin API
       let currentOrders = orders;
       try {
-        const ordersQuery = query(collection(db, "orders"), where("raffleId", "==", selectedRaffleId || "current"));
-        const ordersSnap = await getDocs(ordersQuery);
-        const freshOrders: any[] = [];
-        ordersSnap.forEach((doc) => {
-          const data = doc.data() as any;
-          let status = data.status;
-          if (status === "pending_payment" || status === "Aguardando") {
-            status = "Aguardando";
-          } else if (status === "paid" || status === "Pago" || status === "confirmed") {
-            status = "Pago";
-          } else if (status === "canceled" || status === "Cancelado") {
-            status = "Cancelado";
-          } else if (status === "expired") {
-            status = "expired";
-          } else if (status === "refunded" || status === "Reembolsado") {
-            status = "Reembolsado";
-          } else {
-            status = "Aguardando";
-          }
-          freshOrders.push({ ...data, id: doc.id, status });
+        const adminToken = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
+        const res = await fetch("/api/admin-action", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${adminToken}`
+          },
+          body: JSON.stringify({
+            action: "list-orders",
+            raffleId: selectedRaffleId || "current"
+          })
         });
-        currentOrders = freshOrders;
-        setOrders(freshOrders);
-      } catch (err) {
-        console.info("🔒 Firestore direct orders access restricted. Fetching via secure Admin API...");
-        try {
-          const adminToken = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
-          const res = await fetch("/api/admin-action", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${adminToken}`
-            },
-            body: JSON.stringify({
-              action: "list-orders",
-              raffleId: selectedRaffleId || "current"
-            })
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.orders) {
-              currentOrders = data.orders;
-              setOrders(data.orders);
-            }
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.orders)) {
+            currentOrders = data.orders;
+            setOrders(data.orders);
           }
-        } catch (apiErr) {
-          console.error("Erro ao obter pedidos via Admin API:", apiErr);
         }
+      } catch (apiErr) {
+        console.error("Erro ao obter pedidos via Admin API:", apiErr);
       }
 
       if (localDrawMode === "manual") {
@@ -5143,57 +5116,30 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                           setCalculatedCota(finalCotaStr);
                           setCalculationFormulaText("Embaralhamento eletrônico Fisher-Yates CSPRNG");
                           
-                          // Fetch latest orders in real-time from Firestore to ensure no sync latency
+                          // Fetch latest orders via Admin API
                           let currentOrders = orders;
                           try {
-                            const ordersQuery = query(collection(db, "orders"), where("raffleId", "==", selectedRaffleId || "current"));
-                            const ordersSnap = await getDocs(ordersQuery);
-                            const freshOrders: any[] = [];
-                            ordersSnap.forEach((docSnap) => {
-                              const data = docSnap.data() as any;
-                              let status = data.status;
-                              if (status === "pending_payment" || status === "Aguardando") {
-                                status = "Aguardando";
-                              } else if (status === "paid" || status === "Pago" || status === "confirmed" || status === "approved") {
-                                status = "Pago";
-                              } else if (status === "canceled" || status === "Cancelado") {
-                                status = "Cancelado";
-                              } else if (status === "expired") {
-                                status = "expired";
-                              } else if (status === "refunded" || status === "Reembolsado") {
-                                status = "Reembolsado";
-                              } else {
-                                status = "Aguardando";
-                              }
-                              freshOrders.push({ ...data, id: docSnap.id, status });
+                            const adminToken = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
+                            const res = await fetch("/api/admin-action", {
+                              method: "POST",
+                              headers: {
+                                "Content-Type": "application/json",
+                                Authorization: `Bearer ${adminToken}`
+                              },
+                              body: JSON.stringify({
+                                action: "list-orders",
+                                raffleId: selectedRaffleId || "current"
+                              })
                             });
-                            currentOrders = freshOrders;
-                            setOrders(freshOrders);
-                          } catch (err) {
-                            console.info("🔒 Direct orders subscription restricted. Fetching via Admin API...");
-                            try {
-                              const adminToken = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
-                              const res = await fetch("/api/admin-action", {
-                                method: "POST",
-                                headers: {
-                                  "Content-Type": "application/json",
-                                  Authorization: `Bearer ${adminToken}`
-                                },
-                                body: JSON.stringify({
-                                  action: "list-orders",
-                                  raffleId: selectedRaffleId || "current"
-                                })
-                              });
-                              if (res.ok) {
-                                const data = await res.json();
-                                if (data.orders) {
-                                  currentOrders = data.orders;
-                                  setOrders(data.orders);
-                                }
+                            if (res.ok) {
+                              const data = await res.json();
+                              if (Array.isArray(data.orders)) {
+                                currentOrders = data.orders;
+                                setOrders(data.orders);
                               }
-                            } catch (apiErr) {
-                              console.error("Erro ao obter pedidos via Admin API:", apiErr);
                             }
+                          } catch (apiErr) {
+                            console.error("Erro ao obter pedidos via Admin API:", apiErr);
                           }
 
                           const normalizeQuota = (q: string): string => {

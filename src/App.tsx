@@ -1250,14 +1250,35 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       setIsExportingBackup(true);
       console.log("📥 [Backup Action] Iniciando exportação de snapshot do banco de dados...");
       
-      const ordersColsRef = collection(db, "orders");
       const reservationsColsRef = collection(db, "reservations");
       const paymentsColsRef = collection(db, "payments");
       const drawsColsRef = collection(db, "draws");
       const numbersColRef = collection(db, "raffles", "current", "numbers");
 
-      const [ordersSnap, reservationsSnap, paymentsSnap, drawsSnap, numbersSnap] = await Promise.all([
-        getDocs(ordersColsRef),
+      const adminToken = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
+
+      const fetchBackupOrders = async () => {
+        try {
+          const res = await fetch("/api/admin-action", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${adminToken}`
+            },
+            body: JSON.stringify({ action: "list-orders", raffleId: "all" })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            return Array.isArray(data.orders) ? data.orders : [];
+          }
+        } catch (e) {
+          console.warn("Failed to fetch orders via Admin API during backup:", e);
+        }
+        return [];
+      };
+
+      const [ordersList, reservationsSnap, paymentsSnap, drawsSnap, numbersSnap] = await Promise.all([
+        fetchBackupOrders(),
         getDocs(reservationsColsRef),
         getDocs(paymentsColsRef),
         getDocs(drawsColsRef),
@@ -1268,7 +1289,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         version: "RifaMaster_Backup_v1",
         timestamp: new Date().toISOString(),
         config: raffleConfig,
-        orders: ordersSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+        orders: ordersList,
         reservations: reservationsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
         payments: paymentsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
         draws: drawsSnap.docs.map(d => ({ id: d.id, ...d.data() })),

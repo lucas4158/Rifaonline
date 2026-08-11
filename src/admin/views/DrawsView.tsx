@@ -2,8 +2,6 @@ import React, { useState, useEffect, useMemo } from "react";
 import { getSupabaseClient } from "../../services/supabase/supabaseClient";
 import { adminService } from "../../services/adminService";
 import { useRaffleConfig } from "../RaffleConfigContext";
-import { db } from "../../services/firebase";
-import { collection, onSnapshot } from "firebase/firestore";
 import { 
   Trophy, 
   Loader2, 
@@ -60,7 +58,7 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
   const [latestWinnerModal, setLatestWinnerModal] = useState<any | null>(null);
 
-  // Realtime subscription for Firestore orders to compute exact paid quota stats
+  // Load orders via Admin API to compute exact paid quota stats
   useEffect(() => {
     if (!activeRaffleId) {
       setOrders([]);
@@ -68,53 +66,41 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
       return;
     }
 
+    let isMounted = true;
     setLoadingOrders(true);
-    const colRef = collection(db, "orders");
-    const unsub = onSnapshot(
-      colRef,
-      (snapshot) => {
-        const list: any[] = [];
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          const orderRaffleId = data.raffleId || "current";
-          const isMatch =
-            orderRaffleId === activeRaffleId ||
-            ((orderRaffleId === "current" || !data.raffleId) && (activeRaffleId === "current" || raffles.length <= 1 || activeRaffleId === raffles[0]?.id));
-          if (isMatch) {
-            list.push({ id: docSnap.id, ...data });
-          }
-        });
-        setOrders(list);
-        setLoadingOrders(false);
-      },
-      async (err) => {
-        console.info("🔒 Direct orders subscription restricted. Fetching via Admin API...");
-        try {
-          const token = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
-          const res = await fetch("/api/admin-action", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              action: "list-orders",
-              raffleId: activeRaffleId
-            })
-          });
-          if (res.ok) {
-            const data = await res.json();
-            if (data.orders) setOrders(data.orders);
-          }
-        } catch (apiErr) {
-          console.error("Failed to fetch orders via Admin API in DrawsView:", apiErr);
-        } finally {
-          setLoadingOrders(false);
-        }
-      }
-    );
 
-    return () => unsub();
+    const loadOrders = async () => {
+      try {
+        const token = localStorage.getItem("admin_token") || localStorage.getItem("raffle_admin_token") || "";
+        const res = await fetch("/api/admin-action", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            action: "list-orders",
+            raffleId: activeRaffleId
+          })
+        });
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          if (Array.isArray(data.orders)) {
+            setOrders(data.orders);
+          }
+        }
+      } catch (apiErr) {
+        console.error("Failed to fetch orders via Admin API in DrawsView:", apiErr);
+      } finally {
+        if (isMounted) setLoadingOrders(false);
+      }
+    };
+
+    loadOrders();
+
+    return () => {
+      isMounted = false;
+    };
   }, [activeRaffleId]);
 
   // Fetch draws history from Supabase / Backend

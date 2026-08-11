@@ -196,29 +196,8 @@ export const realtimeService = {
       fetchViaAdminApi();
     }, 4000);
 
-    // Secondary Firestore listener if direct client access permissions exist
-    const colRef = collection(db, "orders");
-    const q = (targetRaffleId && targetRaffleId !== "all")
-      ? query(colRef, where("raffleId", "==", targetRaffleId), limit(limitCount))
-      : query(colRef, orderBy("createdAt", "desc"), limit(limitCount));
-
-    const unsubFirestore = onSnapshot(
-      q,
-      (querySnap) => {
-        const ordersList: any[] = [];
-        querySnap.forEach((doc) => {
-          ordersList.push({ id: doc.id, ...doc.data() });
-        });
-        processOrders(ordersList);
-      },
-      (error) => {
-        // Handled silently by polling loop
-      }
-    );
-
     return () => {
       clearInterval(pollInterval);
-      unsubFirestore();
     };
   },
 

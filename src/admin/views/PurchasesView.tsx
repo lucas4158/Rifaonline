@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { collection, query, where, onSnapshot, orderBy, limit as limitQuery } from "firebase/firestore";
-import { db } from "../../services/firebase";
 import { getSupabaseClient } from "../../services/supabase/supabaseClient";
 import { adminService } from "../../services/adminService";
 import {
@@ -81,7 +79,7 @@ export function PurchasesView({
     }
   };
 
-  // Realtime subscription + background polling for live orders sync
+  // Background polling for live orders sync via Admin API
   useEffect(() => {
     setLoading(true);
 
@@ -93,34 +91,8 @@ export function PurchasesView({
       fetchOrdersFromApi();
     }, 4000);
 
-    // Attempt direct Firestore realtime subscription as secondary listener if client rules allow
-    const colRef = collection(db, "orders");
-    const q = query(colRef, orderBy("createdAt", "desc"), limitQuery(limit || 500));
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const loadedOrders: any[] = [];
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          loadedOrders.push({
-            id: docSnap.id,
-            ...data
-          });
-        });
-
-        loadedOrders.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
-        setOrders(loadedOrders);
-        setLoading(false);
-      },
-      (err) => {
-        // Silently handled by polling loop
-      }
-    );
-
     return () => {
       clearInterval(intervalId);
-      unsubscribe();
     };
   }, [selectedRaffleId, limit]);
 
