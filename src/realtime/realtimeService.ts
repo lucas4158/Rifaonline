@@ -81,12 +81,13 @@ export const realtimeService = {
       numsCount: number;
       raffleTitle?: string;
       raffleId?: string;
+      type?: "pending" | "paid";
     }) => void,
     options?: { limitCount?: number; raffleId?: string }
   ) {
     if (!isAdminAuthenticated) return () => {};
 
-    const limitCount = options?.limitCount || 50;
+    const limitCount = options?.limitCount || 500;
     const targetRaffleId = options?.raffleId;
     const colRef = collection(db, "orders");
     const q = (targetRaffleId && targetRaffleId !== "all")
@@ -109,14 +110,29 @@ export const realtimeService = {
                 statusRaw === "confirmed" ||
                 statusRaw === "approved";
 
-              if (isPaid) {
+              const numsList = Array.isArray(data.nums)
+                ? data.nums
+                : (Array.isArray(data.purchasedNums) ? data.purchasedNums : []);
+
+              if (change.type === "added") {
                 onPaidOrderNotification({
                   orderId: change.doc.id,
                   name: data.name || data.customerName || "Cliente",
                   total: Number(data.total || data.totalValue || data.val || data.amount || 0),
-                  numsCount: Array.isArray(data.nums) ? data.nums.length : 0,
+                  numsCount: numsList.length,
                   raffleTitle: data.raffleTitle || "",
                   raffleId: data.raffleId || "current",
+                  type: isPaid ? "paid" : "pending",
+                });
+              } else if (change.type === "modified" && isPaid) {
+                onPaidOrderNotification({
+                  orderId: change.doc.id,
+                  name: data.name || data.customerName || "Cliente",
+                  total: Number(data.total || data.totalValue || data.val || data.amount || 0),
+                  numsCount: numsList.length,
+                  raffleTitle: data.raffleTitle || "",
+                  raffleId: data.raffleId || "current",
+                  type: "paid",
                 });
               }
             }

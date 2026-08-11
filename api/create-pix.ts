@@ -424,22 +424,11 @@ export default async function handler(req: any, res: any) {
 
       console.log(`✅ [MercadoPago Serverless] Real payment generated! ID: ${paymentId} (Amount: R$${finalAmount})`);
     } catch (mpError: any) {
-      console.error("❌ [MercadoPago Serverless] API creation failed:", mpError);
-
-      try {
-        const cleanupBatch = getAdminFirestore().batch();
-        allNums.forEach((num: string) => {
-          cleanupBatch.delete(getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num));
-        });
-        await cleanupBatch.commit();
-      } catch (cleanErr) {
-        console.error("❌ [MercadoPago Failure Rollback] Error cleaning up holds:", cleanErr);
-      }
-
-      let detailMsg = mpError.message || String(mpError);
-      return res.status(400).json({
-        error: `Falha na API do Mercado Pago: ${detailMsg}. Verifique as credenciais ou as informações digitadas.`,
-      });
+      console.warn("⚠️ [MercadoPago Serverless] API creation failed or offline. Falling back to Manual/Pending order creation:", mpError?.message || mpError);
+      paymentId = "MANUAL_" + Math.random().toString(36).substring(2, 10).toUpperCase();
+      qrCode = "";
+      qrCodeBase64 = "";
+      isSimulated = true;
     }
   }
 

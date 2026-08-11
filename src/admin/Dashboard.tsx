@@ -5,7 +5,7 @@ import {
   DollarSign, Check, Calendar, Phone, ArrowLeft, LogOut, MessageCircle, CheckCircle2,
   Image as ImageIcon, Loader2, Play, LayoutDashboard, ClipboardList, PlusCircle, Award, Settings,
   Copy, Edit3, Archive, Power, Sparkles, Eye, CheckCircle, Pause, ShoppingBag, Ticket, Save, FolderOpen,
-  Calculator, Users, Grid, Star, BarChart3, TrendingUp, PieChart as PieChartIcon
+  Calculator, Users, Grid, Star, BarChart3, TrendingUp, PieChart as PieChartIcon, Clock
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -2555,74 +2555,114 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     if (paidToasts.length === 0) return null;
     return (
       <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm w-full px-2 pointer-events-none">
-        {paidToasts.map((toast) => (
-          <div
-            key={toast.id}
-            className="pointer-events-auto bg-zinc-900/95 border-2 border-emerald-500/80 text-white rounded-2xl p-4 shadow-2xl backdrop-blur-xl animate-in slide-in-from-top-4 duration-300 flex flex-col gap-2.5 relative overflow-hidden"
-          >
-            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-400" />
+        {paidToasts.map((toast) => {
+          const isPending = toast.type === "pending";
+          return (
+            <div
+              key={toast.id}
+              className={`pointer-events-auto bg-zinc-900/95 border-2 ${
+                isPending ? "border-amber-500/80" : "border-emerald-500/80"
+              } text-white rounded-2xl p-4 shadow-2xl backdrop-blur-xl animate-in slide-in-from-top-4 duration-300 flex flex-col gap-2.5 relative overflow-hidden`}
+            >
+              <div
+                className={`absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r ${
+                  isPending
+                    ? "from-amber-500 via-orange-400 to-yellow-400"
+                    : "from-emerald-500 via-teal-400 to-emerald-400"
+                }`}
+              />
 
-            <div className="flex items-start justify-between gap-2 pt-0.5">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/50 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400 animate-pulse" />
+              <div className="flex items-start justify-between gap-2 pt-0.5">
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className={`w-8 h-8 rounded-full ${
+                      isPending
+                        ? "bg-amber-500/20 border border-amber-500/50 text-amber-400"
+                        : "bg-emerald-500/20 border border-emerald-500/50 text-emerald-400"
+                    } flex items-center justify-center shrink-0`}
+                  >
+                    {isPending ? (
+                      <Clock className="w-5 h-5 animate-pulse" />
+                    ) : (
+                      <CheckCircle2 className="w-5 h-5 animate-pulse" />
+                    )}
+                  </div>
+                  <div>
+                    <span
+                      className={`text-[10px] font-black tracking-wider uppercase block ${
+                        isPending ? "text-amber-400" : "text-emerald-400"
+                      }`}
+                    >
+                      {isPending ? "🔔 NOVO PEDIDO PENDENTE" : "🟢 PAGAMENTO CONFIRMADO!"}
+                    </span>
+                    <span className="text-xs font-black text-zinc-100">{toast.name}</span>
+                  </div>
                 </div>
+
+                <button
+                  onClick={() => setPaidToasts((prev) => prev.filter((t) => t.id !== toast.id))}
+                  className="text-zinc-500 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+                  title="Fechar"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="text-[11px] text-zinc-200 bg-zinc-950/80 border border-zinc-800 rounded-xl p-2.5 flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] font-black tracking-wider uppercase text-emerald-400 block">
-                    🟢 Pagamento Confirmado!
+                  <span
+                    className={`font-mono font-black ${
+                      isPending ? "text-amber-400" : "text-emerald-400"
+                    }`}
+                  >
+                    #{toast.orderId}
                   </span>
-                  <span className="text-xs font-black text-zinc-100">
-                    {toast.name}
-                  </span>
+                  {toast.numsCount > 0 && (
+                    <span className="text-zinc-400 text-[10px] ml-1.5">
+                      ({toast.numsCount} cota{toast.numsCount > 1 ? "s" : ""})
+                    </span>
+                  )}
                 </div>
+                <span
+                  className={`text-xs font-black ${
+                    isPending ? "text-amber-400" : "text-emerald-400"
+                  }`}
+                >
+                  R$ {toast.total ? Number(toast.total).toFixed(2).replace(".", ",") : "0,00"}
+                </span>
               </div>
 
-              <button
-                onClick={() => setPaidToasts((prev) => prev.filter((t) => t.id !== toast.id))}
-                className="text-zinc-500 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
-                title="Fechar"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+              {toast.raffleTitle && (
+                <p className="text-[10px] text-zinc-400 font-semibold truncate">
+                  Rifa: <span className="text-zinc-200">{toast.raffleTitle}</span>
+                </p>
+              )}
 
-            <div className="text-[11px] text-zinc-200 bg-zinc-950/80 border border-zinc-800 rounded-xl p-2.5 flex items-center justify-between">
-              <div>
-                <span className="font-mono font-black text-emerald-400">#{toast.orderId}</span>
-                {toast.numsCount > 0 && (
-                  <span className="text-zinc-400 text-[10px] ml-1.5">({toast.numsCount} cota{toast.numsCount > 1 ? "s" : ""})</span>
-                )}
+              <div className="flex items-center justify-between pt-1 border-t border-zinc-800/60">
+                <span className="text-[10px] font-bold text-zinc-500">{toast.time}</span>
+                <button
+                  onClick={() => {
+                    setPaidToasts((prev) => prev.filter((t) => t.id !== toast.id));
+                    setUnreadPaidCount(0);
+                    if (toast.raffleId && toast.raffleId !== "current") {
+                      setSelectedRaffleId(toast.raffleId);
+                    }
+                    setCurrentAdminTab("orders");
+                    setActiveTab("orders");
+                    setViewMode("detail");
+                  }}
+                  className={`text-xs font-black hover:underline flex items-center gap-1 cursor-pointer ${
+                    isPending
+                      ? "text-amber-400 hover:text-amber-300"
+                      : "text-emerald-400 hover:text-emerald-300"
+                  }`}
+                >
+                  Ver Pedido →
+                </button>
               </div>
-              <span className="text-xs font-black text-emerald-400">
-                R$ {toast.total ? toast.total.toFixed(2) : "0.00"}
-              </span>
             </div>
-
-            {toast.raffleTitle && (
-              <p className="text-[10px] text-zinc-400 font-semibold truncate">
-                Rifa: <span className="text-zinc-200">{toast.raffleTitle}</span>
-              </p>
-            )}
-
-            <div className="flex items-center justify-between pt-1 border-t border-zinc-800/60">
-              <span className="text-[10px] font-bold text-zinc-500">{toast.time}</span>
-              <button
-                onClick={() => {
-                  setPaidToasts((prev) => prev.filter((t) => t.id !== toast.id));
-                  setUnreadPaidCount(0);
-                  if (toast.raffleId && toast.raffleId !== "current") {
-                    setSelectedRaffleId(toast.raffleId);
-                  }
-                  setViewMode("detail");
-                  setActiveTab("orders");
-                }}
-                className="text-xs font-black text-emerald-400 hover:text-emerald-300 hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                Ver Pedido →
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   };

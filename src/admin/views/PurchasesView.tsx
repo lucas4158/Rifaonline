@@ -54,7 +54,7 @@ export function PurchasesView({
   useEffect(() => {
     setLoading(true);
     const colRef = collection(db, "orders");
-    const q = query(colRef, orderBy("createdAt", "desc"), limitQuery(limit || 200));
+    const q = query(colRef, orderBy("createdAt", "desc"), limitQuery(limit || 500));
 
     const unsubscribe = onSnapshot(
       q,
