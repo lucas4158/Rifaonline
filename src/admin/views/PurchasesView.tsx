@@ -136,10 +136,9 @@ export function PurchasesView({
     return "pendente";
   };
 
-  // Filtered orders computation
-  const filteredOrders = useMemo(() => {
+  // Orders matching selected raffle filter
+  const raffleMatchedOrders = useMemo(() => {
     return orders.filter((ord) => {
-      // Flexible raffle filter
       if (selectedRaffleId && selectedRaffleId !== "all") {
         const orderRaffleId = ord.raffleId || "current";
         const matchesRaffle =
@@ -149,7 +148,13 @@ export function PurchasesView({
           selectedRaffleId === "current";
         if (!matchesRaffle) return false;
       }
+      return true;
+    });
+  }, [orders, selectedRaffleId]);
 
+  // Filtered orders computation
+  const filteredOrders = useMemo(() => {
+    return raffleMatchedOrders.filter((ord) => {
       const normStatus = getNormalizedStatus(ord.status);
 
       // Status filter
@@ -181,7 +186,7 @@ export function PurchasesView({
 
       return true;
     });
-  }, [orders, selectedRaffleId, statusFilter, searchQuery]);
+  }, [raffleMatchedOrders, statusFilter, searchQuery]);
 
   // KPI computations
   const stats = useMemo(() => {
@@ -190,9 +195,9 @@ export function PurchasesView({
     let paidCount = 0;
     let pendingCount = 0;
 
-    orders.forEach((o) => {
+    raffleMatchedOrders.forEach((o) => {
       const st = getNormalizedStatus(o.status);
-      const val = Number(o.val || o.amount || 0);
+      const val = Number(o.val || o.amount || o.total || o.totalValue || o.valAmount || 0);
       if (st === "pago") {
         paidCount++;
         totalPaidVal += val;
@@ -203,13 +208,13 @@ export function PurchasesView({
     });
 
     return {
-      totalOrders: orders.length,
+      totalOrders: raffleMatchedOrders.length,
       paidCount,
       pendingCount,
       totalPaidVal,
       totalPendingVal
     };
-  }, [orders]);
+  }, [raffleMatchedOrders]);
 
   // Execute manual approval
   const handleConfirmApproval = async () => {
@@ -429,7 +434,7 @@ export function PurchasesView({
 
                       {/* VALOR */}
                       <td className="p-3.5 font-mono font-bold text-emerald-400 text-xs whitespace-nowrap">
-                        R$ {Number(ord.val || ord.amount || 0).toFixed(2).replace(".", ",")}
+                        R$ {Number(ord.val || ord.amount || ord.total || ord.totalValue || ord.valAmount || 0).toFixed(2).replace(".", ",")}
                       </td>
 
                       {/* STATUS */}

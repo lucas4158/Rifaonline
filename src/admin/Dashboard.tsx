@@ -500,7 +500,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         setPaidToasts((prev) => [toastItem, ...prev].slice(0, 5));
         setUnreadPaidCount((prev) => prev + 1);
       },
-      { limitCount: 200 }
+      { limitCount: 200, raffleId: selectedRaffleId || "all" }
     );
 
     return () => {
@@ -530,22 +530,25 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         orderRaffleId === selectedRaffleId ||
         orderRaffleId === "current" ||
         !o.raffleId ||
-        selectedRaffleId === "current"
+        selectedRaffleId === "current" ||
+        raffles.length <= 1
       );
     });
-  }, [orders, selectedRaffleId]);
+  }, [orders, selectedRaffleId, raffles.length]);
 
   // Computations for raffle stats in detail view
   const stats = useMemo(() => {
-    const paidOrders = raffleOrders.filter(
-      (o) => o.status === "Pago" || o.status === "paid" || o.status === "approved"
-    );
-    const paidAmount = paidOrders.reduce((acc, curr) => acc + (Number(curr.val) || 0), 0);
+    const paidOrders = raffleOrders.filter((o) => {
+      const s = String(o.status || "").toLowerCase().trim();
+      return s === "pago" || s === "paid" || s === "approved" || s === "confirmed" || s === "paga" || s === "pagas";
+    });
+    const paidAmount = paidOrders.reduce((acc, curr) => acc + (Number(curr.val || curr.amount || curr.total || curr.totalValue || curr.valAmount || 0) || 0), 0);
 
-    const pendingOrders = raffleOrders.filter(
-      (o) => o.status === "Aguardando" || o.status === "pending_payment" || o.status === "reserved"
-    );
-    const pendingAmount = pendingOrders.reduce((acc, curr) => acc + (Number(curr.val) || 0), 0);
+    const pendingOrders = raffleOrders.filter((o) => {
+      const s = String(o.status || "").toLowerCase().trim();
+      return s === "aguardando" || s === "pending_payment" || s === "reserved" || s === "pendente";
+    });
+    const pendingAmount = pendingOrders.reduce((acc, curr) => acc + (Number(curr.val || curr.amount || curr.total || curr.totalValue || curr.valAmount || 0) || 0), 0);
 
     let countPaid = 0;
     let countReserved = 0;
@@ -553,8 +556,9 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     Object.keys(dbNumbers).forEach((key) => {
       const n = dbNumbers[key];
       if (!n) return;
-      const isPaid = n.status === "paid" || n.status === "Pago";
-      const isPending = n.status === "reserved" || n.status === "pending_payment" || n.status === "Aguardando";
+      const st = String(n.status || "").toLowerCase().trim();
+      const isPaid = st === "paid" || st === "pago" || st === "approved" || st === "confirmed";
+      const isPending = st === "reserved" || st === "pending_payment" || st === "aguardando" || st === "pendente";
 
       if (isPaid) {
         countPaid++;
@@ -564,7 +568,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         if (n.orderId) {
           const parentOrder = raffleOrders.find((o) => o.id === n.orderId);
           if (parentOrder) {
-            const s = (parentOrder.status || "").toLowerCase();
+            const s = (parentOrder.status || "").toLowerCase().trim();
             if (s === "cancelado" || s === "canceled" || s === "expired" || s === "reembolsado" || s === "refunded") {
               isCancelled = true;
             }
@@ -575,6 +579,20 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         }
       }
     });
+
+    if (countPaid === 0 && countReserved === 0 && raffleOrders.length > 0) {
+      raffleOrders.forEach((o) => {
+        const st = String(o.status || "").toLowerCase().trim();
+        const isPaid = st === "pago" || st === "paid" || st === "approved" || st === "confirmed" || st === "paga" || st === "pagas";
+        const isPending = st === "aguardando" || st === "pending_payment" || st === "reserved" || st === "pendente";
+        const numsList = Array.isArray(o.nums) ? o.nums : (Array.isArray(o.purchasedNums) ? o.purchasedNums : []);
+        if (isPaid) {
+          countPaid += numsList.length;
+        } else if (isPending) {
+          countReserved += numsList.length;
+        }
+      });
+    }
 
     const totalNum = raffleConfig?.totalNumbers || 100;
     return {
