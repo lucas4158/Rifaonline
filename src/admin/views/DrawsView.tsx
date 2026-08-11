@@ -174,19 +174,8 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
 
     const paidCount = paidNumbersSet.size;
 
-    let capacity = totalNumbers;
-    const promoEnabled = !!currentRaffle?.promotionEnabled;
-    const buy = Number(currentRaffle?.promotionBuy || 0);
-    const promoBonus = Number(currentRaffle?.promotionBonus || 0);
-    if (promoEnabled && buy > 0 && promoBonus > 0) {
-      const groupSize = buy + promoBonus;
-      const groups = Math.floor(totalNumbers / groupSize);
-      const rem = totalNumbers % groupSize;
-      capacity = groups * buy + Math.min(buy, rem);
-    }
-
-    const isFullyPaid = paidCount >= capacity || paidNumbersSet.size >= totalNumbers || currentRaffle?.status === "encerrada" || Boolean(currentRaffle?.winnerNumber);
-    const percentPaid = isFullyPaid ? 100 : (capacity > 0 ? Math.min(100, Math.round((paidCount / capacity) * 100)) : 0);
+    const isFullyPaid = paidCount >= totalNumbers || currentRaffle?.status === "encerrada" || Boolean(currentRaffle?.winnerNumber);
+    const percentPaid = isFullyPaid ? 100 : (totalNumbers > 0 ? Math.min(100, Math.round((paidCount / totalNumbers) * 100)) : 0);
 
     return {
       totalNumbers,

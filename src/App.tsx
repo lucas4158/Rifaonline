@@ -1086,26 +1086,15 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
           return null;
         });
 
-        // Summary stats for each active raffle card (accounting for promotional capacity and completed raffles)
+        // Summary stats for each active raffle card
         const statsMap: Record<string, { soldCount: number; percentSold: number; remainingCount: number }> = {};
         list.forEach((rf) => {
           const paidCount = Number(rf.soldCount || 0);
           const total = Number(rf.totalNumbers || 100);
 
-          let capacity = total;
-          const promoEnabled = !!rf.promotionEnabled;
-          const buy = Number(rf.promotionBuy || 0);
-          const promoBonus = Number(rf.promotionBonus || 0);
-          if (promoEnabled && buy > 0 && promoBonus > 0) {
-            const groupSize = buy + promoBonus;
-            const groups = Math.floor(total / groupSize);
-            const rem = total % groupSize;
-            capacity = groups * buy + Math.min(buy, rem);
-          }
-
           const isEncerradaOrWinner = rf.status === "encerrada" || Boolean(rf.winnerNumber);
-          const percent = isEncerradaOrWinner ? 100 : Math.min(100, capacity > 0 ? (paidCount / capacity) * 100 : 0);
-          const remaining = Math.max(0, capacity - paidCount);
+          const percent = isEncerradaOrWinner ? 100 : Math.min(100, total > 0 ? (paidCount / total) * 100 : 0);
+          const remaining = Math.max(0, total - paidCount);
           statsMap[rf.id] = { soldCount: paidCount, percentSold: percent, remainingCount: remaining };
         });
         setActiveRafflesStats(statsMap);
@@ -2372,19 +2361,8 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       return 100;
     }
 
-    let capacity = total;
-    const promoEnabled = !!raffleConfig.promotionEnabled;
-    const buy = Number(raffleConfig.promotionBuy || 0);
-    const promoBonus = Number(raffleConfig.promotionBonus || 0);
-    if (promoEnabled && buy > 0 && promoBonus > 0) {
-      const groupSize = buy + promoBonus;
-      const groups = Math.floor(total / groupSize);
-      const rem = total % groupSize;
-      capacity = groups * buy + Math.min(buy, rem);
-    }
-
-    return capacity > 0 ? Math.min(100, (occupied / capacity) * 100) : 0;
-  }, [numbers, raffleConfig.totalNumbers, raffleConfig.soldCount, raffleConfig.promotionEnabled, raffleConfig.promotionBuy, raffleConfig.promotionBonus, raffleConfig.status, raffleConfig.winnerNumber]);
+    return total > 0 ? Math.min(100, (occupied / total) * 100) : 0;
+  }, [numbers, raffleConfig.totalNumbers, raffleConfig.soldCount, raffleConfig.status, raffleConfig.winnerNumber]);
 
   const characterProgressBar = useCallback((percentage: number) => {
     const totalBlocks = 10;
@@ -2395,28 +2373,27 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
   }, []);
 
   const isRaffleFullyClosed = useMemo(() => {
-    const promotionEnabled = !!raffleConfig.promotionEnabled;
-    const buy = Number(raffleConfig.promotionBuy || 5);
-    const promoBonus = Number(raffleConfig.promotionBonus || 1);
+    const isExplicitlyClosed =
+      raffleConfig.status === "encerrada" ||
+      raffleConfig.status === "arquivada" ||
+      raffleConfig.status === "sorteada" ||
+      !!raffleConfig.winnerNumber ||
+      raffleConfig.isRaffleActive === false;
+
+    if (isExplicitlyClosed) return true;
+
     const totalRaffleNumbers = Number(raffleConfig.totalNumbers || 150);
+    const occupied = stats.countPaid + stats.countReserved;
 
-    let capacity = totalRaffleNumbers;
-    if (promotionEnabled && buy > 0 && promoBonus > 0) {
-      const groupSize = buy + promoBonus;
-      const groups = Math.floor(totalRaffleNumbers / groupSize);
-      const rem = totalRaffleNumbers % groupSize;
-      capacity = groups * buy + Math.min(buy, rem);
-    }
-
-    const paidAll = stats.countPaid >= capacity;
-    const selectedAll = (stats.countPaid + stats.countReserved) >= capacity;
-
-    if (promotionEnabled && (paidAll || selectedAll)) {
-      console.log(`[PROMOTION_LIMIT_REACHED] Client side capacity reached at capacity Limit: ${capacity}`);
-    }
-
-    return paidAll || selectedAll;
-  }, [stats.countPaid, stats.countReserved, raffleConfig.totalNumbers, raffleConfig.promotionEnabled, raffleConfig.promotionBuy, raffleConfig.promotionBonus]);
+    return occupied >= totalRaffleNumbers;
+  }, [
+    raffleConfig.status,
+    raffleConfig.winnerNumber,
+    raffleConfig.isRaffleActive,
+    raffleConfig.totalNumbers,
+    stats.countPaid,
+    stats.countReserved,
+  ]);
 
   const handleAction = async (
     orderId: string,
@@ -2742,10 +2719,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
           pendingLocksRef.current.delete(id);
         }
       } else {
-        // Check dynamic promotional capacity before allowing selection addition
-        const promotionEnabled = !!raffleConfig.promotionEnabled;
-        const buy = Number(raffleConfig.promotionBuy || 5);
-        const promoBonus = Number(raffleConfig.promotionBonus || 1);
+        // Check dynamic available capacity before allowing selection addition
         const totalRaffleNumbers = Number(raffleConfig.totalNumbers || 150);
 
         const busyByOthersCount = numbers.filter((n) => {
@@ -2757,14 +2731,12 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
           return false;
         }).length;
 
-        const capacityRemaining = totalRaffleNumbers - busyByOthersCount;
+        const capacityRemaining = Math.max(0, totalRaffleNumbers - busyByOthersCount);
         const candidateLength = currentSelected.length + 1;
-        const testBonus = promotionEnabled ? Math.floor(candidateLength / buy) * promoBonus : 0;
-        const testTotalNeeded = candidateLength + testBonus;
 
-        if (testTotalNeeded > capacityRemaining) {
-          console.warn(`[PROMOTION_LIMIT_REACHED] Selection blocked by client validation. Needed total: ${testTotalNeeded} (candidate: ${candidateLength}, test bonus: ${testBonus}), capacity remaining: ${capacityRemaining}`);
-          alert(`⚠️ Restam apenas ${capacityRemaining} cotas disponíveis considerando a promoção ativa.`);
+        if (candidateLength > capacityRemaining) {
+          console.warn(`[SELECTION_LIMIT_REACHED] Selection blocked. Needed candidate count: ${candidateLength}, capacity remaining: ${capacityRemaining}`);
+          alert(`⚠️ Restam apenas ${capacityRemaining} cotas disponíveis nesta rifa.`);
           pendingLocksRef.current.delete(id);
           return;
         }
@@ -2820,9 +2792,6 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
     async (count: number) => {
       if (!raffleConfig.isActive || raffleConfig.isRaffleActive === false) return;
 
-      const promotionEnabled = !!raffleConfig.promotionEnabled;
-      const buy = Number(raffleConfig.promotionBuy || 5);
-      const promoBonus = Number(raffleConfig.promotionBonus || 1);
       const totalRaffleNumbers = Number(raffleConfig.totalNumbers || 150);
 
       const busyByOthersCount = numbers.filter((n) => {
@@ -2834,30 +2803,18 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         return false;
       }).length;
 
-      const capacityRemaining = totalRaffleNumbers - busyByOthersCount;
+      const capacityRemaining = Math.max(0, totalRaffleNumbers - busyByOthersCount);
+      const currentSelectedCount = selectedNumbers.length;
+      const maxAllowedAddition = Math.max(0, capacityRemaining - currentSelectedCount);
+
+      if (maxAllowedAddition <= 0) {
+        alert(`⚠️ Não há mais cotas disponíveis nesta rifa.`);
+        return;
+      }
+
       let allowedCount = count;
-      const totalCandidateProposed = selectedNumbers.length + count;
-      const proposedBonus = promotionEnabled ? Math.floor(totalCandidateProposed / buy) * promoBonus : 0;
-
-      if (totalCandidateProposed + proposedBonus > capacityRemaining) {
-        let maxAllowedTotal = 0;
-        for (let s = capacityRemaining; s >= 1; s--) {
-          const testBonus = promotionEnabled ? Math.floor(s / buy) * promoBonus : 0;
-          if (s + testBonus <= capacityRemaining) {
-            maxAllowedTotal = s;
-            break;
-          }
-        }
-
-        const currentSelectedCount = selectedNumbers.length;
-        const maxAllowedAddition = Math.max(0, maxAllowedTotal - currentSelectedCount);
-
-        if (maxAllowedAddition <= 0) {
-          alert(`⚠️ Restam apenas ${capacityRemaining} cotas disponíveis considerando a promoção ativa. Você já selecionou o máximo permitido (${currentSelectedCount} cotas).`);
-          return;
-        }
-
-        alert(`⚠️ Restam apenas ${capacityRemaining} cotas disponíveis considerando a promoção ativa. Limitamos a seleção ao acréscimo de mais ${maxAllowedAddition} cotas.`);
+      if (count > maxAllowedAddition) {
+        alert(`⚠️ Restam apenas ${maxAllowedAddition} cotas disponíveis para seleção.`);
         allowedCount = maxAllowedAddition;
       }
 

@@ -3661,20 +3661,9 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 const totalN = Number(raffle.totalNumbers || 100);
                 const soldN = Number(raffle.totalSoldNumbers || 0);
 
-                let capacity = totalN;
-                const promoEnabled = !!raffle.promotionEnabled;
-                const buy = Number(raffle.promotionBuy || 0);
-                const promoBonus = Number(raffle.promotionBonus || 0);
-                if (promoEnabled && buy > 0 && promoBonus > 0) {
-                  const groupSize = buy + promoBonus;
-                  const groups = Math.floor(totalN / groupSize);
-                  const rem = totalN % groupSize;
-                  capacity = groups * buy + Math.min(buy, rem);
-                }
-
                 const isEncerradaOrWinner = raffle.status === "encerrada" || Boolean(raffle.winnerNumber);
-                const is100Percent = isEncerradaOrWinner || soldN >= capacity || soldN >= totalN;
-                const percentSold = is100Percent ? 100 : Math.min(100, Math.round((soldN / (capacity || 1)) * 100));
+                const is100Percent = isEncerradaOrWinner || soldN >= totalN;
+                const percentSold = is100Percent ? 100 : Math.min(100, Math.round((soldN / (totalN || 1)) * 100));
 
                 return (
                   <div
