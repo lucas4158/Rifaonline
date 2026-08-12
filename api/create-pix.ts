@@ -310,8 +310,8 @@ export default async function handler(req: any, res: any) {
   // Check Mercado Pago configuration
   const hasMP = !!process.env.MP_ACCESS_TOKEN && mpPayment;
 
-  if (!hasMP && process.env.VERCEL === "1") {
-    console.warn("⚠️ [Mercado Pago Unconfigured] Simulated payment mode is blocked on Vercel environment.");
+  if (!hasMP) {
+    console.error("❌ [Mercado Pago Error] MP_ACCESS_TOKEN is missing or MercadoPago client is uninitialized.");
     try {
       const cleanupBatch = getAdminFirestore().batch();
       allNums.forEach((num: string) => {
@@ -319,17 +319,16 @@ export default async function handler(req: any, res: any) {
       });
       await cleanupBatch.commit();
     } catch (cleanErr) {
-      console.error("❌ [Simulated Mode Blocked Rollback] Error cleaning up holds:", cleanErr);
+      console.error("❌ [Rollback Error] Error cleaning up reserved numbers:", cleanErr);
     }
-    return res.status(503).json({
-      error: "O sistema de pagamento por PIX está temporariamente indisponível. Por favor, tente novamente em alguns instantes.",
+    return res.status(502).json({
+      error: "O sistema de pagamento por PIX não está configurado corretamente (MP_ACCESS_TOKEN ausente).",
     });
   }
 
   let paymentId = "";
   let qrCode = "";
   let qrCodeBase64 = "";
-  let isSimulated = true;
 
   const generateValidCPF = (): string => {
     const rnt = (max: number) => Math.floor(Math.random() * max);
@@ -343,100 +342,103 @@ export default async function handler(req: any, res: any) {
     return [...n, d1, d2].join("");
   };
 
-  if (hasMP) {
-    try {
-      const tMPStart = Date.now();
-      const sanitizedPhone = phone.replace(/\D/g, "");
-      let areaCode = "11";
-      let phoneNumber = "999999999";
-      if (sanitizedPhone.length >= 10) {
-        areaCode = sanitizedPhone.substring(0, 2);
-        phoneNumber = sanitizedPhone.substring(2);
-      } else if (sanitizedPhone.length > 0) {
-        phoneNumber = sanitizedPhone;
-      }
-
-      const mpPayerEmail = `cliente_${orderId.toLowerCase()}@exemplo.com`;
-      const mpPayerFirstName = name.split(" ")[0] || "Cliente";
-      const mpPayerLastName = name.split(" ").slice(1).join(" ") || "Rifa";
-
-      const requestHost = req.headers.host || "";
-      const dynamicProtocol = req.headers["x-forwarded-proto"] || "https";
-      const webhookUrl = `${dynamicProtocol}://${requestHost}/api/webhook`;
-
-      const isValidWebhookUrl =
-        webhookUrl.startsWith("https://") &&
-        !webhookUrl.includes("localhost") &&
-        !webhookUrl.includes("127.0.0.1") &&
-        !/:\d+/.test(webhookUrl) &&
-        !webhookUrl.includes(".local") &&
-        !webhookUrl.includes("ais-dev-");
-
-      const expirationDateStr = new Date(expiresAt).toISOString();
-      const idempotencyKey =
-        req.body.idempotencyKey ||
-        req.body.orderId ||
-        `pix_${targetRaffleId}_${orderId}_${dNormPhone}_${nums.slice().sort().join("-")}`;
-
-      const mpResponse = await mpPayment.create({
-        body: {
-          transaction_amount: finalAmount,
-          description: `Rifa: ${raffleTitle || "Venda"} - Cotas: ${nums.join(", ")}${
-            bonusNums.length > 0 ? ` + Bônus: ${bonusNums.join(", ")}` : ""
-          }`,
-          payment_method_id: "pix",
-          date_of_expiration: expirationDateStr,
-          ...(isValidWebhookUrl ? { notification_url: webhookUrl } : {}),
-          external_reference: targetRaffleId,
-          metadata: {
-            raffle_id: targetRaffleId,
-            raffleId: targetRaffleId,
-            order_id: orderId,
-            orderId: orderId,
-            raffle_name: raffleTitle,
-            raffleName: raffleTitle,
-          },
-          payer: {
-            email: mpPayerEmail,
-            first_name: mpPayerFirstName,
-            last_name: mpPayerLastName,
-            identification: {
-              type: "CPF",
-              number: generateValidCPF(),
-            },
-            phone: {
-              area_code: areaCode,
-              number: phoneNumber,
-            },
-          },
-        },
-        requestOptions: {
-          idempotencyKey,
-        },
-      });
-
-      tMercadoPago = Date.now() - tMPStart;
-
-      paymentId = String(mpResponse.id);
-      qrCode = mpResponse.point_of_interaction?.transaction_data?.qr_code || "";
-      qrCodeBase64 = mpResponse.point_of_interaction?.transaction_data?.qr_code_base64 || "";
-      isSimulated = false;
-
-      console.log(`✅ [MercadoPago Serverless] Real payment generated! ID: ${paymentId} (Amount: R$${finalAmount})`);
-    } catch (mpError: any) {
-      console.warn("⚠️ [MercadoPago Serverless] API creation failed or offline. Falling back to Manual/Pending order creation:", mpError?.message || mpError);
-      paymentId = "MANUAL_" + Math.random().toString(36).substring(2, 10).toUpperCase();
-      qrCode = "";
-      qrCodeBase64 = "";
-      isSimulated = true;
+  try {
+    const tMPStart = Date.now();
+    const sanitizedPhone = phone.replace(/\D/g, "");
+    let areaCode = "11";
+    let phoneNumber = "999999999";
+    if (sanitizedPhone.length >= 10) {
+      areaCode = sanitizedPhone.substring(0, 2);
+      phoneNumber = sanitizedPhone.substring(2);
+    } else if (sanitizedPhone.length > 0) {
+      phoneNumber = sanitizedPhone;
     }
-  }
 
-  if (isSimulated) {
-    paymentId = "SIM_" + Math.random().toString(36).substring(2, 11).toUpperCase();
-    qrCode = "00020101021226830014BR.GOV.BCB.PIX2561api.mercadopago.com/pix/v1/qr/active/simulado-" + paymentId;
-    qrCodeBase64 = "";
-    console.log(`🧪 [MercadoPago Serverless] Simulated payment generated! ID: ${paymentId}`);
+    const mpPayerEmail = `cliente_${orderId.toLowerCase()}@exemplo.com`;
+    const mpPayerFirstName = name.split(" ")[0] || "Cliente";
+    const mpPayerLastName = name.split(" ").slice(1).join(" ") || "Rifa";
+
+    const requestHost = req.headers.host || "";
+    const dynamicProtocol = req.headers["x-forwarded-proto"] || "https";
+    const webhookUrl = `${dynamicProtocol}://${requestHost}/api/webhook`;
+
+    const isValidWebhookUrl =
+      webhookUrl.startsWith("https://") &&
+      !webhookUrl.includes("localhost") &&
+      !webhookUrl.includes("127.0.0.1") &&
+      !/:\d+/.test(webhookUrl) &&
+      !webhookUrl.includes(".local") &&
+      !webhookUrl.includes("ais-dev-");
+
+    const expirationDateStr = new Date(expiresAt).toISOString();
+    const idempotencyKey =
+      req.body.idempotencyKey ||
+      req.body.orderId ||
+      `pix_${targetRaffleId}_${orderId}_${dNormPhone}_${nums.slice().sort().join("-")}`;
+
+    const mpResponse = await mpPayment.create({
+      body: {
+        transaction_amount: finalAmount,
+        description: `Rifa: ${raffleTitle || "Venda"} - Cotas: ${nums.join(", ")}${
+          bonusNums.length > 0 ? ` + Bônus: ${bonusNums.join(", ")}` : ""
+        }`,
+        payment_method_id: "pix",
+        date_of_expiration: expirationDateStr,
+        ...(isValidWebhookUrl ? { notification_url: webhookUrl } : {}),
+        external_reference: targetRaffleId,
+        metadata: {
+          raffle_id: targetRaffleId,
+          raffleId: targetRaffleId,
+          order_id: orderId,
+          orderId: orderId,
+          raffle_name: raffleTitle,
+          raffleName: raffleTitle,
+        },
+        payer: {
+          email: mpPayerEmail,
+          first_name: mpPayerFirstName,
+          last_name: mpPayerLastName,
+          identification: {
+            type: "CPF",
+            number: generateValidCPF(),
+          },
+          phone: {
+            area_code: areaCode,
+            number: phoneNumber,
+          },
+        },
+      },
+      requestOptions: {
+        idempotencyKey,
+      },
+    });
+
+    tMercadoPago = Date.now() - tMPStart;
+
+    paymentId = String(mpResponse.id);
+    qrCode = mpResponse.point_of_interaction?.transaction_data?.qr_code || "";
+    qrCodeBase64 = mpResponse.point_of_interaction?.transaction_data?.qr_code_base64 || "";
+
+    if (!qrCode) {
+      throw new Error("Mercado Pago não retornou o código QR Pix (qr_code). Verifique se a conta possui chave Pix habilitada.");
+    }
+
+    console.log(`✅ [MercadoPago Serverless] Real payment generated! ID: ${paymentId} (Amount: R$${finalAmount})`);
+  } catch (mpError: any) {
+    console.error("❌ [MercadoPago Serverless] API creation failed:", mpError?.message || mpError);
+    try {
+      const cleanupBatch = getAdminFirestore().batch();
+      allNums.forEach((num: string) => {
+        cleanupBatch.delete(getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num));
+      });
+      await cleanupBatch.commit();
+    } catch (cleanErr) {
+      console.error("❌ [Rollback Error] Error cleaning up reserved numbers:", cleanErr);
+    }
+    const errDetail = mpError?.message || mpError?.toString() || "Erro desconhecido do Mercado Pago";
+    return res.status(502).json({
+      error: `Erro ao gerar Pix no Mercado Pago: ${errDetail}`,
+    });
   }
 
   // Create order documents in Firestore using batch write
@@ -458,10 +460,10 @@ export default async function handler(req: any, res: any) {
       createdAt: new Date().toISOString(),
       expiresAt: expiresAt,
       paymentId,
-      paymentType: isSimulated ? "SimulatedPix" : "MercadoPagoPix",
+      paymentType: "MercadoPagoPix",
       qrCode,
       qrCodeBase64,
-      isSimulated,
+      isSimulated: false,
     };
     batch.set(orderRef, newOrder);
 
@@ -489,7 +491,7 @@ export default async function handler(req: any, res: any) {
       status: "pending_payment",
       amount: finalAmount,
       createdAt: new Date().toISOString(),
-      isSimulated,
+      isSimulated: false,
     };
     batch.set(paymentRef, newPayment);
 
@@ -504,7 +506,7 @@ export default async function handler(req: any, res: any) {
       paymentId,
       qrCode,
       qrCodeBase64,
-      isSimulated,
+      isSimulated: false,
       expiresAt,
       bonusNums,
       nums: allNums,
