@@ -2212,7 +2212,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       setIsAdminLoggingIn(true);
       const result = await adminService.login(adminPassword);
       if ("token" in result) {
-        setIsAdminAuthenticated(true);
+        
         localStorage.setItem("raffle_admin_token", result.token);
         setAdminPassword("");
       } else {
