@@ -88,6 +88,12 @@ export function PurchasesView({
     return fetchedRaffles;
   }, [propRaffles, fetchedRaffles]);
 
+  // Active Raffle object info
+  const currentRaffleObj = useMemo(() => {
+    if (activeRaffleFilter === "all" || !allRaffles.length) return null;
+    return allRaffles.find((r) => r.id === activeRaffleFilter) || null;
+  }, [allRaffles, activeRaffleFilter]);
+
   // Fetch raffles if not provided
   useEffect(() => {
     if (!propRaffles || propRaffles.length === 0) {
@@ -401,12 +407,6 @@ export function PurchasesView({
       setIsProcessingAction(false);
     }
   };
-
-  // Active Raffle object info
-  const currentRaffleObj = useMemo(() => {
-    if (activeRaffleFilter === "all" || !allRaffles.length) return null;
-    return allRaffles.find((r) => r.id === activeRaffleFilter) || null;
-  }, [allRaffles, activeRaffleFilter]);
 
   return (
     <div className="space-y-6">

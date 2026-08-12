@@ -38,6 +38,7 @@
     "next": "^16.2.6",
     "playwright": "^1.62.1",
     "sharp": "^0.35.3",
+    "source-map": "^0.8.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",

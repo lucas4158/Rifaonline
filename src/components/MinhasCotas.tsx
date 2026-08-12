@@ -660,11 +660,11 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
                     </span>
                   </div>
 
-                  {orders.filter((o) => {
-                    const s = String(o.status || "").toLowerCase().trim();
-                    const isExpiredTimer = o.expiresAt && Date.now() >= o.expiresAt;
+                  {(Array.isArray(orders) ? orders : []).filter((o) => {
+                    const s = String(o?.status || "").toLowerCase().trim();
+                    const isExpiredTimer = o?.expiresAt && Date.now() >= o.expiresAt;
                     const isCanceledOrExpired = s === "cancelado" || s === "canceled" || s === "expired" || s === "failed" || s === "falhou" || (s === "pending_payment" && isExpiredTimer) || (s === "aguardando" && isExpiredTimer);
-                    const hasNumbers = Array.isArray(o.nums) && o.nums.length > 0;
+                    const hasNumbers = Array.isArray(o?.nums) && o.nums.length > 0;
                     return !isCanceledOrExpired && hasNumbers;
                   }).length === 0 ? (
                     <div className="bg-zinc-900 border border-zinc-850 p-8 text-center rounded-[2rem] space-y-3">
@@ -687,11 +687,11 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
                         }>;
                       }> = {};
 
-                      orders.filter((o) => {
-                        const s = String(o.status || "").toLowerCase().trim();
-                        const isExpiredTimer = o.expiresAt && Date.now() >= o.expiresAt;
+                      (Array.isArray(orders) ? orders : []).filter((o) => {
+                        const s = String(o?.status || "").toLowerCase().trim();
+                        const isExpiredTimer = o?.expiresAt && Date.now() >= o.expiresAt;
                         const isCanceledOrExpired = s === "cancelado" || s === "canceled" || s === "expired" || s === "failed" || s === "falhou" || (s === "pending_payment" && isExpiredTimer) || (s === "aguardando" && isExpiredTimer);
-                        const hasNumbers = Array.isArray(o.nums) && o.nums.length > 0;
+                        const hasNumbers = Array.isArray(o?.nums) && o.nums.length > 0;
                         return !isCanceledOrExpired && hasNumbers;
                       }).forEach((order) => {
                         const rId = order.raffleId || "current";

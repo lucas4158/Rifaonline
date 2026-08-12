@@ -39,7 +39,9 @@ import App from './App.tsx';
 import './index.css';
 import { updateAppMetadata } from './utils/helpers';
 
-class GlobalErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: any }> {
+class GlobalErrorBoundary extends React.Component<{ children?: React.ReactNode }, { hasError: boolean; error: any }> {
+  state: { hasError: boolean; error: any };
+
   constructor(props: any) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -66,7 +68,7 @@ class GlobalErrorBoundary extends React.Component<{ children: React.ReactNode },
         </div>
       );
     }
-    return this.props.children;
+    return (this as any).props.children;
   }
 }
 
