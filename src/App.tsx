@@ -4651,50 +4651,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               </div>
                             </div>
 
-                            {mpPaymentInfo?.isSimulated && (
-                              <div className="bg-orange-950/40 border border-orange-500/20 rounded-xl p-3.5 flex flex-col items-center justify-center space-y-2 mt-1 w-full scale-100">
-                                <p className="text-[10px] text-orange-400 font-black uppercase tracking-widest text-center">
-                                  Modo Simulado Ativo (Chave MP ausente)
-                                </p>
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    try {
-                                      const simRes = await fetch(
-                                        "/api/simulate-webhook",
-                                        {
-                                          method: "POST",
-                                          headers: {
-                                            "Content-Type": "application/json",
-                                          },
-                                          body: JSON.stringify({
-                                            paymentId: mpPaymentInfo.paymentId,
-                                          }),
-                                        },
-                                      );
-                                      if (simRes.ok) {
-                                        console.log(
-                                          "Simulated payment approved successfully!",
-                                        );
-                                      } else {
-                                        alert(
-                                          "Falha ao simular confirmação do pagamento.",
-                                        );
-                                      }
-                                    } catch (simErr) {
-                                      console.error(
-                                        "Simulation error:",
-                                        simErr,
-                                      );
-                                    }
-                                  }}
-                                  className="w-full bg-orange-600 hover:bg-orange-500 text-white font-black py-2 rounded-xl text-xs uppercase tracking-wider transition-all active:scale-95 shadow-md flex items-center justify-center gap-2"
-                                >
-                                  ✨ Simular Confirmação Pagamento (Teste)
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                           </div>
 
                           <div className="group w-full max-w-full">
                             <p className="text-zinc-500 text-[10px] uppercase font-black tracking-widest mb-2 pl-1">
