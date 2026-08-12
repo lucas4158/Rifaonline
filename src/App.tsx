@@ -4506,10 +4506,22 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                             <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-1">
                               <Clock className="w-6 h-6" />
                             </div>
-                            <h3 className="text-lg font-black text-white">Instruções de Pagamento Manual</h3>
-                            <p className="text-zinc-300 text-xs sm:text-sm leading-relaxed max-w-md">
-                              {mpPaymentInfo.manualInstructions || "Realize o pagamento Pix utilizando a chave abaixo e envie o comprovante para a administração."}
-                            </p>
+                            <h3 className="text-lg font-black text-white">💰 Pagamento via Pix</h3>
+                            <div className="text-zinc-300 text-xs sm:text-sm leading-relaxed space-y-2 text-left w-full bg-zinc-900/40 p-4 rounded-2xl border border-zinc-800">
+                              <p className="font-bold text-amber-400 text-center mb-2">Sua reserva foi realizada!</p>
+                              <p>1. Copie a chave Pix abaixo e faça o pagamento no seu banco.</p>
+                              <p>2. Após realizar o pagamento, envie o comprovante pelo WhatsApp.</p>
+                              <p>3. Nossa equipe irá conferir o pagamento e aprovar sua compra.</p>
+                              <p className="pt-2 font-semibold text-amber-300">⏱️ A reserva das suas cotas é válida por 20 minutos.</p>
+                              <p className="text-zinc-400 text-[11px] pt-1">⚠️ Importante: suas cotas só serão confirmadas após a aprovação do pagamento pela nossa equipe.</p>
+                            </div>
+
+                            {mpPaymentInfo.manualInstructions && (
+                              <p className="text-zinc-400 text-xs italic">
+                                &ldquo;{mpPaymentInfo.manualInstructions}&rdquo;
+                              </p>
+                            )}
+
                             {mpPaymentInfo.manualPixReceiver && (
                               <div className="text-xs text-zinc-400 bg-zinc-900/60 px-4 py-2 rounded-xl border border-zinc-800">
                                 <span className="font-bold text-zinc-300">Recebedor:</span> {mpPaymentInfo.manualPixReceiver}
@@ -4738,13 +4750,13 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         {mpPaymentInfo?.isManual ? (
                           <div className="pt-2 w-full space-y-3">
                             <a
-                              href={`https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Olá! Realizei o pedido manual #${mpPaymentInfo?.orderId} no valor de R$ ${totalAmount.toFixed(2)} referente às cotas [${submittedNumbers.join(", ")}]. Segue o meu comprovante de pagamento para aprovação:`)}`}
+                              href={`https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Olá! Acabei de realizar o pagamento da minha compra no RifaMaster.\n\nRifa: ${raffleConfig.title}\nPedido: ${mpPaymentInfo?.orderId}\nCotas: ${submittedNumbers.join(", ")}\nValor: R$ ${totalAmount.toFixed(2)}\n\nEstou enviando o comprovante para conferência.`)}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-4 rounded-2xl text-xs sm:text-sm uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer"
                             >
                               <MessageCircle className="w-5 h-5 flex-shrink-0" />
-                              Enviar Comprovante via WhatsApp
+                              📲 Enviar comprovante pelo WhatsApp
                             </a>
                             <p className="text-zinc-400 text-[10px] text-center uppercase tracking-widest leading-relaxed">
                               📱 Envie o comprovante via WhatsApp para que o administrador aprove o seu pedido e confirme suas cotas em até 20 minutos.
