@@ -33,22 +33,6 @@ const getActiveHeaders = async (token: string, contentType: string = "applicatio
 };
 
 export const adminService = {
-  async verifySession(token: string): Promise<boolean> {
-    console.log("🍪 [COOKIE_SENT] verifySession starting. Transmitting cookie...");
-    try {
-      const res = await fetch("/api/admin-action", {
-        method: "POST",
-        headers: await getActiveHeaders(token),
-        body: JSON.stringify({ action: "verify" }),
-        credentials: "include",
-      });
-      return res.ok;
-    } catch (err) {
-      console.error("Session verification error:", err);
-      return false;
-    }
-  },
-
   async login(password: string): Promise<{ token: string } | { error: string }> {
     console.log("[ADMIN_ACTION_START] Action: login");
     console.log("🍪 [COOKIE_SENT] login starting. Transmitting credentials...");

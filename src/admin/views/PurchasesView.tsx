@@ -197,7 +197,7 @@ export function PurchasesView({
 
   // Orders matching selected raffle filter
   const raffleMatchedOrders = useMemo(() => {
-    return orders.filter((ord) => {
+    const result = orders.filter((ord) => {
       if (activeRaffleFilter && activeRaffleFilter !== "all") {
         const orderRaffleId = ord.raffleId || "current";
         const matchesRaffle =
@@ -210,11 +210,12 @@ export function PurchasesView({
       }
       return true;
     });
+    return result;
   }, [orders, activeRaffleFilter, allRaffles.length]);
 
   // Filtered orders computation based on search query & status tabs
   const filteredOrders = useMemo(() => {
-    return raffleMatchedOrders.filter((ord) => {
+    const result = raffleMatchedOrders.filter((ord) => {
       const normStatus = getNormalizedStatus(ord.status);
 
       // Status filter
@@ -246,6 +247,7 @@ export function PurchasesView({
 
       return true;
     });
+    return result;
   }, [raffleMatchedOrders, statusFilter, searchQuery]);
 
   // Comprehensive KPI computations (Valores Pagos vs A Entrar no Caixa)

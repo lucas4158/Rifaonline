@@ -277,9 +277,8 @@ function LayoutWithHeader({
   setCurrentPath: (path: string) => void;
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
   const { raffleConfig } = useRaffleConfig();
-  const [isAdminLocally, setIsAdminLocally] = useState(false);
   const [isStoreEnabled, setIsStoreEnabled] = useState<boolean>(() => {
     return storeService.getLocalStoreConfig().isEnabled;
   });
@@ -293,14 +292,7 @@ function LayoutWithHeader({
     };
   }, []);
 
-  useEffect(() => {
-    const savedToken = localStorage.getItem("raffle_admin_token");
-    if (savedToken) {
-      adminService.verifySession(savedToken).then(setIsAdminLocally).catch(() => setIsAdminLocally(false));
-    }
-  }, []);
-
-  const hasAdminAccess = isAuthenticated || isAdminLocally;
+  const hasAdminAccess = isAuthenticated;
 
   return (
     <div className="min-h-screen bg-[#050505] text-white flex flex-col">
@@ -699,12 +691,10 @@ function LayoutWithHeader({
                     {/* Sair (Exit option) */}
                     {hasAdminAccess && (
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           setIsMenuOpen(false);
-                          localStorage.removeItem("admin_token");
-                          localStorage.removeItem("raffle_admin_token");
+                          await logout();
                           alert("Sessão encerrada!");
-                          window.location.href = "/";
                         }}
                         className="flex w-full items-center gap-3.5 rounded-xl px-4 py-3 text-left text-xs font-bold text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-all cursor-pointer"
                       >
@@ -730,9 +720,9 @@ function LayoutWithHeader({
 
 function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => void }) {
   // Admin & Auth State
+  const { isAuthenticated: isAdminAuthenticated, logout } = useAuth();
   const [showAdmin, setShowAdmin] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [isAdminLoggingIn, setIsAdminLoggingIn] = useState(false);
   const [adminPassword, setAdminPassword] = useState("");
   const [isClearing, setIsClearing] = useState(false);
@@ -768,22 +758,6 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(null);
   const [imageUploadError, setImageUploadError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const savedToken = localStorage.getItem("raffle_admin_token");
-    if (savedToken) {
-      adminService.verifySession(savedToken).then((isValid) => {
-        if (isValid) {
-          setIsAdminAuthenticated(true);
-        } else {
-          localStorage.removeItem("admin_token");
-          localStorage.removeItem("raffle_admin_token");
-        }
-      }).catch((err) => {
-        console.error("verifySession error:", err);
-      });
-    }
-  }, []);
 
   // Consume shared raffleConfig state and loading toggle from RaffleConfigProvider
   const { raffleConfig, setRaffleConfig, isConfigLoaded, setSelectedRaffleId } = useRaffleConfig();
@@ -5086,11 +5060,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                           Reiniciar Rifa
                         </button>
                         <button
-                          onClick={() => {
-                            setIsAdminAuthenticated(false);
-                            localStorage.removeItem("admin_token");
-                            localStorage.removeItem("raffle_admin_token");
-                          }}
+                          onClick={logout}
                           className="px-5 py-3 bg-zinc-900 hover:bg-zinc-800 text-zinc-350 hover:text-white rounded-xl border border-zinc-800 transition-all text-xs font-black uppercase tracking-wider active:scale-95 cursor-pointer"
                         >
                           Sair

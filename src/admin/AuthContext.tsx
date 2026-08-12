@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { auth } from "../services/firebase";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { onIdTokenChanged, signOut } from "firebase/auth";
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -41,12 +41,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onIdTokenChanged(auth, async (user) => {
       if (user) {
         console.log("🟢 [AUTH_CONTEXT] Firebase Auth session verified. Access GRANTED.");
+        try {
+          const token = await user.getIdToken();
+          localStorage.setItem("raffle_admin_token", token);
+        } catch (e) {
+          console.error("Failed to get Firebase ID token:", e);
+        }
         setIsAuthenticated(true);
       } else {
         console.warn("🔴 [AUTH_CONTEXT] No active Firebase Auth session. Access DENIED.");
+        localStorage.removeItem("raffle_admin_token");
         setIsAuthenticated(false);
       }
       setChecking(false);
