@@ -13,11 +13,35 @@ export default defineConfig(() => {
       },
     },
     server: {
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâfile watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
     },
+    build: {
+      chunkSizeWarningLimit: 3000,
+      sourcemap: false,
+      minify: 'esbuild',
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            // Restore normal chunking
+            if (id.includes('node_modules')) {
+               if (
+                id.includes('react/') ||
+                id.includes('react-dom/') ||
+                id.includes('scheduler/') ||
+                id.includes('use-sync-external-store/') ||
+                id.includes('react-is/') ||
+                id.includes('prop-types/')
+              ) return 'vendor-react';
+               if (id.includes('firebase')) return 'vendor-firebase';
+               if (id.includes('@supabase')) return 'vendor-supabase';
+               if (id.includes('lucide-react')) return 'vendor-lucide';
+               if (id.includes('framer-motion') || id.includes('motion')) return 'vendor-motion';
+               return 'vendor-core';
+            }
+          },
+        }
+      }
+    }
   };
 });

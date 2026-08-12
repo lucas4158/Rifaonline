@@ -97,14 +97,12 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
   });
 }
 
-const StorePage = lazyWithRetry(() =>
-  import("./components/StorePage").then((m) => ({ default: m.StorePage }))
-);
+import { StorePage } from "./components/StorePage";
 
-const Login = lazyWithRetry(() => import("./admin/Login"));
-const Dashboard = lazyWithRetry(() => import("./admin/Dashboard"));
-const ProtectedRoute = lazyWithRetry(() => import("./admin/ProtectedRoute"));
-const RaffleAuditView = lazyWithRetry(() => import("./components/RaffleAuditView"));
+import Login from "./admin/Login";
+import Dashboard from "./admin/Dashboard";
+import ProtectedRoute from "./admin/ProtectedRoute";
+import RaffleAuditView from "./components/RaffleAuditView";
 
 function RifaOnlineApp() {
   const [currentPath, setCurrentPath] = useState(

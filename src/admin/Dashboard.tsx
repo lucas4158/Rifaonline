@@ -7,20 +7,7 @@ import {
   Copy, Edit3, Archive, Power, Sparkles, Eye, CheckCircle, Pause, ShoppingBag, Ticket, Save, FolderOpen,
   Calculator, Users, Grid, Star, BarChart3, TrendingUp, PieChart as PieChartIcon, Clock
 } from "lucide-react";
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  Tooltip as RechartsTooltip,
-  Cell,
-  PieChart as RechartsPieChart,
-  Pie,
-  Legend,
-  AreaChart,
-  Area
-} from "recharts";
+
 import { db } from "../services/firebase";
 import { adminService } from "../services/adminService";
 import { performRobustImageUpload } from "../services/uploadService";
@@ -40,6 +27,7 @@ import { PurchasesView } from "./views/PurchasesView";
 import { NotificationsView } from "./views/NotificationsView";
 import { AuditView } from "./views/AuditView";
 import { DrawsView } from "./views/DrawsView";
+import { getSupabaseClient } from "../services/supabase/supabaseClient";
 
 // ... [rest of the file imports/state/etc]
 // Need to find where to add `winnersList` and `editingWinner` state
@@ -215,18 +203,16 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   const [unreadNotificationsCount, setUnreadNotificationsCount] = useState<number>(0);
 
   useEffect(() => {
-    import("../services/supabase/supabaseClient").then(({ getSupabaseClient }) => {
-      const supabase = getSupabaseClient();
-      if (!supabase) return;
-      supabase
-        .from("admin_notifications")
-        .select("id", { count: "exact" })
-        .eq("read", false)
-        .then(({ count, error }) => {
-          if (error) console.error(error);
-          else if (count !== null) setUnreadNotificationsCount(count);
-        });
-    }).catch(console.error);
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    supabase
+      .from("admin_notifications")
+      .select("id", { count: "exact" })
+      .eq("read", false)
+      .then(({ count, error }) => {
+        if (error) console.error(error);
+        else if (count !== null) setUnreadNotificationsCount(count);
+      });
   }, [currentAdminTab]);
   const [winnersList, setWinnersList] = useState<any[]>([]);
   const [editingWinner, setEditingWinner] = useState<any | null>(null);
@@ -4607,42 +4593,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                     </div>
                   ) : (
                     <div className="h-72 w-full pt-2">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={analyticsData.barData} margin={{ top: 10, right: 10, left: 0, bottom: 25 }}>
-                          <XAxis dataKey="name" stroke="#52525b" fontSize={10} tickLine={false} interval={0} />
-                          <YAxis stroke="#52525b" fontSize={10} tickLine={false} tickFormatter={(v) => `R$${v}`} />
-                          <RechartsTooltip
-                            content={({ active, payload }) => {
-                              if (active && payload && payload.length) {
-                                const data = payload[0].payload;
-                                return (
-                                  <div className="bg-zinc-900 border border-zinc-700 p-3 rounded-xl shadow-xl space-y-1 text-xs">
-                                    <p className="font-bold text-white uppercase">{data.fullTitle}</p>
-                                    <p className="text-emerald-400 font-mono font-black">
-                                      Arrecadado: R$ {data.Arrecadado.toFixed(2).replace(".", ",")}
-                                    </p>
-                                    <p className="text-zinc-400 font-mono text-[10px]">
-                                      Vendas: {data.CotasVendidas} / {data.TotalCotas} cotas (R$ {data.PrecoCota}/cada)
-                                    </p>
-                                    <p className="text-amber-400 text-[10px]">
-                                      Potencial Máximo: R$ {data.Potencial.toFixed(2).replace(".", ",")}
-                                    </p>
-                                  </div>
-                                );
-                              }
-                              return null;
-                            }}
-                          />
-                          <Bar dataKey="Arrecadado" radius={[8, 8, 0, 0]}>
-                            {analyticsData.barData.map((entry, index) => (
-                              <Cell
-                                key={`cell-${index}`}
-                                fill={entry.isDestaque ? "#F59E0B" : "#A3E635"}
-                              />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
+                      <div className="flex h-full items-center justify-center text-zinc-500">Gráfico desabilitado temporariamente</div>
                     </div>
                   )}
                 </div>
@@ -4667,39 +4618,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   ) : (
                     <div className="space-y-4">
                       <div className="h-48 w-full relative flex items-center justify-center">
-                        <ResponsiveContainer width="100%" height="100%">
-                          <RechartsPieChart>
-                            <Pie
-                              data={analyticsData.pieData}
-                              cx="50%"
-                              cy="50%"
-                              innerRadius={45}
-                              outerRadius={75}
-                              paddingAngle={4}
-                              dataKey="value"
-                            >
-                              {analyticsData.pieData.map((entry, index) => (
-                                <Cell key={`pie-cell-${index}`} fill={entry.color} />
-                              ))}
-                            </Pie>
-                            <RechartsTooltip
-                              content={({ active, payload }) => {
-                                if (active && payload && payload.length) {
-                                  const data = payload[0].payload;
-                                  return (
-                                    <div className="bg-zinc-900 border border-zinc-700 p-2.5 rounded-xl shadow-xl text-xs space-y-0.5">
-                                      <p className="font-bold text-white">{data.fullTitle}</p>
-                                      <p className="text-emerald-400 font-mono font-bold">
-                                        R$ {data.value.toFixed(2).replace(".", ",")} ({data.percent}%)
-                                      </p>
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              }}
-                            />
-                          </RechartsPieChart>
-                        </ResponsiveContainer>
+                        <div className="flex h-full items-center justify-center text-zinc-500">Gráfico desabilitado temporariamente</div>
                       </div>
 
                       {/* PIE LEGEND */}

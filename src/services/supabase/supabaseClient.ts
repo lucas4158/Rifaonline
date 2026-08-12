@@ -19,8 +19,8 @@ export function getSupabaseClient(): SupabaseClient | null {
   if (clientInstance) return clientInstance;
 
   const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
-  const rawUrl = metaEnv?.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anonKey = metaEnv?.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const rawUrl = metaEnv?.VITE_SUPABASE_URL || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_URL : undefined);
+  const anonKey = metaEnv?.VITE_SUPABASE_ANON_KEY || (typeof process !== 'undefined' ? process.env.VITE_SUPABASE_ANON_KEY : undefined);
   const url = sanitizeSupabaseUrl(rawUrl);
 
   if (!url || !anonKey) {
@@ -43,8 +43,8 @@ export function getSupabaseClient(): SupabaseClient | null {
 export function getSupabaseAdmin(): SupabaseClient | null {
   if (adminServerInstance) return adminServerInstance;
 
-  const rawUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const rawUrl = typeof process !== 'undefined' ? (process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL) : undefined;
+  const serviceKey = typeof process !== 'undefined' ? process.env.SUPABASE_SERVICE_ROLE_KEY : undefined;
   const url = sanitizeSupabaseUrl(rawUrl);
 
   if (!url || !serviceKey) {
