@@ -162,6 +162,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   const [modalPromoBuy, setModalPromoBuy] = useState<string>("5");
   const [modalPromoBonus, setModalPromoBonus] = useState<string>("1");
   const [modalPurchaseMode, setModalPurchaseMode] = useState<"manual" | "aleatorio">("manual");
+  const [modalPaymentMode, setModalPaymentMode] = useState<"automatic" | "manual">("automatic");
   const [modalDrawMode, setModalDrawMode] = useState<"automatico" | "federal">("automatico");
   const [modalFederalConcurso, setModalFederalConcurso] = useState<string>("");
   const [modalFederalData, setModalFederalData] = useState<string>("");
@@ -798,6 +799,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     setModalPromoBuy("5");
     setModalPromoBonus("1");
     setModalPurchaseMode("manual");
+    setModalPaymentMode("automatic");
     setModalDrawMode("automatico");
     setModalFederalConcurso("");
     setModalFederalData("");
@@ -894,6 +896,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     setModalPromoBuy(String(raffle.promotionBuy || 5));
     setModalPromoBonus(String(raffle.promotionBonus || 1));
     setModalPurchaseMode(raffle.purchaseMode || "manual");
+    setModalPaymentMode(raffle.paymentMode || "automatic");
     setModalDrawMode(raffle.drawMode || "automatico");
     setModalFederalConcurso(raffle.federalConcurso || "");
     setModalFederalData(raffle.federalData || "");
@@ -926,6 +929,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         promotionBuy: parseInt(modalPromoBuy) || 5,
         promotionBonus: parseInt(modalPromoBonus) || 1,
         purchaseMode: modalPurchaseMode,
+        paymentMode: modalPaymentMode,
         drawMode: modalDrawMode,
         federalConcurso: modalFederalConcurso.trim(),
         federalData: modalFederalData.trim(),
@@ -3985,6 +3989,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                           setModalPromoBuy(String(targetRaffle.promotionBuy || 5));
                           setModalPromoBonus(String(targetRaffle.promotionBonus || 1));
                           setModalPurchaseMode(targetRaffle.purchaseMode || "manual");
+                          setModalPaymentMode(targetRaffle.paymentMode || "automatic");
                           setModalDrawMode(targetRaffle.drawMode || "automatico");
                           setModalFederalConcurso(targetRaffle.federalConcurso || "");
                           setModalFederalData(targetRaffle.federalData || "");
@@ -4009,6 +4014,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                           setModalPromoBuy("5");
                           setModalPromoBonus("1");
                           setModalPurchaseMode("manual");
+                          setModalPaymentMode("automatic");
                           setModalDrawMode("automatico");
                         }
                       }}
@@ -4146,6 +4152,52 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                       onChange={(e) => setModalPixReceiver(e.target.value)}
                       className="w-full bg-black border border-zinc-850 rounded-xl px-3 py-2.5 text-base sm:text-[11px] text-white outline-none focus:border-violet-500"
                     />
+                  </div>
+                </div>
+
+                {/* MODO DE APROVAÇÃO DAS COMPRAS */}
+                <div className="space-y-4 pt-2 border-t border-zinc-900">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-violet-400">Modo de Aprovação das Compras</span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setModalPaymentMode("automatic")}
+                      className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                        modalPaymentMode === "automatic"
+                          ? "bg-violet-500/10 border-violet-500 text-white shadow-md shadow-violet-500/10"
+                          : "bg-zinc-900/50 border-zinc-850 text-zinc-400 hover:border-zinc-700"
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
+                        modalPaymentMode === "automatic" ? "border-violet-400 bg-violet-500 text-white" : "border-zinc-700 bg-zinc-900"
+                      }`}>
+                        {modalPaymentMode === "automatic" && <div className="w-2 h-2 rounded-full bg-white" />}
+                      </div>
+                      <div className="space-y-0.5">
+                        <div className="text-xs font-black uppercase tracking-wide text-white">Aprovação automática</div>
+                        <div className="text-[9px] text-zinc-400 leading-tight">Pagamento confirmado automaticamente pelo gateway (Mercado Pago).</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setModalPaymentMode("manual")}
+                      className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                        modalPaymentMode === "manual"
+                          ? "bg-amber-500/10 border-amber-500 text-white shadow-md shadow-amber-500/10"
+                          : "bg-zinc-900/50 border-zinc-850 text-zinc-400 hover:border-zinc-700"
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
+                        modalPaymentMode === "manual" ? "border-amber-400 bg-amber-500 text-black" : "border-zinc-700 bg-zinc-900"
+                      }`}>
+                        {modalPaymentMode === "manual" && <div className="w-2 h-2 rounded-full bg-black" />}
+                      </div>
+                      <div className="space-y-0.5">
+                        <div className="text-xs font-black uppercase tracking-wide text-white">Aprovação pelo administrador</div>
+                        <div className="text-[9px] text-zinc-400 leading-tight">Pedido fica aguardando conferência e somente o administrador pode aprovar.</div>
+                      </div>
+                    </button>
                   </div>
                 </div>
 

@@ -80,9 +80,16 @@ export default async function handler(req: any, res: any) {
   let bonusNums: string[] = [];
 
   const orderId = Math.random().toString(36).substring(2, 7).toUpperCase();
-  const expiresAt = currentNow + 10 * 60 * 1000; // 10 minutes
+  let expiresAt = currentNow + 10 * 60 * 1000; // 10 minutes default
   let raffleTitle = "Rifa";
   let finalAmount = 0;
+  let paymentId = "";
+  let qrCode = "";
+  let qrCodeBase64 = "";
+  let paymentMode = "automatic";
+  let manualPixKey = "";
+  let manualPixReceiver = "";
+  let manualInstructions = "Realize o pagamento Pix utilizando a chave acima e aguarde a conferência do administrador.";
 
   try {
     // 1. Fetch raffle config to recalculate transaction_amount server-side
@@ -95,6 +102,14 @@ export default async function handler(req: any, res: any) {
     if (configData.title) {
       raffleTitle = configData.title;
     }
+
+    paymentMode = configData.paymentMode || "automatic";
+    manualPixKey = configData.manualPixKey || configData.pixKey || "";
+    manualPixReceiver = configData.manualPixReceiver || configData.pixReceiver || "";
+    manualInstructions = configData.manualInstructions || "Realize o pagamento Pix utilizando a chave acima e aguarde a conferência do administrador.";
+
+    // 20 minutes for manual payment mode, 10 minutes for automatic mode
+    expiresAt = currentNow + (paymentMode === "manual" ? 20 * 60 * 1000 : 10 * 60 * 1000);
 
     // SERVER-SIDE RECALCULATION OF TRANSACTION_AMOUNT (Fixes Error 4037)
     // Price per quota from config, fallback to request body price
@@ -307,6 +322,87 @@ export default async function handler(req: any, res: any) {
     return res.status(500).json({ error: "Erro ao processar as cotas em lote no banco de dados. Por favor, tente novamente." });
   }
 
+  // Check if manual payment mode is enabled for this raffle
+  if (paymentMode === "manual") {
+    console.log(`📋 [Manual Payment] Raffle ${targetRaffleId} is in manual mode. Skipping Mercado Pago call.`);
+    paymentId = `MANUAL_${orderId}`;
+    qrCode = manualPixKey;
+    qrCodeBase64 = "";
+
+    try {
+      const tSaveStart = Date.now();
+      const batch = getAdminFirestore().batch();
+
+      const orderRef = getAdminFirestore().collection("orders").doc(orderId);
+      const newOrder = {
+        id: orderId,
+        raffleId: targetRaffleId,
+        name,
+        phone: dNormPhone,
+        nums: allNums,
+        purchasedNums: nums,
+        bonusNums: bonusNums,
+        val: finalAmount,
+        status: "Aguardando",
+        isManual: true,
+        createdAt: new Date().toISOString(),
+        expiresAt: expiresAt,
+        paymentId,
+        paymentType: "ManualPix",
+        qrCode,
+        qrCodeBase64,
+        manualInstructions,
+        manualPixKey,
+        manualPixReceiver,
+        sessionId,
+      };
+      batch.set(orderRef, newOrder);
+
+      const numUpdateData = {
+        status: "reserved",
+        sessionId,
+        phone: dNormPhone,
+        name,
+        expiresAt,
+        orderId,
+        updatedAt: new Date().toISOString(),
+      };
+
+      allNums.forEach((num: string) => {
+        const numRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
+        batch.set(numRef, numUpdateData, { merge: true });
+
+        const lockRef = getAdminFirestore().collection("locks").doc(num);
+        batch.set(lockRef, {
+          sessionId,
+          expiresAt,
+          orderId,
+          updatedAt: new Date().toISOString(),
+        });
+      });
+
+      await batch.commit();
+      console.log(`✅ [Manual Payment] Order ${orderId} successfully created in Manual mode.`);
+
+      return res.status(200).json({
+        success: true,
+        orderId,
+        paymentId,
+        qrCode,
+        qrCodeBase64,
+        isManual: true,
+        manualInstructions,
+        manualPixKey,
+        manualPixReceiver,
+        bonusNums,
+        expiresAt,
+      });
+    } catch (saveErr: any) {
+      console.error("❌ [Manual Payment] Error saving manual order:", saveErr);
+      return res.status(500).json({ error: "Erro ao registrar o pedido manual no banco de dados." });
+    }
+  }
+
   // Check Mercado Pago configuration
   const hasMP = !!process.env.MP_ACCESS_TOKEN && mpPayment;
 
@@ -326,9 +422,9 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  let paymentId = "";
-  let qrCode = "";
-  let qrCodeBase64 = "";
+  paymentId = "";
+  qrCode = "";
+  qrCodeBase64 = "";
 
   const generateValidCPF = (): string => {
     const rnt = (max: number) => Math.floor(Math.random() * max);

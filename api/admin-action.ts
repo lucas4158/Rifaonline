@@ -1503,6 +1503,15 @@ export default async function handler(req: any, res: any) {
           });
         }
 
+        // 1.5. Expiration Check (Prevent approval of expired manual orders)
+        const expiresAtValue = Number(orderData.expiresAt || 0);
+        if (expiresAtValue > 0 && Date.now() > expiresAtValue) {
+          console.warn(`⚠️ [Manual Approve Expired] Order ${orderId} has expired (expiresAt: ${expiresAtValue}). Blocking approval.`);
+          return res.status(400).json({
+            error: "Este pedido já expirou (prazo limite de pagamento ultrapassado). Não é possível aprová-lo."
+          });
+        }
+
         // 2. Cotas Conflict Verification
         for (const cotaNum of orderNums) {
           const cotaSnap = await adminDb.collection("raffles").doc(targetRaffleId).collection("numbers").doc(cotaNum).get();

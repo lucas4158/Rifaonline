@@ -75,6 +75,7 @@ export interface RaffleConfig {
   drawTime?: string;
   whatsappGroupUrl?: string;
   purchaseMode?: "manual" | "aleatorio";
+  paymentMode?: "automatic" | "manual";
   drawMode?: "automatico" | "federal";
   federalConcurso?: string;
   federalData?: string;

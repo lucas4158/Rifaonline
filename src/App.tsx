@@ -1688,6 +1688,10 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
     qrCodeBase64: string;
     isSimulated: boolean;
     bonusNums?: string[];
+    isManual?: boolean;
+    manualInstructions?: string;
+    manualPixKey?: string;
+    manualPixReceiver?: string;
   } | null>(() => {
     try {
       const savedInfo = localStorage.getItem("raffle_mp_payment_info_v1");
@@ -2100,6 +2104,10 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         qrCode: resData.qrCode,
         qrCodeBase64: resData.qrCodeBase64,
         isSimulated: resData.isSimulated,
+        isManual: resData.isManual,
+        manualInstructions: resData.manualInstructions,
+        manualPixKey: resData.manualPixKey,
+        manualPixReceiver: resData.manualPixReceiver,
         bonusNums: resData.bonusNums,
       });
 
@@ -4470,7 +4478,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               Pagamento Pix
                             </h2>
                             <span className="text-amber-400 text-xs font-bold uppercase tracking-widest mt-1">
-                              Mercado Pago Pix Automatizado
+                              {mpPaymentInfo?.isManual ? "Pix Manual — Aguardando Aprovação" : "Mercado Pago Pix Automatizado"}
                             </span>
                           </div>
                           <div className="flex items-center self-start sm:self-auto gap-2 bg-amber-500/10 text-amber-400 text-[10px] px-3.5 py-2 rounded-full font-black border border-amber-500/20 animate-pulse shrink-0">
@@ -4493,32 +4501,55 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                           </div>
                         )}
 
-                        <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-3xl p-4 sm:p-8 mb-6 flex flex-col items-center justify-center relative group w-full max-w-full overflow-hidden">
-                          {isGeneratingPayment && (
-                            <div className="absolute inset-0 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 z-20 space-y-4">
-                              <RefreshCw className="w-10 h-10 text-amber-400 animate-spin" />
-                              <p className="text-white font-black text-base sm:text-lg">
-                                Atualizando seu Pix...
-                              </p>
-                              <p className="text-zinc-400 text-xs font-semibold max-w-xs leading-relaxed">
-                                Recalculando o valor total e gerando uma nova chave Pix para as suas cotas atualizadas.
+                        {mpPaymentInfo?.isManual ? (
+                          <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-3xl p-6 sm:p-8 mb-6 flex flex-col items-center text-center w-full max-w-full overflow-hidden space-y-4">
+                            <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-1">
+                              <Clock className="w-6 h-6" />
+                            </div>
+                            <h3 className="text-lg font-black text-white">Instruções de Pagamento Manual</h3>
+                            <p className="text-zinc-300 text-xs sm:text-sm leading-relaxed max-w-md">
+                              {mpPaymentInfo.manualInstructions || "Realize o pagamento Pix utilizando a chave abaixo e envie o comprovante para a administração."}
+                            </p>
+                            {mpPaymentInfo.manualPixReceiver && (
+                              <div className="text-xs text-zinc-400 bg-zinc-900/60 px-4 py-2 rounded-xl border border-zinc-800">
+                                <span className="font-bold text-zinc-300">Recebedor:</span> {mpPaymentInfo.manualPixReceiver}
+                              </div>
+                            )}
+                            <div className="w-full bg-zinc-900 border border-zinc-700/60 rounded-2xl p-4 mt-2">
+                              <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500 mb-1">Chave Pix (Copia e Cola)</p>
+                              <p className="font-mono font-bold text-amber-400 text-xs sm:text-sm break-all select-all">
+                                {mpPaymentInfo.manualPixKey || mpPaymentInfo.qrCode}
                               </p>
                             </div>
-                          )}
-
-                          <div className="p-3 sm:p-4 bg-white rounded-2xl shadow-[0_0_50px_rgba(255,255,255,0.1)] mb-4 flex items-center justify-center overflow-hidden w-36 h-36 min-[375px]:w-44 min-[375px]:h-44 sm:w-48 sm:h-48 md:w-56 md:h-56 max-w-full aspect-square shrink-0">
-                            <img
-                              src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(mpPaymentInfo?.qrCode || "SIMULADO")}`}
-                              className="w-full h-full object-contain"
-                              alt="Pix QR Code"
-                              referrerPolicy="no-referrer"
-                            />
                           </div>
-                          <p className="text-zinc-400 text-[10px] sm:text-xs font-bold uppercase tracking-widest text-center mt-2 leading-relaxed px-2">
-                            Abra o aplicativo de pagamentos do seu Banco,
-                            escolha "Pix" e aponte a câmera para ler o QR Code
-                          </p>
-                        </div>
+                        ) : (
+                          <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-3xl p-4 sm:p-8 mb-6 flex flex-col items-center justify-center relative group w-full max-w-full overflow-hidden">
+                            {isGeneratingPayment && (
+                              <div className="absolute inset-0 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center text-center p-6 z-20 space-y-4">
+                                <RefreshCw className="w-10 h-10 text-amber-400 animate-spin" />
+                                <p className="text-white font-black text-base sm:text-lg">
+                                  Atualizando seu Pix...
+                                </p>
+                                <p className="text-zinc-400 text-xs font-semibold max-w-xs leading-relaxed">
+                                  Recalculando o valor total e gerando uma nova chave Pix para as suas cotas atualizadas.
+                                </p>
+                              </div>
+                            )}
+
+                            <div className="p-3 sm:p-4 bg-white rounded-2xl shadow-[0_0_50px_rgba(255,255,255,0.1)] mb-4 flex items-center justify-center overflow-hidden w-36 h-36 min-[375px]:w-44 min-[375px]:h-44 sm:w-48 sm:h-48 md:w-56 md:h-56 max-w-full aspect-square shrink-0">
+                              <img
+                                src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(mpPaymentInfo?.qrCode || "SIMULADO")}`}
+                                className="w-full h-full object-contain"
+                                alt="Pix QR Code"
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
+                            <p className="text-zinc-400 text-[10px] sm:text-xs font-bold uppercase tracking-widest text-center mt-2 leading-relaxed px-2">
+                              Abra o aplicativo de pagamentos do seu Banco,
+                              escolha "Pix" e aponte a câmera para ler o QR Code
+                            </p>
+                          </div>
+                        )}
 
                         <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 text-center">
                           <p className="text-emerald-500 font-black">
@@ -4703,23 +4734,39 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                           </div>
                         </div>
 
-                        {/* WhatsApp Receipt Button - Locked in Pix selection until identified */}
-                        <div className="pt-2 w-full">
-                          <button
-                            disabled
-                            type="button"
-                            className="w-full bg-zinc-800 border border-zinc-700/50 text-zinc-500 font-bold py-4 px-4 rounded-2xl text-xs sm:text-sm uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-not-allowed opacity-70"
-                          >
-                            <MessageCircle className="w-5 h-5 flex-shrink-0 text-zinc-600" />
-                            WhatsApp Liberado Após Identificação
-                          </button>
-                        </div>
-
-                        <div className="border-t border-zinc-800/80 pt-4 w-full">
-                          <p className="text-zinc-500 text-[10px] text-center uppercase tracking-widest leading-relaxed">
-                            ⏳ O botão de WhatsApp para comprovantes será liberado automaticamente assim que o pagamento Pix for identificado pelo nosso sistema!
-                          </p>
-                        </div>
+                        {/* WhatsApp Receipt Button - Active for manual, locked for automatic */}
+                        {mpPaymentInfo?.isManual ? (
+                          <div className="pt-2 w-full space-y-3">
+                            <a
+                              href={`https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Olá! Realizei o pedido manual #${mpPaymentInfo?.orderId} no valor de R$ ${totalAmount.toFixed(2)} referente às cotas [${submittedNumbers.join(", ")}]. Segue o meu comprovante de pagamento para aprovação:`)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-4 rounded-2xl text-xs sm:text-sm uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer"
+                            >
+                              <MessageCircle className="w-5 h-5 flex-shrink-0" />
+                              Enviar Comprovante via WhatsApp
+                            </a>
+                            <p className="text-zinc-400 text-[10px] text-center uppercase tracking-widest leading-relaxed">
+                              📱 Envie o comprovante via WhatsApp para que o administrador aprove o seu pedido e confirme suas cotas em até 20 minutos.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="pt-2 w-full">
+                            <button
+                              disabled
+                              type="button"
+                              className="w-full bg-zinc-800 border border-zinc-700/50 text-zinc-500 font-bold py-4 px-4 rounded-2xl text-xs sm:text-sm uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-not-allowed opacity-70"
+                            >
+                              <MessageCircle className="w-5 h-5 flex-shrink-0 text-zinc-600" />
+                              WhatsApp Liberado Após Identificação
+                            </button>
+                            <div className="border-t border-zinc-800/80 pt-4 w-full mt-3">
+                              <p className="text-zinc-500 text-[10px] text-center uppercase tracking-widest leading-relaxed">
+                                ⏳ O botão de WhatsApp para comprovantes será liberado automaticamente assim que o pagamento Pix for identificado pelo nosso sistema!
+                              </p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </motion.div>
                   )}
