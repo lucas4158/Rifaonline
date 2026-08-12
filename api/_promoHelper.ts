@@ -124,10 +124,10 @@ export async function allocatePromotionalBonus(
     raffleId: targetRaffleId
   });
 
-  batch.update(db.collection("reservations").doc(orderId), {
+  batch.set(db.collection("reservations").doc(orderId), {
     nums: mergedNums,
     bonusNums: mergedBonus
-  });
+  }, { merge: true });
 
   selectedBonus.forEach((num) => {
     const numDocRef = db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);

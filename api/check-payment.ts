@@ -202,7 +202,7 @@ export default async function handler(req: any, res: any) {
 
         // Mark order as PAID
         transaction.update(orderRef, { status: "Pago", approvedAt: new Date().toISOString() });
-        transaction.update(reservationRef, { status: "Pago", approvedAt: new Date().toISOString() });
+        transaction.set(reservationRef, { status: "Pago", approvedAt: new Date().toISOString() }, { merge: true });
         transaction.set(paymentRef, {
           id: String(effectivePaymentId),
           orderId: targetOrderId,

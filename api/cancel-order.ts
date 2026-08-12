@@ -87,7 +87,7 @@ export default async function handler(req: any, res: any) {
 
           // NOW PERFORM ALL WRITES (Zero reads after this point)
           transaction.update(orderRef, { status: "Cancelado", canceledAt: nowIso });
-          transaction.update(reservationRef, { status: "Cancelado", canceledAt: nowIso });
+          transaction.set(reservationRef, { status: "Cancelado", canceledAt: nowIso }, { merge: true });
 
           for (let i = 0; i < orderNums.length; i++) {
             const numSnap = numSnaps[i];

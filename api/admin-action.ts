@@ -1374,11 +1374,11 @@ export default async function handler(req: any, res: any) {
 
         // Update reservation status to Pago
         const reservationRef = getAdminFirestore().collection("reservations").doc(orderId);
-        batch.update(reservationRef, {
+        batch.set(reservationRef, {
           nums: newNumbers,
           status: "Pago",
           approvedAt: new Date().toISOString()
-        });
+        }, { merge: true });
 
         // Assign new numbers to numbers subcollection as paid
         newNumbers.forEach((num) => {
@@ -1443,10 +1443,10 @@ export default async function handler(req: any, res: any) {
         });
 
         const reservationRef = getAdminFirestore().collection("reservations").doc(orderId);
-        batch.update(reservationRef, {
+        batch.set(reservationRef, {
           status: "Reembolsado",
           refundedAt: new Date().toISOString()
-        });
+        }, { merge: true });
 
         const paymentId = orderData.paymentId || ("SIM_" + orderId);
         batch.set(getAdminFirestore().collection("payments").doc(paymentId), {
@@ -1677,11 +1677,11 @@ export default async function handler(req: any, res: any) {
         });
 
         // 2. Update Reservations replicated document
-        batch.update(getAdminFirestore().collection("reservations").doc(orderId), {
+        batch.set(getAdminFirestore().collection("reservations").doc(orderId), {
           status: resStatus,
           approvedAt: isApprove ? new Date().toISOString() : null,
           canceledAt: !isApprove ? new Date().toISOString() : null,
-        });
+        }, { merge: true });
 
         // 3. Update Payment record
         const paymentId = orderData.paymentId || ("SIM_" + orderId);
@@ -1865,20 +1865,20 @@ export default async function handler(req: any, res: any) {
             val: 0,
             status: "Cancelado",
           });
-          batch.update(getAdminFirestore().collection("reservations").doc(orderId), {
+          batch.set(getAdminFirestore().collection("reservations").doc(orderId), {
             nums: [],
             val: 0,
             status: "Cancelado",
-          });
+          }, { merge: true });
         } else {
           batch.update(getAdminFirestore().collection("orders").doc(orderId), {
             nums: updatedNums,
             val: updatedNums.length * itemPrice,
           });
-          batch.update(getAdminFirestore().collection("reservations").doc(orderId), {
+          batch.set(getAdminFirestore().collection("reservations").doc(orderId), {
             nums: updatedNums,
             val: updatedNums.length * itemPrice,
-          });
+          }, { merge: true });
         }
 
         // Delete nested scalable Raffle Number

@@ -80,7 +80,7 @@ export default async function handler(req: any, res: any) {
                   paymentCollisionError: true,
                   paymentCollisionReason: "Pagamento atrasado recebido após a expiração da reserva."
                 });
-                transaction.update(reservationRef, { status: "PAYMENT_AFTER_EXPIRATION", approvedAt: null });
+                transaction.set(reservationRef, { status: "PAYMENT_AFTER_EXPIRATION", approvedAt: null }, { merge: true });
                 transaction.set(paymentRef, {
                   id: paymentId,
                   orderId: orderId,
@@ -131,7 +131,7 @@ export default async function handler(req: any, res: any) {
                   approvedAt: new Date().toISOString(),
                   receivedLatePayment: true
                 });
-                transaction.update(reservationRef, { status: "Cancelado", paymentCollisionError: true, approvedAt: new Date().toISOString() });
+                transaction.set(reservationRef, { status: "Cancelado", paymentCollisionError: true, approvedAt: new Date().toISOString() }, { merge: true });
                 transaction.set(paymentRef, {
                   id: paymentId,
                   orderId: orderId,
@@ -145,7 +145,7 @@ export default async function handler(req: any, res: any) {
               } else {
                 // SUCCESS: Mark as paid
                 transaction.update(orderRef, { status: "Pago", approvedAt: new Date().toISOString() });
-                transaction.update(reservationRef, { status: "Pago", approvedAt: new Date().toISOString() });
+                transaction.set(reservationRef, { status: "Pago", approvedAt: new Date().toISOString() }, { merge: true });
                 transaction.set(paymentRef, {
                   id: paymentId,
                   orderId: orderId,
