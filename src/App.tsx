@@ -1063,8 +1063,8 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         // Summary stats for each active raffle card
         const statsMap: Record<string, { soldCount: number; percentSold: number; remainingCount: number }> = {};
         list.forEach((rf) => {
-          const paidCount = Number(rf.soldCount || 0);
           const total = Number(rf.totalNumbers || 100);
+          const paidCount = Math.min(total, Number(rf.soldCount || 0));
 
           const isEncerradaOrWinner = rf.status === "encerrada" || Boolean(rf.winnerNumber);
           const percent = isEncerradaOrWinner ? 100 : Math.min(100, total > 0 ? (paidCount / total) * 100 : 0);
@@ -2356,42 +2356,51 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         const numCount = (Array.isArray(curr.nums) ? curr.nums : (Array.isArray(curr.purchasedNums) ? curr.purchasedNums : [])).length || 1;
         return acc + (numCount * (Number(raffleConfig.price) || 10));
       }, 0);
-    const paidFromDbNumbers = numbers.filter(
-      (n) => n.status === "paid" || n.status === "bonus_paid",
+    const paidNonBonusNumbers = numbers.filter(
+      (n) => (n.status === "paid" || n.status === "bonus_paid") && !n.isBonus
     ).length;
-    const countPaid = Math.max(Number(raffleConfig.soldCount || 0), paidFromDbNumbers);
+    const bonusPaidNumbers = numbers.filter(
+      (n) => (n.status === "paid" || n.status === "bonus_paid") && n.isBonus
+    ).length;
+    const totalLimit = Number(raffleConfig.totalNumbers || 100);
+    const countPaid = Math.min(totalLimit, Math.max(Number(raffleConfig.soldCount || 0), paidNonBonusNumbers));
+    const countBonus = bonusPaidNumbers;
     const countReserved = numbers.filter(
       (n) =>
         n.status === "reserved" ||
+        n.status === "bonus_reserved" ||
         n.status === "pending_payment" ||
         selectedNumbersSet.has(n.id),
     ).length;
+
+    const countOccupied = Math.min(totalLimit, countPaid + countBonus + countReserved);
 
     return {
       arrecadado: paid,
       aEntrar: pending,
       countPaid,
-      countReserved,
+      countBonus,
+      countOccupied,
       countAvailable: Math.max(
         0,
-        raffleConfig.totalNumbers - countPaid - countReserved,
+        totalLimit - countOccupied,
       ),
     };
   }, [orders, numbers, selectedNumbersSet, raffleConfig.totalNumbers, raffleConfig.soldCount]);
 
   const progressPercentage = useMemo(() => {
     const total = Number(raffleConfig.totalNumbers || 100);
-    const paidFromDbNumbers = numbers.filter(
-      (n) => n.status === "paid" || n.status === "bonus_paid",
-    ).length;
-    const occupied = Math.max(Number(raffleConfig.soldCount || 0), paidFromDbNumbers);
+    const paidNonBonus = numbers.filter((n) => (n.status === "paid" || n.status === "bonus_paid") && !n.isBonus).length;
+    const bonusCount = numbers.filter((n) => (n.status === "paid" || n.status === "bonus_paid") && n.isBonus).length;
+    const reservedCount = numbers.filter((n) => n.status === "reserved" || n.status === "bonus_reserved" || n.status === "pending_payment" || selectedNumbersSet.has(n.id)).length;
+    const occupied = Math.min(total, Math.max(Number(raffleConfig.soldCount || 0), paidNonBonus) + bonusCount + reservedCount);
 
     if (raffleConfig.status === "encerrada" || Boolean(raffleConfig.winnerNumber)) {
       return 100;
     }
 
     return total > 0 ? Math.min(100, (occupied / total) * 100) : 0;
-  }, [numbers, raffleConfig.totalNumbers, raffleConfig.soldCount, raffleConfig.status, raffleConfig.winnerNumber]);
+  }, [numbers, raffleConfig.totalNumbers, raffleConfig.soldCount, raffleConfig.status, raffleConfig.winnerNumber, selectedNumbersSet]);
 
   const characterProgressBar = useCallback((percentage: number) => {
     const totalBlocks = 10;

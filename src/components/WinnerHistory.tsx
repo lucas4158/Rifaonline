@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { collection, onSnapshot, query, where, getDocs } from "firebase/firestore";
+import { collection, onSnapshot, query, where, getDocs, orderBy, limit } from "firebase/firestore";
 import { db } from "../services/firebase";
 import { 
   ChevronLeft, 
@@ -27,8 +27,13 @@ export default function WinnerHistory({ setCurrentPath }: WinnerHistoryProps) {
   const [emblaRef, emblaApi] = useEmblaCarousel({ loop: true }, [AutoScroll({ delay: 5000 })]);
 
   useEffect(() => {
-    const unsub = onSnapshot(
+    const q = query(
       collection(db, "winners_history"),
+      orderBy("createdAt", "desc"),
+      limit(20)
+    );
+    const unsub = onSnapshot(
+      q,
       (snap) => {
         const historyList: any[] = [];
         snap.forEach((docSnap) => {

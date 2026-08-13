@@ -67,25 +67,7 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
     setPhone(v);
   };
 
-  // Fetch raffles to map ID -> Title
-  useEffect(() => {
-    const fetchRaffleTitles = async () => {
-      try {
-        const snap = await getDocs(collection(db, "raffles"));
-        const mapping: Record<string, string> = {};
-        snap.forEach((docSnap) => {
-          const data = docSnap.data();
-          if (data && data.title) {
-            mapping[docSnap.id] = data.title;
-          }
-        });
-        setRaffleMap(mapping);
-      } catch (err) {
-        console.error("Error loading raffles map:", err);
-      }
-    };
-    fetchRaffleTitles();
-  }, []);
+
 
   // Fetch orders for a phone number using secure API route
   const fetchOrdersForPhone = async (phoneDigits: string) => {

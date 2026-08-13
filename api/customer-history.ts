@@ -51,33 +51,36 @@ export default async function handler(req: any, res: any) {
   try {
     const orderMap = new Map<string, any>();
     const raffleTitleMap = new Map<string, string>();
+    const adminDb = getAdminFirestore();
 
-    // 1. Load raffle titles cache from Firestore
-    try {
-      const adminDb = getAdminFirestore();
-      if (adminDb) {
-        const rafflesSnap = await adminDb.collection("raffles").get();
-        rafflesSnap.forEach((docSnap) => {
-          const data = docSnap.data();
-          if (data && data.title) {
-            raffleTitleMap.set(docSnap.id, data.title);
+    // Helper to get raffle title lazily without full collection scan
+    async function getRaffleTitle(raffleId: string): Promise<string> {
+      if (!raffleId) return "Rifa";
+      if (raffleTitleMap.has(raffleId)) return raffleTitleMap.get(raffleId)!;
+      try {
+        if (adminDb) {
+          const rDoc = await adminDb.collection("raffles").doc(raffleId).get();
+          if (rDoc.exists) {
+            const title = rDoc.data()?.title || "Rifa";
+            raffleTitleMap.set(raffleId, title);
+            return title;
           }
-        });
+        }
+      } catch (e) {
+        // ignore
       }
-    } catch (rErr) {
-      console.warn("⚠️ [Customer History] Could not load raffle titles:", rErr);
+      return "Rifa";
     }
 
     // 2. Fetch Operational Orders from Firestore (using Admin SDK)
     try {
-      const adminDb = getAdminFirestore();
       if (adminDb) {
         const fsOrdersSnap = await adminDb
           .collection("orders")
           .where("phone", "==", canonicalPhone)
           .get();
 
-        fsOrdersSnap.forEach((docSnap) => {
+        for (const docSnap of fsOrdersSnap.docs) {
           const data = docSnap.data();
           const orderId = docSnap.id;
           const status = String(data.status || "").toLowerCase();
@@ -93,7 +96,7 @@ export default async function handler(req: any, res: any) {
           }
 
           const raffleId = data.raffleId || "current";
-          const raffleTitle = raffleTitleMap.get(raffleId) || data.raffleTitle || "Rifa";
+          const raffleTitle = data.raffleTitle || await getRaffleTitle(raffleId);
 
           orderMap.set(orderId, {
             id: orderId,
@@ -108,7 +111,7 @@ export default async function handler(req: any, res: any) {
             createdAt: data.createdAt || new Date().toISOString(),
             source: "firestore",
           });
-        });
+        }
       }
     } catch (fsErr) {
       console.warn("⚠️ [Customer History] Firestore query warning:", fsErr);

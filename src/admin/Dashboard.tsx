@@ -626,8 +626,15 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
 
   // Compute stats for all raffles (used in "Minhas Rifas" cards and Global Dashboard)
   const rafflesWithStats = useMemo(() => {
+    // Deduplicate orders by ID
+    const uniqueOrdersMap = new Map<string, any>();
+    orders.forEach((o) => {
+      if (o && o.id) uniqueOrdersMap.set(o.id, o);
+    });
+    const uniqueOrdersList = Array.from(uniqueOrdersMap.values());
+
     return raffles.map((r) => {
-      const rOrders = orders.filter((o) => {
+      const rOrders = uniqueOrdersList.filter((o) => {
         const oRaffleId = o.raffleId || "current";
         return oRaffleId === r.id || oRaffleId === "current" || !o.raffleId || raffles.length <= 1;
       });
@@ -655,23 +662,36 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         return acc + ((numsList.length || 1) * (Number(r.price) || 10));
       }, 0);
 
-      let soldFromOrders = 0;
+      let paidCountFromOrders = 0;
+      let bonusCountFromOrders = 0;
       paidOrders.forEach((o) => {
-        const numsList = Array.isArray(o.nums)
-          ? o.nums
-          : (Array.isArray(o.purchasedNums) ? o.purchasedNums : (Array.isArray(o.numbers) ? o.numbers : []));
-        soldFromOrders += numsList.length;
+        const bonusList = Array.isArray(o.bonusNums) ? o.bonusNums : [];
+        const purchasedList = Array.isArray(o.purchasedNums)
+          ? o.purchasedNums
+          : (Array.isArray(o.nums) ? o.nums.filter((n: string) => !bonusList.includes(n)) : []);
+        paidCountFromOrders += purchasedList.length;
+        bonusCountFromOrders += bonusList.length;
       });
 
+      const totalNumLimit = Number(r.totalNumbers || 100);
       const soldCountFromDoc = Number(r.soldCount || 0);
       const pricePerCota = Number(r.price) || 0;
-      const totalSoldNumbers = Math.max(soldCountFromDoc, soldFromOrders);
-      const totalRevenue = Math.max(revenueFromOrders, totalSoldNumbers * pricePerCota);
+      
+      const totalPaidNumbers = Math.min(totalNumLimit, Math.max(soldCountFromDoc, paidCountFromOrders));
+      const totalBonusNumbers = bonusCountFromOrders;
+      const totalOccupiedNumbers = Math.min(totalNumLimit, totalPaidNumbers + totalBonusNumbers);
+      const totalRevenue = revenueFromOrders > 0 ? revenueFromOrders : (totalPaidNumbers * pricePerCota);
+      const percentage = totalNumLimit > 0 ? Math.min(100, (totalOccupiedNumbers / totalNumLimit) * 100) : 0;
+      const availableNumbers = Math.max(0, totalNumLimit - totalOccupiedNumbers);
 
       return {
         ...r,
         totalRevenue,
-        totalSoldNumbers,
+        totalSoldNumbers: totalPaidNumbers,
+        totalBonusNumbers,
+        totalOccupiedNumbers,
+        percentage,
+        availableNumbers,
       };
     });
   }, [raffles, orders]);
