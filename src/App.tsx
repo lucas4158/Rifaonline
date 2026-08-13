@@ -57,7 +57,7 @@ import { signInAnonymously } from "firebase/auth";
 import { db, auth } from "./services/firebase";
 import { OperationType, Status, NumberItem, RaffleConfig } from "./types";
 import { localStorage } from "./utils/storage";
-import { promiseWithTimeout, compressImage, handleFirestoreError, safeCopyToClipboard, updateAppMetadata } from "./utils/helpers";
+import { promiseWithTimeout, compressImage, handleFirestoreError, safeCopyToClipboard, updateAppMetadata, calculateRaffleStats } from "./utils/helpers";
 import { performRobustImageUpload } from "./services/uploadService";
 import { adminService } from "./services/adminService";
 import { pixService } from "./services/pixService";
@@ -1060,16 +1060,15 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
           return null;
         });
 
-        // Summary stats for each active raffle card
+        // Summary stats for each active raffle card (Unified via calculateRaffleStats)
         const statsMap: Record<string, { soldCount: number; percentSold: number; remainingCount: number }> = {};
         list.forEach((rf) => {
-          const total = Number(rf.totalNumbers || 100);
-          const paidCount = Math.min(total, Number(rf.soldCount || 0));
-
-          const isEncerradaOrWinner = rf.status === "encerrada" || Boolean(rf.winnerNumber);
-          const percent = isEncerradaOrWinner ? 100 : Math.min(100, total > 0 ? (paidCount / total) * 100 : 0);
-          const remaining = Math.max(0, total - paidCount);
-          statsMap[rf.id] = { soldCount: paidCount, percentSold: percent, remainingCount: remaining };
+          const stats = calculateRaffleStats(rf, [], orders, new Set());
+          statsMap[rf.id] = {
+            soldCount: stats.paidNumbers,
+            percentSold: stats.percentage,
+            remainingCount: stats.availableNumbers,
+          };
         });
         setActiveRafflesStats(statsMap);
       },
@@ -2324,83 +2323,21 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
   }, [selectedNumbers, dbNumbers, locks, sessionId, now, slowNow, mpPaymentInfo, userData.phone]);
 
   const stats = useMemo(() => {
-    const paid = orders
-      .filter((o) => {
-        const s = String(o.status || "").toLowerCase().trim();
-        return (
-          s === "pago" ||
-          s === "paid" ||
-          s === "approved" ||
-          s === "aprovado" ||
-          s === "confirmed" ||
-          s === "paga" ||
-          s === "pagas" ||
-          s === "concluido" ||
-          s === "concluído"
-        );
-      })
-      .reduce((acc, curr) => {
-        const raw = Number(curr.val || curr.amount || curr.total || curr.totalValue || 0);
-        if (raw > 0) return acc + raw;
-        const numCount = (Array.isArray(curr.nums) ? curr.nums : (Array.isArray(curr.purchasedNums) ? curr.purchasedNums : [])).length || 1;
-        return acc + (numCount * (Number(raffleConfig.price) || 10));
-      }, 0);
-    const pending = orders
-      .filter((o) => {
-        const s = String(o.status || "").toLowerCase().trim();
-        return s === "aguardando" || s === "pending_payment" || s === "reserved" || s === "pendente";
-      })
-      .reduce((acc, curr) => {
-        const raw = Number(curr.val || curr.amount || curr.total || curr.totalValue || 0);
-        if (raw > 0) return acc + raw;
-        const numCount = (Array.isArray(curr.nums) ? curr.nums : (Array.isArray(curr.purchasedNums) ? curr.purchasedNums : [])).length || 1;
-        return acc + (numCount * (Number(raffleConfig.price) || 10));
-      }, 0);
-    const paidNonBonusNumbers = numbers.filter(
-      (n) => (n.status === "paid" || n.status === "bonus_paid") && !n.isBonus
-    ).length;
-    const bonusPaidNumbers = numbers.filter(
-      (n) => (n.status === "paid" || n.status === "bonus_paid") && n.isBonus
-    ).length;
-    const totalLimit = Number(raffleConfig.totalNumbers || 100);
-    const countPaid = Math.min(totalLimit, Math.max(Number(raffleConfig.soldCount || 0), paidNonBonusNumbers));
-    const countBonus = bonusPaidNumbers;
-    const countReserved = numbers.filter(
-      (n) =>
-        n.status === "reserved" ||
-        n.status === "bonus_reserved" ||
-        n.status === "pending_payment" ||
-        selectedNumbersSet.has(n.id),
-    ).length;
-
-    const countOccupied = Math.min(totalLimit, countPaid + countBonus + countReserved);
-
+    const res = calculateRaffleStats(raffleConfig, numbers, orders, selectedNumbersSet);
     return {
-      arrecadado: paid,
-      aEntrar: pending,
-      countPaid,
-      countBonus,
-      countOccupied,
-      countAvailable: Math.max(
-        0,
-        totalLimit - countOccupied,
-      ),
+      arrecadado: res.arrecadado,
+      aEntrar: res.aEntrar,
+      countPaid: res.paidNumbers,
+      countBonus: res.bonusNumbers,
+      countOccupied: res.occupiedNumbers,
+      countAvailable: res.availableNumbers,
     };
-  }, [orders, numbers, selectedNumbersSet, raffleConfig.totalNumbers, raffleConfig.soldCount]);
+  }, [orders, numbers, selectedNumbersSet, raffleConfig]);
 
   const progressPercentage = useMemo(() => {
-    const total = Number(raffleConfig.totalNumbers || 100);
-    const paidNonBonus = numbers.filter((n) => (n.status === "paid" || n.status === "bonus_paid") && !n.isBonus).length;
-    const bonusCount = numbers.filter((n) => (n.status === "paid" || n.status === "bonus_paid") && n.isBonus).length;
-    const reservedCount = numbers.filter((n) => n.status === "reserved" || n.status === "bonus_reserved" || n.status === "pending_payment" || selectedNumbersSet.has(n.id)).length;
-    const occupied = Math.min(total, Math.max(Number(raffleConfig.soldCount || 0), paidNonBonus) + bonusCount + reservedCount);
-
-    if (raffleConfig.status === "encerrada" || Boolean(raffleConfig.winnerNumber)) {
-      return 100;
-    }
-
-    return total > 0 ? Math.min(100, (occupied / total) * 100) : 0;
-  }, [numbers, raffleConfig.totalNumbers, raffleConfig.soldCount, raffleConfig.status, raffleConfig.winnerNumber, selectedNumbersSet]);
+    const res = calculateRaffleStats(raffleConfig, numbers, orders, selectedNumbersSet);
+    return res.percentage;
+  }, [orders, numbers, selectedNumbersSet, raffleConfig]);
 
   const characterProgressBar = useCallback((percentage: number) => {
     const totalBlocks = 10;

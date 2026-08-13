@@ -175,3 +175,133 @@ export const updateAppMetadata = (pathname: string = typeof window !== "undefine
   });
 };
 
+export interface RaffleStatsResult {
+  paidNumbers: number;
+  bonusNumbers: number;
+  activeReservedNumbers: number;
+  occupiedNumbers: number;
+  availableNumbers: number;
+  percentage: number;
+  arrecadado: number;
+  aEntrar: number;
+}
+
+export function calculateRaffleStats(
+  raffle: {
+    id?: string;
+    totalNumbers?: number;
+    soldCount?: number;
+    price?: number;
+    status?: string;
+    winnerNumber?: string;
+  },
+  numbers: Array<{ id: string; status?: string; isBonus?: boolean }> = [],
+  orders: Array<any> = [],
+  selectedNumbersSet: Set<string> = new Set()
+): RaffleStatsResult {
+  const totalNumbers = Number(raffle.totalNumbers || 100);
+  const price = Number(raffle.price || 10);
+  const raffleId = raffle.id;
+
+  const raffleOrders = raffleId
+    ? orders.filter((o) => {
+        const oRaffleId = String(o.raffleId || o.rifaId || "current");
+        return oRaffleId === String(raffleId) || oRaffleId === "current" || !o.raffleId;
+      })
+    : orders;
+
+  const paidOrders = raffleOrders.filter((o) => {
+    const s = String(o.status || "").toLowerCase().trim();
+    return (
+      s === "pago" ||
+      s === "paid" ||
+      s === "approved" ||
+      s === "aprovado" ||
+      s === "confirmed" ||
+      s === "paga" ||
+      s === "pagas" ||
+      s === "concluido" ||
+      s === "concluído"
+    );
+  });
+
+  const arrecadado = paidOrders.reduce((acc, curr) => {
+    const raw = Number(curr.val || curr.amount || curr.total || curr.totalValue || 0);
+    if (raw > 0) return acc + raw;
+    const numCount = (Array.isArray(curr.nums) ? curr.nums : (Array.isArray(curr.purchasedNums) ? curr.purchasedNums : (Array.isArray(curr.numbers) ? curr.numbers : []))).length || 1;
+    return acc + (numCount * price);
+  }, 0);
+
+  const pendingOrders = raffleOrders.filter((o) => {
+    const s = String(o.status || "").toLowerCase().trim();
+    return s === "aguardando" || s === "pending_payment" || s === "reserved" || s === "pendente";
+  });
+
+  const aEntrar = pendingOrders.reduce((acc, curr) => {
+    const raw = Number(curr.val || curr.amount || curr.total || curr.totalValue || 0);
+    if (raw > 0) return acc + raw;
+    const numCount = (Array.isArray(curr.nums) ? curr.nums : (Array.isArray(curr.purchasedNums) ? curr.purchasedNums : (Array.isArray(curr.numbers) ? curr.numbers : []))).length || 1;
+    return acc + (numCount * price);
+  }, 0);
+
+  const paidFromNumbers = numbers.filter(
+    (n) => (n.status === "paid" || n.status === "bonus_paid") && !n.isBonus
+  ).length;
+  const paidFromOrders = paidOrders.reduce((acc, o) => {
+    const bonusList = Array.isArray(o.bonusNums) ? o.bonusNums : [];
+    const purchasedList = Array.isArray(o.purchasedNums)
+      ? o.purchasedNums
+      : (Array.isArray(o.nums) ? o.nums.filter((n: string) => !bonusList.includes(n)) : (Array.isArray(o.numbers) ? o.numbers.filter((n: string) => !bonusList.includes(n)) : []));
+    return acc + purchasedList.length;
+  }, 0);
+
+  const soldCountDoc = Number(raffle.soldCount || 0);
+  const paidNumbers = Math.min(totalNumbers, Math.max(soldCountDoc, paidFromNumbers, paidFromOrders));
+
+  const bonusFromNumbers = numbers.filter(
+    (n) => (n.status === "paid" || n.status === "bonus_paid") && n.isBonus
+  ).length;
+  const bonusFromOrders = paidOrders.reduce((acc, o) => {
+    const bonusList = Array.isArray(o.bonusNums) ? o.bonusNums : [];
+    return acc + bonusList.length;
+  }, 0);
+  const bonusNumbers = Math.max(bonusFromNumbers, bonusFromOrders);
+
+  const reservedFromNumbers = numbers.filter(
+    (n) =>
+      n.status === "reserved" ||
+      n.status === "bonus_reserved" ||
+      n.status === "pending_payment" ||
+      selectedNumbersSet.has(n.id)
+  ).length;
+  const reservedFromOrders = pendingOrders.reduce((acc, o) => {
+    const numList = Array.isArray(o.nums)
+      ? o.nums
+      : (Array.isArray(o.purchasedNums) ? o.purchasedNums : (Array.isArray(o.numbers) ? o.numbers : []));
+    return acc + numList.length;
+  }, 0);
+  const activeReservedNumbers = Math.max(reservedFromNumbers, reservedFromOrders, selectedNumbersSet.size);
+
+  const occupiedNumbers = Math.min(totalNumbers, paidNumbers + bonusNumbers + activeReservedNumbers);
+  const availableNumbers = Math.max(0, totalNumbers - occupiedNumbers);
+
+  let percentage = 0;
+  if (raffle.status === "encerrada" || Boolean(raffle.winnerNumber)) {
+    percentage = 100;
+  } else {
+    percentage = totalNumbers > 0 ? Math.min(100, (occupiedNumbers / totalNumbers) * 100) : 0;
+  }
+
+  return {
+    paidNumbers,
+    bonusNumbers,
+    activeReservedNumbers,
+    occupiedNumbers,
+    availableNumbers,
+    percentage,
+    arrecadado,
+    aEntrar,
+  };
+}
+
+
