@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { getAdminFirestore } from "./_firebaseAdmin.js";
+import { serverSupabaseSync } from "./_supabaseSync.js";
 import { MercadoPagoConfig, Payment } from "mercadopago";
 
 let mpPayment: any = null;
@@ -45,6 +46,7 @@ export default async function handler(req: any, res: any) {
     if (orderId) {
       let cancelError: string | null = null;
       let transactionFailed = false;
+      let orderNums: string[] = [];
 
       try {
         await db.runTransaction(async (transaction: any) => {
@@ -71,7 +73,7 @@ export default async function handler(req: any, res: any) {
             throw new Error("ORDER_ALREADY_PAID");
           }
 
-          const orderNums: string[] = orderData?.nums || [];
+          orderNums = orderData?.nums || [];
           const orderRaffleId = orderData?.raffleId || targetRaffleId;
 
           // READ 2: ALL number and lock snapshots BEFORE ANY WRITES
@@ -118,6 +120,9 @@ export default async function handler(req: any, res: any) {
 
         console.log(`[ORDER_CANCELLED] orderId: ${orderId}, sessionId: ${sessionId || "N/A"}`);
         console.log(`[LOCK_RELEASED] Locks released for order ${orderId}`);
+        if (orderNums.length > 0) {
+          serverSupabaseSync.syncDeleteNumbers(targetRaffleId, orderNums).catch(() => {});
+        }
       } catch (txErr: any) {
         transactionFailed = true;
         if (cancelError) {

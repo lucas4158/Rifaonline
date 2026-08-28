@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { getAdminFirestore } from "./_firebaseAdmin.js";
+import { serverSupabaseSync } from "./_supabaseSync.js";
 import { MercadoPagoConfig, Payment } from "mercadopago";
+import { pagbankService } from "../src/services/pagbankService.js";
 
 // Initialize Mercado Pago
 let mpPayment: any = null;
@@ -46,6 +48,7 @@ export default async function handler(req: any, res: any) {
 
   const { name, phone, nums, totalAmount, price, sessionId, raffleId } = req.body;
   const targetRaffleId = raffleId || "current";
+  let paymentGateway = "mercadopago";
   const rawExistingBonus = req.body.existingBonusNums;
   const existingBonusNums: string[] = Array.isArray(rawExistingBonus)
     ? rawExistingBonus.map((n: any) => String(n))
@@ -104,12 +107,13 @@ export default async function handler(req: any, res: any) {
     }
 
     paymentMode = configData.paymentMode || "automatic";
+    paymentGateway = String(configData.paymentGateway || configData.gateway || (paymentMode === "manual" ? "manual" : "mercadopago")).toLowerCase();
     manualPixKey = configData.manualPixKey || configData.pixKey || "";
     manualPixReceiver = configData.manualPixReceiver || configData.pixReceiver || "";
     manualInstructions = configData.manualInstructions || "Realize o pagamento Pix utilizando a chave acima e aguarde a conferência do administrador.";
 
     // 20 minutes for manual payment mode, 10 minutes for automatic mode
-    expiresAt = currentNow + (paymentMode === "manual" ? 20 * 60 * 1000 : 10 * 60 * 1000);
+    expiresAt = currentNow + (paymentMode === "manual" || paymentGateway === "manual" ? 20 * 60 * 1000 : 10 * 60 * 1000);
 
     // SERVER-SIDE RECALCULATION OF TRANSACTION_AMOUNT (Fixes Error 4037)
     // Price per quota from config, fallback to request body price
@@ -317,14 +321,27 @@ export default async function handler(req: any, res: any) {
         conflicts: transactionResult.conflicts,
       });
     }
+
+    if (allNums && allNums.length > 0) {
+      serverSupabaseSync.syncNumberStates(
+        targetRaffleId,
+        allNums.map((num: string) => ({
+          number: num,
+          status: "reserved",
+          order_id: orderId,
+          is_bonus: bonusNums.includes(num),
+          reserved_until: expiresAt,
+        }))
+      ).catch(() => {});
+    }
   } catch (dbErr: any) {
     console.error("❌ [Firestore Serverless] Error checking/locking numbers atomically:", dbErr);
     return res.status(500).json({ error: "Erro ao processar as cotas em lote no banco de dados. Por favor, tente novamente." });
   }
 
   // Check if manual payment mode is enabled for this raffle
-  if (paymentMode === "manual") {
-    console.log(`📋 [Manual Payment] Raffle ${targetRaffleId} is in manual mode. Skipping Mercado Pago call.`);
+  if (paymentMode === "manual" || paymentGateway === "manual") {
+    console.log(`📋 [Manual Payment] Raffle ${targetRaffleId} is in manual mode. Skipping automated gateway call.`);
     paymentId = `MANUAL_${orderId}`;
     qrCode = manualPixKey;
     qrCodeBase64 = "";
@@ -400,6 +417,133 @@ export default async function handler(req: any, res: any) {
     } catch (saveErr: any) {
       console.error("❌ [Manual Payment] Error saving manual order:", saveErr);
       return res.status(500).json({ error: "Erro ao registrar o pedido manual no banco de dados." });
+    }
+  }
+
+  // Check if PagBank is selected
+  if (paymentGateway === "pagbank") {
+    const hasPagBank = !!process.env.PAGBANK_ACCESS_TOKEN;
+    if (!hasPagBank) {
+      console.error("❌ [PagBank Error] PAGBANK_ACCESS_TOKEN is missing.");
+      try {
+        const cleanupBatch = getAdminFirestore().batch();
+        allNums.forEach((num: string) => {
+          cleanupBatch.delete(getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num));
+        });
+        await cleanupBatch.commit();
+      } catch (cleanErr) {}
+      return res.status(502).json({
+        error: "O sistema de pagamento PagBank Pix não está configurado (PAGBANK_ACCESS_TOKEN ausente).",
+      });
+    }
+
+    try {
+      const requestHost = req.headers.host || "";
+      const dynamicProtocol = req.headers["x-forwarded-proto"] || "https";
+      const webhookUrl = `${dynamicProtocol}://${requestHost}/api/webhook`;
+      const idempotencyKey = req.body.idempotencyKey || req.body.orderId || `pagbank_${targetRaffleId}_${orderId}`;
+
+      const pbResponse = await pagbankService.createPixOrder({
+        orderId,
+        raffleTitle,
+        amount: finalAmount,
+        customerName: name,
+        customerEmail: `cliente_${orderId.toLowerCase()}@rifamaster.com`,
+        customerPhone: phone,
+        expiresAt,
+        notificationUrl: webhookUrl.includes("localhost") || webhookUrl.includes("ais-dev-") ? undefined : webhookUrl,
+        idempotencyKey,
+      });
+
+      paymentId = pbResponse.id;
+      const qrCodeObj = pbResponse.qr_codes?.[0];
+      qrCode = qrCodeObj?.text || qrCodeObj?.links?.[0]?.href || "";
+      qrCodeBase64 = "";
+
+      if (!qrCode) {
+        throw new Error("PagBank não retornou o código Pix (qr_code).");
+      }
+
+      console.log(`✅ [PagBank] Order created successfully! ID: ${paymentId}`);
+
+      const batch = getAdminFirestore().batch();
+      const orderRef = getAdminFirestore().collection("orders").doc(orderId);
+      const newOrder = {
+        id: orderId,
+        raffleId: targetRaffleId,
+        name,
+        phone: dNormPhone,
+        nums: allNums,
+        purchasedNums: nums,
+        bonusNums: bonusNums,
+        val: finalAmount,
+        status: "pending_payment",
+        paymentGateway: "pagbank",
+        createdAt: new Date().toISOString(),
+        expiresAt: expiresAt,
+        paymentId,
+        paymentType: "PagBankPix",
+        qrCode,
+        qrCodeBase64,
+        isSimulated: false,
+      };
+      batch.set(orderRef, newOrder);
+
+      const reservationRef = getAdminFirestore().collection("reservations").doc(orderId);
+      const newReservation = {
+        id: orderId,
+        raffleId: targetRaffleId,
+        name,
+        phone: dNormPhone,
+        nums: allNums,
+        purchasedNums: nums,
+        bonusNums: bonusNums,
+        val: finalAmount,
+        status: "pending_payment",
+        createdAt: new Date().toISOString(),
+        expiresAt: expiresAt,
+      };
+      batch.set(reservationRef, newReservation);
+
+      const paymentRef = getAdminFirestore().collection("payments").doc(paymentId);
+      const newPayment = {
+        id: paymentId,
+        orderId: orderId,
+        raffleId: targetRaffleId,
+        status: "pending_payment",
+        amount: finalAmount,
+        gateway: "pagbank",
+        createdAt: new Date().toISOString(),
+        isSimulated: false,
+      };
+      batch.set(paymentRef, newPayment);
+
+      await batch.commit();
+
+      return res.status(200).json({
+        success: true,
+        orderId,
+        paymentId,
+        qrCode,
+        qrCodeBase64,
+        isSimulated: false,
+        expiresAt,
+        bonusNums,
+        nums: allNums,
+        val: finalAmount,
+      });
+    } catch (pbError: any) {
+      console.error("❌ [PagBank Error]:", pbError?.message || pbError);
+      try {
+        const cleanupBatch = getAdminFirestore().batch();
+        allNums.forEach((num: string) => {
+          cleanupBatch.delete(getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num));
+        });
+        await cleanupBatch.commit();
+      } catch (cleanErr) {}
+      return res.status(502).json({
+        error: `Erro ao gerar Pix no PagBank: ${pbError?.message || "Erro desconhecido"}`,
+      });
     }
   }
 

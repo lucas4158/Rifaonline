@@ -76,6 +76,7 @@ export interface RaffleConfig {
   whatsappGroupUrl?: string;
   purchaseMode?: "manual" | "aleatorio";
   paymentMode?: "automatic" | "manual";
+  paymentGateway?: "pagbank" | "mercadopago" | "manual";
   drawMode?: "automatico" | "federal";
   federalConcurso?: string;
   federalData?: string;

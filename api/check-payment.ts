@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { getAdminFirestore } from "./_firebaseAdmin.js";
 import { MercadoPagoConfig, Payment } from "mercadopago";
+import { pagbankService } from "../src/services/pagbankService.js";
 import { allocatePromotionalBonus } from "./_promoHelper.js";
 import { serverSupabaseSync } from "./_supabaseSync.js";
 import admin from "firebase-admin";
@@ -96,41 +97,91 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // Check simulated payment
+    // Check payment status on Gateway (PagBank, Mercado Pago or Simulation)
     const effectivePaymentId = paymentId || orderData.paymentId;
-    let isApprovedOnMP = false;
-    let mpStatus = "pending";
+    const isPagBank = orderData?.paymentGateway === "pagbank" || orderData?.paymentType === "PagBankPix" || String(effectivePaymentId).startsWith("ORDE_");
+    let isApprovedOnGateway = false;
+    let gatewayStatus = "pending";
+    let pbChargeId = "";
+    let pbPaidAmount = 0;
 
-    if (String(effectivePaymentId).startsWith("SIM_")) {
+    if (isPagBank) {
+      try {
+        const pbOrder = await pagbankService.getOrder(effectivePaymentId);
+        const charge = pbOrder?.charges?.[0] || {};
+        gatewayStatus = String(charge?.status || "pending").toLowerCase();
+        pbChargeId = charge?.id || "";
+        pbPaidAmount = (charge?.amount?.value || 0) / 100;
+
+        if (gatewayStatus === "paid" || gatewayStatus === "approved" || gatewayStatus === "authorized") {
+          const orderValInCents = Math.round(Number(orderData?.val || 0) * 100);
+          const pbPaidAmountCents = charge?.amount?.value || Math.round(pbPaidAmount * 100);
+          if (pbPaidAmountCents === orderValInCents) {
+            // Check Expiration (Correction 1)
+            const currentNow = Date.now();
+            const expiresAt = Number(orderData?.expiresAt || 0);
+            if (currentNow > expiresAt) {
+              console.warn(`⚠️ [PAYMENT_LATE] CheckPayment: Order ${targetOrderId} paid after expiration. Marking as payment_late.`);
+              await db.collection("orders").doc(targetOrderId).update({
+                status: "payment_late",
+                latePaymentAt: new Date().toISOString(),
+                latePaymentAmount: pbPaidAmount,
+                chargeId: pbChargeId,
+              });
+              await db.collection("adminLogs").add({
+                type: "PAYMENT_LATE",
+                orderId: targetOrderId,
+                raffleId: orderData.raffleId,
+                amount: pbPaidAmount,
+                message: `Pagamento recebido após expiração verificado via check-payment para o pedido ${targetOrderId}`,
+                createdAt: new Date().toISOString(),
+              });
+              return res.status(200).json({
+                approved: false,
+                status: "expired",
+                orderStatus: "payment_late",
+                orderId: targetOrderId,
+                error: "Pagamento recebido após o vencimento da reserva. Pedido marcado como pagamento tardio.",
+              });
+            }
+            isApprovedOnGateway = true;
+          } else {
+            console.error(`❌ [CheckPayment] PagBank amount mismatch: paid ${pbPaidAmountCents} cents, expected ${orderValInCents} cents`);
+          }
+        }
+      } catch (pbErr) {
+        console.error(`❌ [CheckPayment] Error fetching PagBank order ${effectivePaymentId}:`, pbErr);
+      }
+    } else if (String(effectivePaymentId).startsWith("SIM_")) {
       const isProduction = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
       if (!isProduction) {
-        isApprovedOnMP = true;
-        mpStatus = "approved";
+        isApprovedOnGateway = true;
+        gatewayStatus = "approved";
       }
     } else if (effectivePaymentId && mpPayment) {
       try {
         const mpInfo = await mpPayment.get({ id: Number(effectivePaymentId) });
-        mpStatus = mpInfo?.status || "pending";
-        if (mpStatus === "approved") {
-          isApprovedOnMP = true;
+        gatewayStatus = mpInfo?.status || "pending";
+        if (gatewayStatus === "approved") {
+          isApprovedOnGateway = true;
         }
       } catch (mpErr) {
         console.error(`❌ [CheckPayment] Error fetching payment ${effectivePaymentId} from MP API:`, mpErr);
       }
     }
 
-    console.log(`[PAYMENT_STATUS_CHECKED] orderId: ${targetOrderId}, paymentId: ${effectivePaymentId}, mpStatus: ${mpStatus}, isApprovedOnMP: ${isApprovedOnMP}`);
+    console.log(`[PAYMENT_STATUS_CHECKED] orderId: ${targetOrderId}, paymentId: ${effectivePaymentId}, gatewayStatus: ${gatewayStatus}, isApprovedOnGateway: ${isApprovedOnGateway}`);
 
-    if (!isApprovedOnMP) {
+    if (!isApprovedOnGateway) {
       return res.status(200).json({
         approved: false,
-        status: mpStatus,
+        status: gatewayStatus,
         orderStatus: orderData.status,
         orderId: targetOrderId,
       });
     }
 
-    // If approved on MP, confirm payment atomically in Firestore
+    // If approved on gateway, confirm payment atomically in Firestore
     let transactionSuccess = false;
     let needsPromoAllocation = false;
     let freshOrderSnapshot: any = orderData;
@@ -141,6 +192,19 @@ export default async function handler(req: any, res: any) {
         const reservationRef = db.collection("reservations").doc(targetOrderId);
         const paymentRef = db.collection("payments").doc(String(effectivePaymentId));
 
+        // Idempotency check (Correction 3)
+        const idempotencyKey = isPagBank ? `pagbank:${targetOrderId}:${pbChargeId}:${gatewayStatus}` : `mp:${targetOrderId}:${effectivePaymentId}:${gatewayStatus}`;
+        const eventRef = db.collection("processedWebhooks").doc(idempotencyKey);
+        const eventSnap = await transaction.get(eventRef);
+        if (eventSnap.exists) {
+          return;
+        }
+        transaction.set(eventRef, {
+          key: idempotencyKey,
+          orderId: targetOrderId,
+          processedAt: new Date().toISOString(),
+        });
+
         const orderSnap = await transaction.get(orderRef);
         if (!orderSnap.exists) {
           throw new Error("ORDER_NOT_FOUND");
@@ -149,8 +213,8 @@ export default async function handler(req: any, res: any) {
         freshOrderSnapshot = currentOrder;
 
         const statusLower = (currentOrder.status || "").toLowerCase();
-        if (statusLower === "pago" || statusLower === "paid") {
-          throw new Error("ALREADY_PROCESSED");
+        if (statusLower === "pago" || statusLower === "paid" || statusLower === "approved") {
+          return;
         }
 
         if (statusLower === "cancelado" || statusLower === "canceled" || statusLower === "expired") {
@@ -270,6 +334,8 @@ export default async function handler(req: any, res: any) {
         amount: Number(freshOrderSnapshot.val || 0),
         paymentId: String(effectivePaymentId),
         numsCount: (freshOrderSnapshot.nums || []).length,
+        numbers: freshOrderSnapshot.nums || [],
+        bonusNums: Array.isArray(freshOrderSnapshot.bonusNums) ? freshOrderSnapshot.bonusNums : [],
       }).catch(() => {});
     }
 

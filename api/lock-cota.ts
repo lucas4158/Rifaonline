@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { getAdminFirestore } from "./_firebaseAdmin.js";
+import { serverSupabaseSync } from "./_supabaseSync.js";
 
 export default async function handler(req: any, res: any) {
   const origin = req.headers.origin;
@@ -136,6 +137,16 @@ export default async function handler(req: any, res: any) {
       }
 
       console.log(`[LOCK_CREATED] Session ${sessionId} locked numbers: ${successIds.join(", ")}`);
+      if (successIds.length > 0) {
+        serverSupabaseSync.syncNumberStates(
+          targetRaffleId,
+          successIds.map((num) => ({
+            number: num,
+            status: "reserved",
+            reserved_until: expiresAt,
+          }))
+        ).catch(() => {});
+      }
       return res.status(200).json({
         success: true,
         lockedNumbers: successIds,
@@ -194,6 +205,9 @@ export default async function handler(req: any, res: any) {
       }
 
       console.log(`[LOCK_RELEASED] Session ${sessionId} released/unlocked numbers: ${idsToProcess.join(", ")}`);
+      if (idsToProcess.length > 0) {
+        serverSupabaseSync.syncDeleteNumbers(targetRaffleId, idsToProcess).catch(() => {});
+      }
       return res.status(200).json({ success: true, message: "Liberação concluída." });
     }
   } catch (err: any) {

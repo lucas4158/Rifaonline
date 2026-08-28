@@ -5,6 +5,7 @@ import { serverSupabaseSync } from "./_supabaseSync.js";
 import admin from "firebase-admin";
 import { getAdminFirestore } from "./_firebaseAdmin.js";
 import { MercadoPagoConfig, Payment } from "mercadopago";
+import { pagbankService } from "../src/services/pagbankService.js";
 
 // Initialize Mercado Pago
 let mpPayment: any = null;
@@ -36,6 +37,163 @@ export default async function handler(req: any, res: any) {
     console.log("📥 [WEBHOOK_RECEIVED] Raw notification payload from Mercado Pago:", JSON.stringify(req.body));
 
     const rawBody = req.body || {};
+
+    // Check if PagBank webhook payload
+    const isPagBank = rawBody?.charges || String(rawBody?.id || "").startsWith("ORDE_") || rawBody?.reference_id;
+    if (isPagBank) {
+      console.log("📥 [WEBHOOK_RECEIVED] PagBank webhook payload:", JSON.stringify(rawBody));
+      const orderId = rawBody?.reference_id;
+      const charge = rawBody?.charges?.[0] || {};
+      const chargeId = charge?.id || "unknown";
+      const status = String(charge?.status || "").toUpperCase();
+      const paidAmountCents = charge?.amount?.value || 0;
+      const paidAmount = paidAmountCents / 100;
+      const pagbankOrderId = rawBody?.id;
+
+      if (!orderId) {
+        return res.status(200).json({ status: "ignored", message: "No reference_id in PagBank webhook." });
+      }
+
+      const db = getAdminFirestore();
+      const orderRef = db.collection("orders").doc(orderId);
+      const orderSnap = await orderRef.get();
+
+      if (!orderSnap.exists) {
+        return res.status(200).json({ status: "ignored", message: "Order not found." });
+      }
+
+      const orderData = orderSnap.data();
+      const currentStatus = String(orderData?.status || "").toLowerCase();
+
+      if (currentStatus === "pago" || currentStatus === "paid" || currentStatus === "approved") {
+        return res.status(200).json({ status: "already_processed" });
+      }
+
+      if (orderData?.paymentGateway !== "pagbank" && orderData?.paymentType !== "PagBankPix") {
+        console.warn(`⚠️ [Webhook] PagBank webhook received for non-PagBank order ${orderId}`);
+        return res.status(200).json({ status: "ignored" });
+      }
+
+      const isPaid = status === "PAID" || status === "APPROVED" || status === "AUTHORIZED";
+      if (!isPaid) {
+        return res.status(200).json({ status: "received", message: `Status is ${status}` });
+      }
+
+      const orderValInCents = Math.round(Number(orderData?.val || 0) * 100);
+      if (paidAmountCents !== orderValInCents) {
+        console.error(`❌ [Webhook] Amount mismatch for order ${orderId}: paid ${paidAmountCents} cents, expected ${orderValInCents} cents`);
+        return res.status(400).json({ error: "Amount mismatch" });
+      }
+
+      // Check Expiration (Correction 1)
+      const currentNow = Date.now();
+      const expiresAt = Number(orderData?.expiresAt || 0);
+      if (currentNow > expiresAt) {
+        console.warn(`⚠️ [PAYMENT_LATE] Order ${orderId} paid after expiration (${new Date(expiresAt).toISOString()}). Marking as PAYMENT_LATE without auto-confirming.`);
+        await orderRef.update({
+          status: "payment_late",
+          latePaymentAt: new Date().toISOString(),
+          latePaymentAmount: paidAmount,
+          chargeId,
+        });
+        await db.collection("adminLogs").add({
+          type: "PAYMENT_LATE",
+          orderId,
+          raffleId: orderData.raffleId,
+          amount: paidAmount,
+          message: `Pagamento recebido após expiração para o pedido ${orderId}`,
+          createdAt: new Date().toISOString(),
+        });
+        return res.status(200).json({ status: "payment_late", message: "Payment received after expiration. Marked as payment_late for admin review." });
+      }
+
+      // Idempotency check (Correction 3)
+      const idempotencyEventKey = `pagbank:${orderId}:${chargeId}:${status}`;
+      const eventRef = db.collection("processedWebhooks").doc(idempotencyEventKey);
+
+      try {
+        await db.runTransaction(async (transaction: any) => {
+          const eventSnap = await transaction.get(eventRef);
+          if (eventSnap.exists) {
+            return;
+          }
+
+          const currentOrderSnap = await transaction.get(orderRef);
+          if (!currentOrderSnap.exists) throw new Error("ORDER_NOT_FOUND");
+          const curData = currentOrderSnap.data();
+          const curStatus = String(curData?.status || "").toLowerCase();
+          if (curStatus === "pago" || curStatus === "paid" || curStatus === "approved") {
+            return;
+          }
+
+          transaction.set(eventRef, {
+            key: idempotencyEventKey,
+            orderId,
+            gateway: "pagbank",
+            processedAt: new Date().toISOString(),
+          });
+
+          transaction.update(orderRef, {
+            status: "Pago",
+            paidAt: new Date().toISOString(),
+            chargeId,
+          });
+
+          const paymentIdToUpdate = pagbankOrderId || orderData.paymentId;
+          if (paymentIdToUpdate) {
+            const paymentRef = db.collection("payments").doc(String(paymentIdToUpdate));
+            transaction.set(paymentRef, {
+              status: "approved",
+              updatedAt: new Date().toISOString(),
+            }, { merge: true });
+          }
+
+          const targetRaffleId = orderData.raffleId || "current";
+          const allNums = orderData.nums || [];
+          const numUpdateData = {
+            status: "paid",
+            orderId,
+            paidAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+
+          allNums.forEach((num: string) => {
+            const numRef = db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
+            transaction.set(numRef, numUpdateData, { merge: true });
+          });
+        });
+
+        console.log(`✅ [PagBank Webhook] Order ${orderId} successfully confirmed via webhook!`);
+
+        try {
+          const freshSnap = await orderRef.get();
+          const freshData = freshSnap.data();
+          if (freshData) {
+            const batch = db.batch();
+            await allocatePromotionalBonus(db, orderId, freshData, batch, freshData.raffleId || "current");
+            await batch.commit();
+          }
+          if (orderData.nums && orderData.nums.length > 0) {
+            serverSupabaseSync.syncNumberStates(
+              orderData.raffleId || "current",
+              orderData.nums.map((num: string) => ({
+                number: num,
+                status: "paid",
+                order_id: orderId,
+                is_bonus: (orderData.bonusNums || []).includes(num),
+              }))
+            ).catch(() => {});
+          }
+        } catch (postErr) {
+          console.error("⚠️ [Webhook Post-Processing Error]:", postErr);
+        }
+
+        return res.status(200).json({ status: "success", message: "Order confirmed." });
+      } catch (txErr: any) {
+        console.error("❌ [PagBank Webhook Transaction Error]:", txErr);
+        return res.status(500).json({ error: txErr.message || "Webhook processing error" });
+      }
+    }
     const rawQuery = req.query || {};
 
     const rawXSignature = req.headers["x-signature"];
@@ -412,6 +570,8 @@ export default async function handler(req: any, res: any) {
         amount: Number(orderDataSnapshot.val || 0),
         paymentId: String(paymentId),
         numsCount: (orderDataSnapshot.nums || []).length,
+        numbers: orderDataSnapshot.nums || [],
+        bonusNums: orderDataSnapshot.bonusNums || [],
       }).catch(() => {});
     }
 

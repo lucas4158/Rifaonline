@@ -3,6 +3,7 @@ import { auditService } from "../src/services/supabase/auditService.js";
 import { drawService } from "../src/services/supabase/drawService.js";
 import { notificationService } from "../src/services/supabase/notificationService.js";
 import { activityService } from "../src/services/supabase/activityService.js";
+import { raffleNumbersService } from "../src/services/supabase/raffleNumbersService.js";
 
 /**
  * Executes a sync action with up to maxRetries attempts.
@@ -37,11 +38,27 @@ export const serverSupabaseSync = {
     amount?: number;
     paymentId?: string;
     numsCount?: number;
+    numbers?: string[];
+    bonusNums?: string[];
   }) {
     const raffleId = order.raffleId || "current";
     const orderId = order.orderId;
 
     try {
+      if (Array.isArray(order.numbers) && order.numbers.length > 0) {
+        const bonusSet = new Set(order.bonusNums || []);
+        await this.syncNumberStates(
+          raffleId,
+          order.numbers.map((num) => ({
+            number: num,
+            status: "paid",
+            order_id: orderId,
+            is_bonus: bonusSet.has(num),
+            reserved_until: null,
+          }))
+        );
+      }
+
       // 1. purchase_history
       runWithRetry(`purchase_history (${orderId})`, () =>
         purchaseHistoryService.recordPurchase({
@@ -259,6 +276,46 @@ export const serverSupabaseSync = {
       ).catch(() => {});
     } catch (e) {
       console.debug("[SUPABASE_SYNC_BYPASSED] Main execution continuing safely in Firestore.");
+    }
+  },
+
+  /**
+   * Syncs number state changes (reserve, paid, etc.) to Supabase raffle_numbers.
+   */
+  async syncNumberStates(
+    raffleId: string,
+    numbers: Array<{
+      number: string;
+      status: string;
+      order_id?: string | null;
+      is_bonus?: boolean;
+      reserved_until?: number | null;
+    }>
+  ) {
+    const rId = raffleId || "current";
+    for (const num of numbers) {
+      runWithRetry(`raffle_numbers (${rId}-${num.number})`, () =>
+        raffleNumbersService.upsertNumber({
+          raffle_id: rId,
+          number: num.number,
+          status: num.status,
+          order_id: num.order_id || null,
+          is_bonus: Boolean(num.is_bonus),
+          reserved_until: num.reserved_until || null,
+        })
+      ).catch(() => {});
+    }
+  },
+
+  /**
+   * Syncs number deletions or releases to Supabase raffle_numbers.
+   */
+  async syncDeleteNumbers(raffleId: string, numbers: string[]) {
+    const rId = raffleId || "current";
+    for (const num of numbers) {
+      runWithRetry(`raffle_numbers delete (${rId}-${num})`, () =>
+        raffleNumbersService.deleteNumber(rId, String(num))
+      ).catch(() => {});
     }
   }
 };

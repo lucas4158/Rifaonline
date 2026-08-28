@@ -1833,19 +1833,25 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
     }
   }, [paymentStep]);
 
-  // Active frontend status check via secure /api/check-payment
+  // Active frontend status check via secure /api/check-payment with progressive backoff
   useEffect(() => {
     if (paymentStep === "pix" && mpPaymentInfo?.paymentId) {
       const paymentId = mpPaymentInfo.paymentId;
       if (String(paymentId).startsWith("SIM_")) return; // Do not poll for simulated tests
       
       console.log(`🔄 [Frontend Poller] Initiating status check for payment ID ${paymentId}`);
-      const pollInterval = setInterval(() => {
+      let timeoutId: any = null;
+      let attempt = 0;
+
+      const runPoll = () => {
+        if (paymentStep !== "pix" || !mpPaymentInfo?.paymentId) return;
+
         pixService.checkPayment({
           paymentId: String(paymentId),
           orderId: mpPaymentInfo.orderId,
           raffleId: selectedCustomerRaffleId || raffleConfig.id || "current",
         }).then((res) => {
+          if (paymentStep !== "pix") return;
           if (res.approved || res.orderStatus === "Pago" || res.orderStatus === "paid") {
             console.log(`✅ [Frontend Poller] Payment ${paymentId} approved!`);
             setPaymentStep("finished");
@@ -1855,13 +1861,27 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
             if (res.nums && res.nums.length > 0) {
               setSubmittedNumbers(res.nums);
             }
+            return;
           }
+
+          // Progressive backoff: 5s -> 8s -> 12s -> 15s max
+          attempt++;
+          const delay = Math.min(5000 + attempt * 3000, 15000);
+          timeoutId = setTimeout(runPoll, delay);
         }).catch((err) => {
           console.debug("🔄 [Frontend Poller] Background check error:", err);
+          attempt++;
+          const delay = Math.min(5000 + attempt * 3000, 15000);
+          timeoutId = setTimeout(runPoll, delay);
         });
-      }, 8000);
+      };
 
-      return () => clearInterval(pollInterval);
+      // Initial delay
+      timeoutId = setTimeout(runPoll, 5000);
+
+      return () => {
+        if (timeoutId) clearTimeout(timeoutId);
+      };
     }
   }, [paymentStep, mpPaymentInfo?.paymentId, selectedCustomerRaffleId, raffleConfig.id]);
 
