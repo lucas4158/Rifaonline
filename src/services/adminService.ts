@@ -1,6 +1,10 @@
 import { RaffleConfig } from "../types";
 import { localStorage } from "../utils/storage";
 import { auth } from "./firebase";
+import { safeFetch } from "../utils/helpers";
+
+const fetch = safeFetch;
+
 
 const getActiveToken = async (token: string): Promise<string> => {
   if (token && token.trim() !== "") return token;

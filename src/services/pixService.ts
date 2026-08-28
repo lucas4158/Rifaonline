@@ -1,14 +1,20 @@
+import { safeFetch } from "../utils/helpers";
+
+const fetch = safeFetch;
+
 export const pixService = {
   async createPix(params: {
     name: string;
     phone: string;
-    nums: string[];
+    nums?: string[];
+    numbers?: string[];
     price: number;
     sessionId: string;
     existingBonusNums?: string[];
     raffleId?: string;
   }): Promise<any> {
-    console.log(`[PIX_CREATED] Initiating client-side Pix order creation. RaffleId: ${params.raffleId || "current"}, Numbers: ${params.nums.join(", ")}, Price: ${params.price}`);
+    const numsArr = params.nums || params.numbers || [];
+    console.log(`[PIX_CREATED] Initiating client-side Pix order creation. RaffleId: ${params.raffleId || "current"}, Numbers: ${numsArr.join(", ")}, Price: ${params.price}`);
     try {
       const response = await fetch("/api/create-pix", {
         method: "POST",
@@ -18,8 +24,8 @@ export const pixService = {
         body: JSON.stringify({
           name: params.name,
           phone: params.phone,
-          nums: params.nums,
-          totalAmount: params.nums.length * params.price,
+          nums: numsArr,
+          totalAmount: numsArr.length * params.price,
           price: params.price,
           sessionId: params.sessionId,
           existingBonusNums: params.existingBonusNums || [],
@@ -44,144 +50,86 @@ export const pixService = {
       }
 
       if (!response.ok) {
-        const errorMsg = resData.error || resData.message || "Falha ao processar pagamento com o Mercado Pago. Tente novamente em instantes.";
-        const error = new Error(errorMsg) as any;
-        if (resData.conflicts) {
-          error.conflicts = resData.conflicts;
-        }
-        throw error;
+        throw new Error(resData.error || resData.message || `Erro ao gerar PIX (${response.status})`);
       }
 
-      console.log(`[PIX_CREATED] Pix created successfully! orderId: ${resData.orderId}, paymentId: ${resData.paymentId || "simulated"}`);
       return resData;
     } catch (err: any) {
-      console.error("Error creating Pix checkout:", err);
+      console.error("❌ [PixService CreatePix Error]:", err);
       throw err;
     }
   },
 
   async lockCota(params: {
-    numberId?: string;
     numbers?: string[];
+    nums?: string[];
+    numberId?: string;
     sessionId: string;
-    action: "lock" | "unlock";
-    raffleId?: string;
-    keepalive?: boolean;
-  }): Promise<any> {
-    const idsLog = params.numberId ? params.numberId : (params.numbers ? params.numbers.join(", ") : "");
-    if (params.action === "lock") {
-      console.log(`[LOCK_CREATED] Requesting lock for cota(s): ${idsLog} (Raffle: ${params.raffleId || "current"}, Session: ${params.sessionId})`);
-    } else {
-      console.log(`[LOCK_RELEASED] Requesting unlock/release for cota(s): ${idsLog} (Raffle: ${params.raffleId || "current"}, Session: ${params.sessionId})`);
-    }
-
-    try {
-      const bodyPayload = params.numberId 
-        ? { numberId: params.numberId, sessionId: params.sessionId, action: params.action, raffleId: params.raffleId || "current" }
-        : { numbers: params.numbers, sessionId: params.sessionId, action: params.action, raffleId: params.raffleId || "current" };
-
-      const res = await fetch("/api/lock-cota", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(bodyPayload),
-        ...(params.keepalive ? { keepalive: true } : {})
-      });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || data.message || "Erro de Lock no servidor.");
-      }
-      return data;
-    } catch (err: any) {
-      if (params.action === "unlock") {
-        console.warn(`[Lock API Warning] Non-critical unlock failure for:`, idsLog, err.message || err);
-      } else {
-        console.error(`Error in lockCota [${params.action}] for:`, idsLog, err);
-      }
-      throw err;
-    }
-  },
-
-  async cancelOrder(
-    param1?: string | { orderId?: string; sessionId?: string; raffleId?: string; keepalive?: boolean },
-    param2?: string | boolean,
-    param3?: string
-  ): Promise<any> {
-    let orderId: string | undefined;
-    let sessionId: string | undefined;
-    let raffleId: string | undefined;
-    let keepalive = false;
-
-    if (typeof param1 === "object" && param1 !== null) {
-      orderId = param1.orderId;
-      sessionId = param1.sessionId;
-      raffleId = param1.raffleId;
-      keepalive = !!param1.keepalive;
-    } else if (typeof param1 === "string") {
-      orderId = param1;
-      if (typeof param2 === "string") {
-        sessionId = param2;
-      } else if (typeof param2 === "boolean") {
-        keepalive = param2;
-      }
-      if (typeof param3 === "string") {
-        raffleId = param3;
-      }
-    }
-
-    console.log(`[ORDER_CANCEL_START] Requesting backend to cancel order: ${orderId || "N/A"}, session: ${sessionId || "N/A"}`);
-    try {
-      const response = await fetch("/api/cancel-order", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ orderId, sessionId, raffleId: raffleId || "current" }),
-        ...(keepalive ? { keepalive: true } : {})
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        throw new Error(error.error || "Failed to cancel order remotely");
-      }
-
-      const data = await response.json();
-      console.log(`[ORDER_CANCEL_SUCCESS] Successfully cancelled order / released session: ${orderId || sessionId}`);
-      return data;
-    } catch (err: any) {
-      console.error(`[ORDER_CANCEL_ERROR] error while cancelling order/session ${orderId || sessionId}:`, err);
-      throw err;
-    }
-  },
-
-  logPixExpired(orderId: string, paymentId: string) {
-    console.log(`[PIX_EXPIRED] Order expired or late check-in. orderId: ${orderId}, paymentId: ${paymentId}`);
-  },
-
-  async checkPayment(params: {
-    paymentId: string;
-    orderId?: string;
+    action?: string;
     raffleId?: string;
   }): Promise<any> {
-    console.log(`[PAYMENT_STATUS_CHECKED] Requesting check-payment for paymentId: ${params.paymentId}, orderId: ${params.orderId || "N/A"}`);
     try {
-      const response = await fetch("/api/check-payment", {
+      const list = params.numbers || params.nums || (params.numberId ? [params.numberId] : []);
+      const response = await fetch("/api/lock-cota", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          paymentId: params.paymentId,
-          orderId: params.orderId,
+          numbers: list,
+          nums: list,
+          numberId: params.numberId,
+          sessionId: params.sessionId,
+          action: params.action || "lock",
           raffleId: params.raffleId || "current",
         }),
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || "Erro ao consultar status do pagamento");
+        throw new Error(data.error || "Erro ao bloquear cotas.");
       }
       return data;
     } catch (err: any) {
-      console.error("[PAYMENT_STATUS_CHECK_ERROR]", err);
+      console.error("❌ [PixService lockCota Error]:", err);
       throw err;
     }
+  },
+
+  async cancelOrder(orderIdOrParams: string | { orderId?: string; sessionId?: string; raffleId?: string }, raffleId?: string): Promise<any> {
+    try {
+      let orderId = "";
+      let rId = raffleId || "current";
+      if (typeof orderIdOrParams === "object" && orderIdOrParams !== null) {
+        orderId = orderIdOrParams.orderId || "";
+        rId = orderIdOrParams.raffleId || rId;
+      } else if (typeof orderIdOrParams === "string") {
+        orderId = orderIdOrParams;
+      }
+
+      const response = await fetch("/api/cancel-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, raffleId: rId }),
+      });
+      const data = await response.json();
+      return data;
+    } catch (err: any) {
+      console.error("❌ [PixService cancelOrder Error]:", err);
+      return { success: false, error: err.message };
+    }
+  },
+
+  async checkPaymentStatus(orderId: string, raffleId?: string): Promise<any> {
+    try {
+      const response = await fetch(`/api/check-payment?orderId=${encodeURIComponent(orderId)}&raffleId=${encodeURIComponent(raffleId || "current")}`);
+      const data = await response.json();
+      return data;
+    } catch (err: any) {
+      console.error("❌ [PixService checkPaymentStatus Error]:", err);
+      return { success: false, error: err.message };
+    }
+  },
+
+  async checkPayment(params: { paymentId?: string; orderId?: string; raffleId?: string }): Promise<any> {
+    const idToUse = params.orderId || params.paymentId || "";
+    return this.checkPaymentStatus(idToUse, params.raffleId);
   }
 };

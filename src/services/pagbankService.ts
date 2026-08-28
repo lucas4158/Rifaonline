@@ -1,6 +1,72 @@
 import "dotenv/config";
 
+// Helper function to process token and collect safe non-sensitive metadata for diagnostics
+function getSanitizedPagBankToken() {
+  const rawToken = process.env.PAGBANK_ACCESS_TOKEN || "";
+  const tokenExists = rawToken.length > 0;
+  const tokenLength = rawToken.length;
+  const hasLeadingWhitespace = /^\s/.test(rawToken);
+  const hasTrailingWhitespace = /\s$/.test(rawToken);
+  const hasLeadingQuote = /^['"]/.test(rawToken);
+  const hasTrailingQuote = /['"]$/.test(rawToken);
+  
+  let cleanToken = rawToken.trim().replace(/^["']|["']$/g, "").trim();
+  const hasBearerPrefix = /^bearer\s+/i.test(cleanToken);
+  
+  if (hasBearerPrefix) {
+    cleanToken = cleanToken.replace(/^bearer\s+/i, "").trim();
+  }
+
+  console.log("[PAGBANK_TOKEN_DIAGNOSTIC]", {
+    tokenExists,
+    tokenLength,
+    hasLeadingWhitespace,
+    hasTrailingWhitespace,
+    hasLeadingQuote,
+    hasTrailingQuote,
+    hasBearerPrefix,
+    authorizationPrefix: "Bearer"
+  });
+
+  return cleanToken;
+}
+
 export const pagbankService = {
+  // Isolated diagnostic test function as requested in item 6
+  async testIsolatedCall(): Promise<{ success: boolean; status?: number; error?: string }> {
+    try {
+      const accessToken = getSanitizedPagBankToken();
+      const rawBase = process.env.PAGBANK_API_BASE_URL || "https://sandbox.api.pagseguro.com";
+      const cleanBaseUrl = rawBase.replace(/\/+$/, "");
+      const testUrl = `${cleanBaseUrl}/orders`;
+
+      console.log(`[PAGBANK_ISOLATED_TEST] Testing fetch to ${testUrl}`);
+      const response = await fetch(testUrl, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "Accept": "application/json",
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          reference_id: "diag_test_123",
+          customer: { name: "Teste", email: "teste@teste.com", tax_id: "12345678909", phones: [{ country: "55", area: "11", number: "999999999", type: "MOBILE" }] },
+          items: [{ reference_id: "item_1", name: "Teste", quantity: 1, unit_amount: 100 }],
+          qr_codes: [{ amount: { value: 100 }, expiration_date: new Date(Date.now() + 3600000).toISOString() }]
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+      return {
+        success: response.ok,
+        status: response.status,
+        error: response.ok ? undefined : (data.message || JSON.stringify(data))
+      };
+    } catch (err: any) {
+      return { success: false, error: err?.message || String(err) };
+    }
+  },
+
   async createPixOrder({
     orderId,
     raffleTitle,
@@ -22,12 +88,12 @@ export const pagbankService = {
     notificationUrl?: string;
     idempotencyKey: string;
   }) {
-    const rawToken = process.env.PAGBANK_ACCESS_TOKEN;
-    if (!rawToken) {
+    const accessToken = getSanitizedPagBankToken();
+    if (!accessToken) {
       throw new Error("PAGBANK_ACCESS_TOKEN environment variable is missing.");
     }
-    const accessToken = rawToken.trim().replace(/^["']|["']$/g, "");
-    const baseUrl = process.env.PAGBANK_API_BASE_URL || "https://sandbox.api.pagseguro.com";
+    const rawBase = process.env.PAGBANK_API_BASE_URL || "https://sandbox.api.pagseguro.com";
+    const cleanBaseUrl = rawBase.replace(/\/+$/, "");
 
     const sanitizedPhone = customerPhone.replace(/\D/g, "");
     let area = "11";
@@ -89,9 +155,10 @@ export const pagbankService = {
       headers["x-idempotency-key"] = idempotencyKey;
     }
 
-    console.log(`[PAGBANK_CREATE_ORDER] Sending request to ${baseUrl}/orders for orderId: ${orderId}`);
+    const targetUrl = `${cleanBaseUrl}/orders`;
+    console.log(`[PAGBANK_CREATE_ORDER] Sending request to ${targetUrl} for orderId: ${orderId}`);
 
-    const response = await fetch(`${baseUrl}/orders`, {
+    const response = await fetch(targetUrl, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
@@ -108,14 +175,14 @@ export const pagbankService = {
   },
 
   async getOrder(orderIdOrPagBankId: string) {
-    const rawToken = process.env.PAGBANK_ACCESS_TOKEN;
-    if (!rawToken) {
+    const accessToken = getSanitizedPagBankToken();
+    if (!accessToken) {
       throw new Error("PAGBANK_ACCESS_TOKEN environment variable is missing.");
     }
-    const accessToken = rawToken.trim().replace(/^["']|["']$/g, "");
-    const baseUrl = process.env.PAGBANK_API_BASE_URL || "https://sandbox.api.pagseguro.com";
+    const rawBase = process.env.PAGBANK_API_BASE_URL || "https://sandbox.api.pagseguro.com";
+    const cleanBaseUrl = rawBase.replace(/\/+$/, "");
 
-    const response = await fetch(`${baseUrl}/orders/${orderIdOrPagBankId}`, {
+    const response = await fetch(`${cleanBaseUrl}/orders/${orderIdOrPagBankId}`, {
       method: "GET",
       headers: {
         "Authorization": `Bearer ${accessToken}`,
@@ -130,3 +197,4 @@ export const pagbankService = {
     return data;
   },
 };
+

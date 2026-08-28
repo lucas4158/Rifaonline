@@ -53,14 +53,6 @@ try {
   }
 }
 
-// Clear any corrupted local persistent disk caches from prior browser sessions
-try {
-  clearIndexedDbPersistence(dbInstance).catch((err) => {
-    console.warn("Firestore cache cleanup non-fatal warning:", err);
-  });
-} catch (err) {
-  console.warn("Firestore cache cleanup try-catch warning:", err);
-}
-
+// Firestore initialized with memory cache successfully
 export const db = dbInstance;
 export const auth = getAuth(app);

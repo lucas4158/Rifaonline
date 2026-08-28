@@ -304,4 +304,20 @@ export function calculateRaffleStats(
   };
 }
 
+// Robust fetch wrapper with auto-retry on transient network load failures (TypeError: Load failed)
+export async function safeFetch(input: RequestInfo | URL, init?: RequestInit, retries = 2, delayMs = 1000): Promise<Response> {
+  try {
+    const res = await fetch(input, init);
+    return res;
+  } catch (err: any) {
+    if (retries > 0 && (err instanceof TypeError || String(err.message || "").toLowerCase().includes("load failed"))) {
+      console.warn(`⚠️ [SafeFetch] Network load failed. Retrying in ${delayMs}ms... (${retries} retries left)`);
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      return safeFetch(input, init, retries - 1, delayMs * 2);
+    }
+    throw err;
+  }
+}
+
+
 

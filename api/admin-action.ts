@@ -132,56 +132,7 @@ async function logAuditEvent(
 
 // Server-side robust bootstrap
 async function ensureDefaultConfig() {
-  if (false) return;
-  try {
-    // Perform safe deduplication of winners_history to clean existing duplicates
-    try {
-      console.log("🧹 [Server Bootstrap] Running deduplication audit on 'winners_history'...");
-      const winnersSnap = await getAdminFirestore().collection("winners_history").get();
-      
-      const seenKeys = new Map<string, string>(); // key -> canonical docId
-      const docsToDelete: string[] = [];
-
-      winnersSnap.forEach((wDoc) => {
-        const data = wDoc.data();
-        const raffleId = String(data.raffleId || wDoc.id.replace(/^WIN_/, "").replace(/^WIN_MIGRATED_/, ""));
-        const winnerNum = String(data.winnerNumber || "").trim();
-        const key = `${raffleId}_${winnerNum}`;
-
-        if (!seenKeys.has(key)) {
-          seenKeys.set(key, wDoc.id);
-        } else {
-          const existingDocId = seenKeys.get(key)!;
-          if (wDoc.id.startsWith("WIN_") && !wDoc.id.startsWith("WIN_MIGRATED_") && existingDocId.startsWith("WIN_MIGRATED_")) {
-            docsToDelete.push(existingDocId);
-            seenKeys.set(key, wDoc.id);
-          } else {
-            docsToDelete.push(wDoc.id);
-          }
-        }
-      });
-
-      if (docsToDelete.length > 0) {
-        console.log(`🧹 [Server Bootstrap] Found ${docsToDelete.length} duplicate winner record(s). Cleaning up...`);
-        for (const delId of docsToDelete) {
-          await getAdminFirestore().collection("winners_history").doc(delId).delete();
-          try {
-            await getAdminFirestore().collection("draws").doc(delId).delete();
-            if (delId.startsWith("WIN_MIGRATED_")) {
-              await getAdminFirestore().collection("draws").doc(delId.replace("WIN_MIGRATED_", "")).delete();
-            }
-          } catch (_) {}
-        }
-        console.log(`🧹 [Server Bootstrap] Successfully cleaned up ${docsToDelete.length} duplicate winner document(s).`);
-      } else {
-        console.log("🧹 [Server Bootstrap] Hall of Fame deduplication audit complete: 0 duplicates found.");
-      }
-    } catch (migrErr) {
-      console.error("❌ [Server Bootstrap] Error during winners_history deduplication:", migrErr);
-    }
-  } catch (err) {
-    console.error("❌ Failed to perform deduplication on Server:", err);
-  }
+  return;
 }
 
 if (isAdminInitialized()) {
@@ -1487,7 +1438,7 @@ export default async function handler(req: any, res: any) {
         const pricePerNumber = Number(raffleData.price || 1);
         const totalAmount = pricePerNumber * numbers.length;
 
-        // 2. Validate that none of the selected numbers are already paid or locked
+        // 2. Validate that none of the selected numbers are already paid or locked by someone else
         const currentNow = Date.now();
         for (const num of numbers) {
           const numRef = raffleRef.collection("numbers").doc(String(num));
@@ -1496,8 +1447,11 @@ export default async function handler(req: any, res: any) {
             const numData = numSnap.data() || {};
             const st = String(numData.status || "").toLowerCase();
             const isExp = numData.expiresAt ? numData.expiresAt <= currentNow : true;
-            if (st === "paid" || st === "pago" || (st === "reserved" && !isExp)) {
-              return res.status(400).json({ error: `A cota ${num} já está reservada ou paga.` });
+            if (st === "paid" || st === "pago") {
+              return res.status(400).json({ error: `A cota ${num} já está paga.` });
+            }
+            if (st === "reserved" && !isExp && numData.sessionId !== "admin_manual_session") {
+              return res.status(400).json({ error: `A cota ${num} já está reservada por outro usuário.` });
             }
           }
         }

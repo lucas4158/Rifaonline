@@ -4,7 +4,7 @@ import {
   ChevronDown, Search, Filter, ShieldAlert, Download, Upload,
   DollarSign, Check, Calendar, Phone, ArrowLeft, LogOut, MessageCircle, CheckCircle2,
   Image as ImageIcon, Loader2, Play, LayoutDashboard, ClipboardList, PlusCircle, Award, Settings,
-  Copy, Edit3, Archive, Power, Sparkles, Eye, CheckCircle, Pause, ShoppingBag, Ticket, Save, FolderOpen,
+  Copy, Edit3, Archive, Power, Sparkles, Eye, CheckCircle, Pause, ShoppingBag, ShoppingCart, Ticket, Save, FolderOpen,
   Calculator, Users, Grid, Star, BarChart3, TrendingUp, PieChart as PieChartIcon, Clock
 } from "lucide-react";
 
@@ -21,6 +21,7 @@ import { storeService } from "../services/storeService";
 import { slugify } from "../utils/slug";
 import { safeCopyToClipboard } from "../utils/helpers";
 import { localStorage } from "../utils/storage";
+import { pixService } from "../services/pixService";
 
 // Supabase Views
 import { PurchasesView } from "./views/PurchasesView";
@@ -137,7 +138,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
       setMainAdminSection("loja");
     } else if (tab === "manual_buy") {
       setViewMode("list");
-      setMainAdminSection("winners_hall");
+      setMainAdminSection("manual_buy");
       setCurrentAdminTab("manual_buy");
     } else if (tab === "settings") {
       setViewMode("detail");
@@ -200,6 +201,13 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   const [globalPixPhone, setGlobalPixPhone] = useState<string>("");
   const [isSubmittingGlobalPix, setIsSubmittingGlobalPix] = useState<boolean>(false);
 
+  // Manual Buy Form State
+  const [manualCustomerName, setManualCustomerName] = useState<string>("");
+  const [manualCustomerPhone, setManualCustomerPhone] = useState<string>("");
+  const [manualNumbersInput, setManualNumbersInput] = useState<string>("");
+  const [isSubmittingManualBuy, setIsSubmittingManualBuy] = useState<boolean>(false);
+  const [manualBuySuccessMessage, setManualBuySuccessMessage] = useState<string | null>(null);
+
   // Detail view state
   const [editedConfig, setEditedConfig] = useState<RaffleConfig>({ ...raffleConfig });
   const [dbNumbers, setDbNumbers] = useState<Record<string, any>>({});
@@ -253,12 +261,6 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   const [selectedCustomerDetail, setSelectedCustomerDetail] = useState<any | null>(null);
   const [orderPeriodFilter, setOrderPeriodFilter] = useState<string>("all");
   const [orderRaffleFilter, setOrderRaffleFilter] = useState<string>("all");
-
-  // Admin Manual Buy Cota States
-  const [manualBuyName, setManualBuyName] = useState<string>("");
-  const [manualBuyPhone, setManualBuyPhone] = useState<string>("");
-  const [manualBuyNumbersStr, setManualBuyNumbersStr] = useState<string>("");
-  const [isSubmittingManualBuy, setIsSubmittingManualBuy] = useState<boolean>(false);
 
   const aggregatedCustomers = useMemo(() => {
     const map: Record<string, {
@@ -3245,9 +3247,9 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
 
   const renderSidebarLayout = (children: React.ReactNode) => {
     return (
-      <div className="min-h-screen bg-[#0B0F0C] text-white flex flex-col md:flex-row font-inter">
+      <div className="h-screen w-screen overflow-hidden bg-[#0B0F0C] text-white flex flex-col md:flex-row font-inter">
         {/* Left Sidebar on Desktop */}
-        <aside className="w-64 bg-[#111513] border-r border-[#1A1F1B] flex-shrink-0 hidden md:flex flex-col justify-between sticky top-0 h-screen z-20">
+        <aside className="w-64 bg-[#111513] border-r border-[#1A1F1B] flex-shrink-0 hidden md:flex flex-col h-full z-20 overflow-y-auto">
           <div className="p-6 space-y-6">
             {/* Brand logo */}
             <div className="flex items-center gap-3">
@@ -3341,8 +3343,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
           </div>
         </aside>
 
-        {/* Mobile Header Menu */}
-        <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+        {/* Mobile Header Menu & Main Area */}
+        <div className="flex-1 flex flex-col min-w-0 h-full overflow-y-auto">
           <header className="md:hidden border-b border-[#1A1F1B] bg-[#111513] sticky top-0 z-30 px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-[#A3E635]" />
@@ -3365,6 +3367,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                   {currentAdminTab === "planning" && "Planejamento"}
                   {currentAdminTab === "audit" && "Auditoria"}
                   {currentAdminTab === "store" && "Loja Premium"}
+                  {currentAdminTab === "manual_buy" && "Compra Manual"}
                   {currentAdminTab === "settings" && "Configurações"}
                 </span>
                 <ChevronDown className={`w-3.5 h-3.5 text-zinc-400 transition-transform ${mobileNavOpen ? 'rotate-180' : ''}`} />
@@ -3454,6 +3457,260 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
           <DrawsView selectedRaffleId={selectedRaffleId} raffleConfig={raffleConfig} />
         ) : mainAdminSection === "loja" ? (
           <AdminProducts />
+        ) : mainAdminSection === "manual_buy" || currentAdminTab === "manual_buy" ? (
+          <div className="space-y-6 max-w-5xl mx-auto pb-12">
+            <div className="bg-zinc-950 border border-zinc-900 rounded-[2rem] p-6 sm:p-8 space-y-6">
+              <div className="flex items-center gap-3 pb-6 border-b border-zinc-900">
+                <div className="p-3 bg-violet-600/10 border border-violet-500/20 text-violet-400 rounded-2xl">
+                  <ShoppingCart className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black uppercase text-white tracking-wide">Compra Manual e Alocação de Cotas</h2>
+                  <p className="text-xs text-zinc-500 mt-0.5">Selecione cotas disponíveis em tempo real ou digite os números para registrar vendas presenciais, PIX manual ou WhatsApp.</p>
+                </div>
+              </div>
+
+              {manualBuySuccessMessage && (
+                <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 rounded-2xl text-xs font-bold uppercase animate-pulse">
+                  {manualBuySuccessMessage}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Left Form Inputs (2 cols) */}
+                <div className="lg:col-span-1 space-y-4">
+                  <div>
+                    <label className="block text-[11px] font-black uppercase tracking-wider text-zinc-400 mb-2">Campanha de Rifa Alvo</label>
+                    <select
+                      value={selectedRaffleId}
+                      onChange={(e) => setSelectedRaffleId(e.target.value)}
+                      className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-xs font-bold text-white uppercase outline-none focus:border-violet-500"
+                    >
+                      {raffles.map((r) => {
+                        const p = Number(r.price || r.pricePerNumber || 10);
+                        return (
+                          <option key={r.id} value={r.id}>{r.title || "Rifa Sem Título"} (R$ {p.toFixed(2)})</option>
+                        );
+                      })}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-black uppercase tracking-wider text-zinc-400 mb-2">Nome Completo do Cliente</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: João da Silva"
+                      value={manualCustomerName}
+                      onChange={(e) => setManualCustomerName(e.target.value)}
+                      className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-xs font-bold text-white outline-none focus:border-violet-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-black uppercase tracking-wider text-zinc-400 mb-2">WhatsApp / Telefone</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: (11) 99999-9999"
+                      value={manualCustomerPhone}
+                      onChange={(e) => setManualCustomerPhone(e.target.value)}
+                      className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-xs font-bold text-white outline-none focus:border-violet-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-black uppercase tracking-wider text-zinc-400 mb-2">Cotas Selecionadas</label>
+                    <input
+                      type="text"
+                      placeholder="Ex: 10, 15, 20 ou clique ao lado"
+                      value={manualNumbersInput}
+                      onChange={(e) => setManualNumbersInput(e.target.value)}
+                      className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-xs font-bold text-white font-mono outline-none focus:border-violet-500"
+                    />
+                    <p className="text-[10px] text-zinc-500 mt-1">Clique nas cotas livres ao lado ou digite (ex: 1, 5, 10-20).</p>
+                  </div>
+
+                  <div className="pt-4 border-t border-zinc-900 space-y-3">
+                    <div>
+                      <p className="text-[10px] uppercase font-bold text-zinc-500">Valor Total Calculado</p>
+                      <p className="text-2xl font-black text-emerald-400 font-mono mt-0.5">
+                        R$ {(
+                          (manualNumbersInput ? (() => {
+                            const parts = manualNumbersInput.split(",");
+                            let count = 0;
+                            for (const part of parts) {
+                              const trimmed = part.trim();
+                              if (trimmed.includes("-")) {
+                                const [s, e] = trimmed.split("-").map(n => parseInt(n.trim(), 10));
+                                if (!isNaN(s) && !isNaN(e) && s <= e) count += (e - s + 1);
+                              } else if (trimmed !== "") {
+                                if (!isNaN(parseInt(trimmed, 10))) count++;
+                              }
+                            }
+                            const currentRaffle = raffles.find(r => r.id === selectedRaffleId) || raffleConfig;
+                            const rafflePrice = Number(currentRaffle.price || currentRaffle.pricePerNumber || 10);
+                            return count * rafflePrice;
+                          })() : 0)
+                        ).toFixed(2)}
+                      </p>
+                    </div>
+
+                    <button
+                      disabled={isSubmittingManualBuy}
+                      onClick={async () => {
+                        if (!manualCustomerName.trim()) {
+                          alert("Por favor, informe o nome do cliente.");
+                          return;
+                        }
+                        if (!manualNumbersInput.trim()) {
+                          alert("Por favor, selecione ou informe ao menos um número de cota.");
+                          return;
+                        }
+                        const parts = manualNumbersInput.split(",");
+                        const numbersArr: string[] = [];
+                        for (const part of parts) {
+                          const trimmed = part.trim();
+                          if (trimmed.includes("-")) {
+                            const [s, e] = trimmed.split("-").map(n => parseInt(n.trim(), 10));
+                            if (!isNaN(s) && !isNaN(e) && s <= e) {
+                              for (let i = s; i <= e; i++) numbersArr.push(i.toString());
+                            }
+                          } else if (trimmed !== "") {
+                            if (!isNaN(parseInt(trimmed, 10))) numbersArr.push(trimmed);
+                          }
+                        }
+
+                        if (numbersArr.length === 0) {
+                          alert("Nenhum número válido foi identificado.");
+                          return;
+                        }
+
+                        setIsSubmittingManualBuy(true);
+                        setManualBuySuccessMessage(null);
+                        try {
+                          await adminService.adminBuyCota(
+                            getAdminToken(),
+                            manualCustomerName.trim(),
+                            manualCustomerPhone.trim(),
+                            numbersArr,
+                            selectedRaffleId
+                          );
+                          setManualBuySuccessMessage(`Compra manual de ${numbersArr.length} cota(s) realizada com sucesso para ${manualCustomerName}!`);
+                          setManualCustomerName("");
+                          setManualCustomerPhone("");
+                          setManualNumbersInput("");
+                          fetchRaffles();
+                        } catch (err: any) {
+                          alert("Erro ao realizar compra manual: " + err.message);
+                        } finally {
+                          setIsSubmittingManualBuy(false);
+                        }
+                      }}
+                      className="w-full py-4 bg-violet-600 hover:bg-violet-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest transition-all cursor-pointer shadow-lg shadow-violet-600/20 disabled:opacity-50"
+                    >
+                      {isSubmittingManualBuy ? "Processando..." : "Confirmar Compra Manual"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Right Interactive Live Grid (2 cols) */}
+                <div className="lg:col-span-2 bg-black/60 border border-zinc-900 rounded-3xl p-5 flex flex-col space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xs font-black uppercase text-white tracking-wider flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                        Seletor Visual em Tempo Real (Cotas Disponíveis)
+                      </h3>
+                      <p className="text-[10px] text-zinc-500 mt-0.5">Clique nas cotas verdes para adicioná-las ou removê-las instantaneamente do carrinho manual.</p>
+                    </div>
+                    <div className="flex items-center gap-3 text-[10px] font-bold">
+                      <span className="flex items-center gap-1 text-emerald-400"><span className="w-2.5 h-2.5 rounded bg-emerald-500/20 border border-emerald-500"></span> Disponível</span>
+                      <span className="flex items-center gap-1 text-zinc-500"><span className="w-2.5 h-2.5 rounded bg-zinc-800"></span> Ocupada</span>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 max-h-[420px] overflow-y-auto pr-2 grid grid-cols-6 sm:grid-cols-10 gap-1.5 custom-scrollbar">
+                    {(() => {
+                      const curRaffle = raffles.find(r => r.id === selectedRaffleId) || raffleConfig;
+                      const totalNums = Math.min(Number(curRaffle.totalNumbers || 100), 2000);
+                      const elements = [];
+                      const selectedNumsSet = new Set(
+                        manualNumbersInput.split(",").map(s => s.trim()).filter(Boolean)
+                      );
+
+                      for (let i = 1; i <= totalNums; i++) {
+                        const numStr1 = String(i);
+                        const numStr2 = String(i).padStart(3, "0");
+                        const numStr3 = String(i).padStart(2, "0");
+                        const numData = dbNumbers[numStr1] || dbNumbers[numStr2] || dbNumbers[numStr3];
+                        const statusLower = String(numData?.status || "").toLowerCase().trim();
+                        const isSelected = selectedNumsSet.has(numStr1);
+                        const isAdminLocked = numData && numData.sessionId === "admin_manual_session";
+                        const isSold = numData && (
+                          statusLower === "paid" ||
+                          statusLower === "pago" ||
+                          statusLower === "approved" ||
+                          statusLower === "aprovado" ||
+                          ((statusLower === "reserved" || statusLower === "pending_payment" || statusLower === "aguardando") && !isAdminLocked && !isSelected)
+                        );
+
+                        elements.push(
+                          <button
+                            key={i}
+                            disabled={isSold}
+                            onClick={async () => {
+                              const currentArr = manualNumbersInput.split(",").map(s => s.trim()).filter(Boolean);
+                              if (isSelected) {
+                                const filtered = currentArr.filter(n => n !== numStr1);
+                                setManualNumbersInput(filtered.join(", "));
+                                // Unlock cota if deselected
+                                try {
+                                  await pixService.lockCota({
+                                    numbers: [numStr1],
+                                    sessionId: "admin_manual_session",
+                                    action: "unlock",
+                                    raffleId: selectedRaffleId || "current"
+                                  });
+                                } catch (e) {
+                                  console.warn("Unlock warning:", e);
+                                }
+                              } else {
+                                // Automatically reserve/lock cota immediately on click
+                                try {
+                                  await pixService.lockCota({
+                                    numbers: [numStr1],
+                                    sessionId: "admin_manual_session",
+                                    action: "lock",
+                                    raffleId: selectedRaffleId || "current"
+                                  });
+                                  currentArr.push(numStr1);
+                                  setManualNumbersInput(currentArr.join(", "));
+                                } catch (err: any) {
+                                  alert("Esta cota acabou de ser reservada ou vendida por outro cliente: " + err.message);
+                                }
+                              }
+                            }}
+                            className={`py-2 rounded-lg font-mono text-xs font-bold transition-all cursor-pointer ${
+                              isSold
+                                ? "bg-zinc-900/60 text-zinc-600 border border-zinc-800/40 cursor-not-allowed"
+                                : isSelected
+                                ? "bg-violet-600 text-white border border-violet-400 shadow-md shadow-violet-600/30 scale-105 z-10"
+                                : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                            }`}
+                          >
+                            {i}
+                          </button>
+                        );
+                      }
+                      return elements;
+                    })()}
+                  </div>
+                  {Number((raffles.find(r => r.id === selectedRaffleId) || raffleConfig).totalNumbers) > 500 && (
+                    <p className="text-[10px] text-amber-400/80 text-center font-medium">Exibindo as primeiras 500 cotas para seleção rápida. Para cotas superiores, digite o número no campo ao lado.</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         ) : mainAdminSection === "winners_hall" || currentAdminTab === "hall_da_fama" ? (
           <div className="space-y-6">
               {/* HEADER AREA */}
