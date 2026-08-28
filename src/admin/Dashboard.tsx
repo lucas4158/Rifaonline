@@ -135,6 +135,10 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     } else if (tab === "store") {
       setViewMode("list");
       setMainAdminSection("loja");
+    } else if (tab === "manual_buy") {
+      setViewMode("list");
+      setMainAdminSection("winners_hall");
+      setCurrentAdminTab("manual_buy");
     } else if (tab === "settings") {
       setViewMode("detail");
       setActiveTab("settings");
@@ -249,6 +253,12 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   const [selectedCustomerDetail, setSelectedCustomerDetail] = useState<any | null>(null);
   const [orderPeriodFilter, setOrderPeriodFilter] = useState<string>("all");
   const [orderRaffleFilter, setOrderRaffleFilter] = useState<string>("all");
+
+  // Admin Manual Buy Cota States
+  const [manualBuyName, setManualBuyName] = useState<string>("");
+  const [manualBuyPhone, setManualBuyPhone] = useState<string>("");
+  const [manualBuyNumbersStr, setManualBuyNumbersStr] = useState<string>("");
+  const [isSubmittingManualBuy, setIsSubmittingManualBuy] = useState<boolean>(false);
 
   const aggregatedCustomers = useMemo(() => {
     const map: Record<string, {
@@ -3286,6 +3296,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 { id: "hall_da_fama", label: "Hall da Fama", icon: Award },
                 { id: "audit", label: "Auditoria", icon: ShieldCheck },
                 { id: "store", label: "Loja Premium", icon: ShoppingBag },
+                { id: "manual_buy", label: "Compra Manual", icon: ShoppingCart },
                 { id: "settings", label: "Configurações", icon: Settings },
               ].map((item) => {
                 const IconComponent = item.icon;
@@ -3394,6 +3405,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                     { id: "hall_da_fama", label: "Hall da Fama", icon: Award },
                     { id: "audit", label: "Auditoria", icon: ShieldCheck },
                     { id: "store", label: "Loja Premium", icon: ShoppingBag },
+                    { id: "manual_buy", label: "Compra Manual", icon: ShoppingCart },
                     { id: "settings", label: "Configurações", icon: Settings },
                   ].map((item) => {
                     const IconComp = item.icon;

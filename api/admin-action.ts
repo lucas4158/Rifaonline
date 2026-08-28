@@ -1468,6 +1468,145 @@ export default async function handler(req: any, res: any) {
         }
       }
 
+      case "admin-buy-cota": {
+        const { raffleId, customerName, customerPhone, numbers } = req.body;
+        if (!customerName || !customerPhone || !numbers || !Array.isArray(numbers) || numbers.length === 0) {
+          return res.status(400).json({ error: "Nome, telefone e ao menos uma cota devem ser informados." });
+        }
+
+        const targetRaffleId = raffleId || "current";
+        const adminDb = getAdminFirestore();
+
+        // 1. Fetch raffle config to get price per number
+        const raffleRef = adminDb.collection("raffles").doc(targetRaffleId);
+        const raffleSnap = await raffleRef.get();
+        if (!raffleSnap.exists) {
+          return res.status(404).json({ error: "Rifa não encontrada." });
+        }
+        const raffleData = raffleSnap.data() || {};
+        const pricePerNumber = Number(raffleData.price || 1);
+        const totalAmount = pricePerNumber * numbers.length;
+
+        // 2. Validate that none of the selected numbers are already paid or locked
+        const currentNow = Date.now();
+        for (const num of numbers) {
+          const numRef = raffleRef.collection("numbers").doc(String(num));
+          const numSnap = await numRef.get();
+          if (numSnap.exists) {
+            const numData = numSnap.data() || {};
+            const st = String(numData.status || "").toLowerCase();
+            const isExp = numData.expiresAt ? numData.expiresAt <= currentNow : true;
+            if (st === "paid" || st === "pago" || (st === "reserved" && !isExp)) {
+              return res.status(400).json({ error: `A cota ${num} já está reservada ou paga.` });
+            }
+          }
+        }
+
+        // 3. Create orderId and paymentId
+        const orderId = "ADMIN_BUY_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6).toUpperCase();
+        const paymentId = "PAY_ADMIN_" + orderId;
+        const nowIso = new Date().toISOString();
+        const adminUid = req.body.adminUid || "administrador";
+
+        const batch = adminDb.batch();
+
+        // Create order document
+        const orderRef = adminDb.collection("orders").doc(orderId);
+        batch.set(orderRef, {
+          id: orderId,
+          raffleId: targetRaffleId,
+          name: String(customerName).trim(),
+          phone: String(customerPhone).trim(),
+          nums: numbers,
+          val: totalAmount,
+          amount: totalAmount,
+          status: "Pago",
+          createdAt: nowIso,
+          approvedAt: nowIso,
+          approvedBy: adminUid,
+          manuallyCreatedByAdmin: true,
+          paymentId: paymentId
+        });
+
+        // Create reservation document
+        const resRef = adminDb.collection("reservations").doc(orderId);
+        batch.set(resRef, {
+          id: orderId,
+          raffleId: targetRaffleId,
+          name: String(customerName).trim(),
+          phone: String(customerPhone).trim(),
+          nums: numbers,
+          val: totalAmount,
+          status: "Pago",
+          createdAt: nowIso,
+          approvedAt: nowIso,
+          manuallyCreatedByAdmin: true
+        });
+
+        // Create payment document
+        const payRef = adminDb.collection("payments").doc(paymentId);
+        batch.set(payRef, {
+          id: paymentId,
+          orderId: orderId,
+          status: "approved",
+          amount: totalAmount,
+          method: "admin_manual_purchase",
+          createdAt: nowIso,
+          updatedAt: nowIso
+        });
+
+        // Mark numbers as paid in subcollection and increment soldCount
+        let mainPaidCount = 0;
+        numbers.forEach((num: string) => {
+          mainPaidCount++;
+          const numDocRef = raffleRef.collection("numbers").doc(String(num));
+          batch.set(numDocRef, {
+            id: String(num),
+            status: "paid",
+            orderId: orderId,
+            name: String(customerName).trim(),
+            phone: String(customerPhone).trim(),
+            isBonus: false,
+            updatedAt: nowIso
+          }, { merge: true });
+        });
+
+        if (mainPaidCount > 0) {
+          batch.update(raffleRef, {
+            soldCount: admin.firestore.FieldValue.increment(mainPaidCount)
+          });
+        }
+
+        // Allocate promotional bonus if enabled on raffle
+        await allocatePromotionalBonus(adminDb, orderId, {
+          name: customerName,
+          phone: customerPhone,
+          nums: numbers
+        }, batch, targetRaffleId);
+
+        await batch.commit();
+        console.log(`✅ [Admin Buy Cota] Successfully created and approved manual order ${orderId} for ${numbers.length} numbers.`);
+
+        // Audit log
+        await logAuditEvent(targetRaffleId, "ADMIN_MANUAL_BUY", adminUid, {
+          participantCount: numbers.length,
+          metadata: {
+            orderId,
+            customerName,
+            customerPhone,
+            amount: totalAmount,
+            nums: numbers
+          }
+        });
+
+        return res.status(200).json({
+          success: true,
+          message: "Cotas compradas e vinculadas com sucesso pelo Administrador!",
+          orderId,
+          nums: numbers
+        });
+      }
+
       case "manual-approve-payment": {
         const { orderId } = req.body;
         if (!orderId) {

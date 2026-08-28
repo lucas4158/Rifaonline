@@ -122,6 +122,40 @@ export const adminService = {
     }
   },
 
+  async adminBuyCota(
+    token: string,
+    customerName: string,
+    customerPhone: string,
+    numbers: string[],
+    raffleId?: string
+  ): Promise<any> {
+    console.log(`[ADMIN_ACTION_START] Action: admin-buy-cota for ${numbers.length} numbers. RaffleId: ${raffleId || "current"}`);
+    try {
+      const res = await fetch("/api/admin-action", {
+        method: "POST",
+        headers: await getActiveHeaders(token),
+        body: JSON.stringify({
+          action: "admin-buy-cota",
+          customerName,
+          customerPhone,
+          numbers,
+          raffleId: raffleId || "current",
+        }),
+        credentials: "include",
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao realizar compra manual de cotas.");
+      }
+      console.log(`[ADMIN_ACTION_SUCCESS] Action: admin-buy-cota completed successfully.`);
+      return data;
+    } catch (err: any) {
+      console.error("[ADMIN_ACTION_ERROR] Action: admin-buy-cota failed:", err);
+      throw err;
+    }
+  },
+
   async deleteOrder(
     token: string,
     orderId: string
