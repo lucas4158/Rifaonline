@@ -114,6 +114,33 @@ export default function MinhasCotas({ currentPath, setCurrentPath }: MinhasCotas
     }
   }, []);
 
+  // Real-time synchronization without unnecessary reads (polls silently every 20s only when tab is visible and phone is active)
+  useEffect(() => {
+    if (!searched || !phone) return;
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        const canonicalPhone = phone.replace(/\D/g, "");
+        if (canonicalPhone.length >= 8) {
+          fetch("/api/customer-history", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone: canonicalPhone }),
+          })
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+              if (data && Array.isArray(data.orders)) {
+                setOrders(data.orders);
+              }
+            })
+            .catch(() => {});
+        }
+      }
+    }, 20000);
+
+    return () => clearInterval(interval);
+  }, [searched, phone]);
+
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (phone.trim()) {

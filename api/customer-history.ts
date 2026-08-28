@@ -79,17 +79,41 @@ export default async function handler(req: any, res: any) {
       return "Rifa";
     }
 
-    // 2. Fetch Operational Orders from Firestore (using Admin SDK with multi-format variants)
+    // 2. Fetch Operational Orders from Firestore (using Admin SDK with multi-format variants & robust fallback)
     try {
       if (adminDb) {
-        const fsOrdersSnap = await adminDb
-          .collection("orders")
-          .where("phone", "in", phoneVariants.slice(0, 10))
-          .get();
+        const variantsToQuery = phoneVariants.slice(0, 10);
+        
+        // Query fields: phone, customerPhone, customer_phone
+        const promises = [
+          adminDb.collection("orders").where("phone", "in", variantsToQuery).get().catch(() => null),
+          adminDb.collection("orders").where("customerPhone", "in", variantsToQuery).get().catch(() => null),
+          adminDb.collection("orders").where("customer_phone", "in", variantsToQuery).get().catch(() => null),
+          // Fallback: fetch recent orders to do robust in-memory digit normalization check
+          adminDb.collection("orders").orderBy("createdAt", "desc").limit(300).get().catch(() => null),
+        ];
 
-        for (const docSnap of fsOrdersSnap.docs) {
-          const data = docSnap.data();
-          const orderId = docSnap.id;
+        const snapshots = await Promise.all(promises);
+        const docsMap = new Map<string, any>();
+
+        snapshots.forEach((snap) => {
+          if (snap && !snap.empty) {
+            snap.docs.forEach((docSnap) => {
+              const data = docSnap.data();
+              const orderId = docSnap.id;
+              
+              // Check if order phone matches any variant by normalized digits
+              const orderPhoneRaw = String(data.phone || data.customerPhone || data.customer_phone || "").replace(/\D/g, "");
+              const matches = phoneVariants.some(v => orderPhoneRaw.includes(v) || v.includes(orderPhoneRaw));
+
+              if (matches && orderPhoneRaw.length >= 8) {
+                docsMap.set(orderId, data);
+              }
+            });
+          }
+        });
+
+        for (const [orderId, data] of docsMap.entries()) {
           const status = String(data.status || "").toLowerCase();
 
           // Standardize status
