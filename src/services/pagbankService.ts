@@ -22,10 +22,11 @@ export const pagbankService = {
     notificationUrl?: string;
     idempotencyKey: string;
   }) {
-    const accessToken = process.env.PAGBANK_ACCESS_TOKEN;
-    if (!accessToken) {
+    const rawToken = process.env.PAGBANK_ACCESS_TOKEN;
+    if (!rawToken) {
       throw new Error("PAGBANK_ACCESS_TOKEN environment variable is missing.");
     }
+    const accessToken = rawToken.trim().replace(/^["']|["']$/g, "");
     const baseUrl = process.env.PAGBANK_API_BASE_URL || "https://sandbox.api.pagseguro.com";
 
     const sanitizedPhone = customerPhone.replace(/\D/g, "");
@@ -107,10 +108,11 @@ export const pagbankService = {
   },
 
   async getOrder(orderIdOrPagBankId: string) {
-    const accessToken = process.env.PAGBANK_ACCESS_TOKEN;
-    if (!accessToken) {
+    const rawToken = process.env.PAGBANK_ACCESS_TOKEN;
+    if (!rawToken) {
       throw new Error("PAGBANK_ACCESS_TOKEN environment variable is missing.");
     }
+    const accessToken = rawToken.trim().replace(/^["']|["']$/g, "");
     const baseUrl = process.env.PAGBANK_API_BASE_URL || "https://sandbox.api.pagseguro.com";
 
     const response = await fetch(`${baseUrl}/orders/${orderIdOrPagBankId}`, {

@@ -2101,7 +2101,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       });
 
       // Strict post-creation verification of newly generated Pix details before moving to 'pix' step
-      if (!resData || !resData.paymentId || !resData.qrCode || !resData.orderId) {
+      if (!resData || !resData.paymentId || !resData.orderId || (!resData.qrCode && !resData.isManual)) {
         throw new Error("O servidor retornou dados incompletos para a geração do Pix. Tente novamente.");
       }
 
