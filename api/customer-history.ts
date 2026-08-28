@@ -48,6 +48,13 @@ export default async function handler(req: any, res: any) {
     });
   }
 
+  const phoneVariants = Array.from(new Set([
+    canonicalPhone,
+    `55${canonicalPhone}`,
+    `+55${canonicalPhone}`,
+    canonicalPhone.startsWith("55") && canonicalPhone.length > 10 ? canonicalPhone.slice(2) : "",
+  ])).filter(Boolean);
+
   try {
     const orderMap = new Map<string, any>();
     const raffleTitleMap = new Map<string, string>();
@@ -72,12 +79,12 @@ export default async function handler(req: any, res: any) {
       return "Rifa";
     }
 
-    // 2. Fetch Operational Orders from Firestore (using Admin SDK)
+    // 2. Fetch Operational Orders from Firestore (using Admin SDK with multi-format variants)
     try {
       if (adminDb) {
         const fsOrdersSnap = await adminDb
           .collection("orders")
-          .where("phone", "==", canonicalPhone)
+          .where("phone", "in", phoneVariants.slice(0, 10))
           .get();
 
         for (const docSnap of fsOrdersSnap.docs) {
@@ -117,14 +124,14 @@ export default async function handler(req: any, res: any) {
       console.warn("⚠️ [Customer History] Firestore query warning:", fsErr);
     }
 
-    // 3. Fetch Permanent History from Supabase
+    // 3. Fetch Permanent History from Supabase (with multi-format variants)
     try {
       const supabase = getSupabaseAdmin() || getSupabaseClient();
       if (supabase) {
         const { data: supabasePurchases, error } = await supabase
           .from("purchase_history")
           .select("*")
-          .eq("customer_phone", canonicalPhone)
+          .in("customer_phone", phoneVariants.slice(0, 10))
           .order("created_at", { ascending: false })
           .limit(100);
 
