@@ -21,11 +21,6 @@ service cloud.firestore {
        return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    // Is Admin configuration write helper
-    function isAdminConfigWrite(data) {
-      return exists(/databases/$(database)/documents/admins/config)
-          && data.get('adminToken', '') == get(/databases/$(database)/documents/admins/config).data.token;
-    }
 
     // Helper to validate lock payloads
     function isValidLock(data) {
@@ -130,21 +125,9 @@ service cloud.firestore {
           && (data.totalParticipants is int || data.totalParticipants is float);
     }
 
-    // Immutable admins configuration root document configuration
+    // Immutable admins configuration root document configuration - Completely closed to client SDK
     match /admins/{configId} {
-      allow read: if false; // strictly secret! No one can read it from the client
-      allow create: if !exists(/databases/$(database)/documents/admins/config) 
-                 && configId == 'config' 
-                 && request.resource.data.keys().hasAll(['token']) 
-                 && request.resource.data.keys().size() == 1 
-                 && request.resource.data.token is string 
-                 && request.resource.data.token.size() == 64;
-      allow update: if configId == 'config'
-                 && request.resource.data.keys().hasAll(['token']) 
-                 && request.resource.data.keys().size() == 1 
-                 && request.resource.data.token is string 
-                 && request.resource.data.token.size() == 64;
-      allow delete: if false; // locked forever once bootstrapped
+      allow read, create, update, delete: if false;
     }
 
     // Secure locks
@@ -184,38 +167,33 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Global Winners History collection ("Histórico de Ganhadores")
+    // Global Winners History collection ("Histórico de Ganhadores") - Read-only for clients, write via Admin SDK
     match /winners_history/{winnerId} {
       allow read, list: if true;
-      allow create, update: if isAdminConfigWrite(request.resource.data);
-      allow delete: if false;
+      allow create, update, delete: if false;
     }
 
-    // Secure Store Products collection ("Loja Premium")
+    // Secure Store Products collection ("Loja Premium") - Read-only for clients, write via Admin SDK
     match /store_products/{productId} {
       allow read, list: if true;
-      allow create, update: if isAdminConfigWrite(request.resource.data);
-      allow delete: if false; // Or require admin API
+      allow create, update, delete: if false;
     }
 
-    // Secure Store Settings ("Status e Configurações da Loja")
+    // Secure Store Settings ("Status e Configurações da Loja") - Read-only for clients, write via Admin SDK
     match /store_settings/{configId} {
       allow read, list: if true;
-      allow create, update: if isAdminConfigWrite(request.resource.data);
-      allow delete: if false;
+      allow create, update, delete: if false;
     }
 
-    // Secure raffle legacy/current configurations
+    // Secure raffle legacy/current configurations - Read-only for clients, write via Admin SDK
     match /raffle/config {
       allow read: if true;
-      allow create, update: if isValidConfig(request.resource.data) && isAdminConfigWrite(request.resource.data);
-      allow delete: if false;
+      allow create, update, delete: if false;
     }
 
     match /raffles/{raffleId} {
       allow read, list: if true;
-      allow create, update: if isValidId(raffleId) && isValidConfig(request.resource.data) && isAdminConfigWrite(request.resource.data);
-      allow delete: if false;
+      allow create, update, delete: if false;
     }
 
     // Secure raffle number allocations

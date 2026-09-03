@@ -32,46 +32,53 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { orderId, sessionId, raffleId } = req.body;
+  const { orderId, cancellationToken, sessionId, raffleId } = req.body;
   const targetRaffleId = raffleId || "current";
 
-  if (!orderId && !sessionId) {
-    return res.status(400).json({ error: "Parâmetro orderId ou sessionId é obrigatório." });
+  if (!orderId) {
+    return res.status(400).json({ error: "Parâmetro orderId é obrigatório." });
   }
 
   try {
     const db = getAdminFirestore();
     const nowIso = new Date().toISOString();
 
-    if (orderId) {
-      let cancelError: string | null = null;
-      let transactionFailed = false;
-      let orderNums: string[] = [];
+    let cancelError: string | null = null;
+    let transactionFailed = false;
+    let orderNums: string[] = [];
 
-      try {
-        await db.runTransaction(async (transaction: any) => {
-          const orderRef = db.collection("orders").doc(orderId);
-          const reservationRef = db.collection("reservations").doc(orderId);
+    try {
+      await db.runTransaction(async (transaction: any) => {
+        const orderRef = db.collection("orders").doc(orderId);
+        const reservationRef = db.collection("reservations").doc(orderId);
 
-          // READ 1: Order snapshot
-          const orderSnap = await transaction.get(orderRef);
-          if (!orderSnap.exists) {
-            return;
-          }
+        // READ 1: Order snapshot
+        const orderSnap = await transaction.get(orderRef);
+        if (!orderSnap.exists) {
+          cancelError = "Pedido não encontrado.";
+          return;
+        }
 
-          const orderData = orderSnap.data();
-          const statusLower = (orderData?.status || "").toLowerCase();
+        const orderData = orderSnap.data();
 
-          // CRITICAL: NEVER cancel paid orders
-          if (
-            statusLower === "pago" ||
-            statusLower === "paid" ||
-            statusLower === "confirmed" ||
-            statusLower === "approved"
-          ) {
-            cancelError = "Este pedido já está pago e confirmado. Não pode ser cancelado.";
-            throw new Error("ORDER_ALREADY_PAID");
-          }
+        // Verify cancellationToken possession (P0-05)
+        if (orderData?.cancellationToken && orderData.cancellationToken !== cancellationToken) {
+          cancelError = "Token de cancelamento inválido ou não autorizado para este pedido.";
+          throw new Error("INVALID_CANCELLATION_TOKEN");
+        }
+
+        const statusLower = (orderData?.status || "").toLowerCase();
+
+        // CRITICAL: NEVER cancel paid orders
+        if (
+          statusLower === "pago" ||
+          statusLower === "paid" ||
+          statusLower === "confirmed" ||
+          statusLower === "approved"
+        ) {
+          cancelError = "Este pedido já está pago e confirmado. Não pode ser cancelado.";
+          throw new Error("ORDER_ALREADY_PAID");
+        }
 
           orderNums = orderData?.nums || [];
           const orderRaffleId = orderData?.raffleId || targetRaffleId;
@@ -81,7 +88,7 @@ export default async function handler(req: any, res: any) {
             db.collection("raffles").doc(orderRaffleId).collection("numbers").doc(num)
           );
           const lockRefs = orderNums.map((num: string) =>
-            db.collection("locks").doc(num)
+            db.collection("raffles").doc(orderRaffleId).collection("locks").doc(num)
           );
 
           const numSnaps = await Promise.all(numRefs.map((ref: any) => transaction.get(ref)));
@@ -131,9 +138,8 @@ export default async function handler(req: any, res: any) {
         console.error(`❌ [CancelOrder Transaction Error] Order ${orderId}:`, txErr);
         return res.status(500).json({ error: "Falha ao processar cancelamento no banco de dados." });
       }
-    }
 
-    // Process additional sessionId locks cleanup if provided
+      // Process additional sessionId locks cleanup if provided
     if (sessionId) {
       try {
         const locksSnap = await db

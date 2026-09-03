@@ -53,6 +53,10 @@ export const pixService = {
         throw new Error(resData.error || resData.message || `Erro ao gerar PIX (${response.status})`);
       }
 
+      if (resData.orderId && resData.cancellationToken) {
+        localStorage.setItem(`cancel_token_${resData.orderId}`, resData.cancellationToken);
+      }
+
       return resData;
     } catch (err: any) {
       console.error("❌ [PixService CreatePix Error]:", err);
@@ -104,10 +108,12 @@ export const pixService = {
         orderId = orderIdOrParams;
       }
 
+      const cancellationToken = localStorage.getItem(`cancel_token_${orderId}`) || "";
+
       const response = await fetch("/api/cancel-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, raffleId: rId }),
+        body: JSON.stringify({ orderId, cancellationToken, raffleId: rId }),
       });
       const data = await response.json();
       return data;
@@ -119,7 +125,11 @@ export const pixService = {
 
   async checkPaymentStatus(orderId: string, raffleId?: string): Promise<any> {
     try {
-      const response = await fetch(`/api/check-payment?orderId=${encodeURIComponent(orderId)}&raffleId=${encodeURIComponent(raffleId || "current")}`);
+      const response = await fetch("/api/check-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, raffleId: raffleId || "current" }),
+      });
       const data = await response.json();
       return data;
     } catch (err: any) {

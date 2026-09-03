@@ -1,4 +1,5 @@
 import "dotenv/config";
+import crypto from "crypto";
 import { getAdminFirestore } from "./_firebaseAdmin.js";
 import { serverSupabaseSync } from "./_supabaseSync.js";
 import { MercadoPagoConfig, Payment } from "mercadopago";
@@ -81,7 +82,10 @@ export default async function handler(req: any, res: any) {
   let allNums = [...nums];
   let bonusNums: string[] = [];
 
-  const orderId = Math.random().toString(36).substring(2, 7).toUpperCase();
+  // High entropy Order ID and Cancellation Token (P0-06)
+  const orderId = "ord_" + crypto.randomBytes(16).toString("hex");
+  const cancellationToken = crypto.randomBytes(32).toString("hex");
+
   let expiresAt = currentNow + 10 * 60 * 1000; // 10 minutes default
   let raffleTitle = "Rifa";
   let finalAmount = 0;
@@ -94,7 +98,7 @@ export default async function handler(req: any, res: any) {
   let manualInstructions = "Realize o pagamento Pix utilizando a chave acima e aguarde a conferência do administrador.";
 
   try {
-    // 1. Fetch raffle config to recalculate transaction_amount server-side
+    // 1. Fetch raffle config first for authoritative pricing (P0-03) and rigid quota validation (P0-04)
     const tRaffleStart = Date.now();
     const configRef = getAdminFirestore().collection("raffles").doc(targetRaffleId);
     const configSnap = await configRef.get();
@@ -103,6 +107,36 @@ export default async function handler(req: any, res: any) {
     const configData = configSnap.exists ? configSnap.data() : {};
     if (configData.title) {
       raffleTitle = configData.title;
+    }
+
+    const totalRaffleNumbers = Number(configData.totalNumbers || 150);
+    const unitPrice = Number(configData.price);
+
+    if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+      return res.status(400).json({ error: "Preço da rifa não configurado ou inválido no servidor." });
+    }
+
+    // Rigid Quota Validation (P0-04)
+    if (!Array.isArray(nums) || nums.length === 0 || nums.length > 500) {
+      return res.status(400).json({ error: "Quantidade de cotas inválida (mínimo 1, máximo 500)." });
+    }
+    const uniqueNumsSet = new Set();
+    for (const n of nums) {
+      const numStr = String(n).trim();
+      const numInt = Number(numStr);
+      if (!Number.isInteger(numInt) || numInt < 1 || numInt > totalRaffleNumbers) {
+        return res.status(400).json({ error: `Cota inválida ou fora do intervalo da rifa (1 a ${totalRaffleNumbers}): ${n}` });
+      }
+      if (uniqueNumsSet.has(numStr)) {
+        return res.status(400).json({ error: `Cota duplicada na requisição: ${numStr}` });
+      }
+      uniqueNumsSet.add(numStr);
+    }
+
+    // 100% Server-side Pricing (P0-03)
+    finalAmount = Number((nums.length * unitPrice).toFixed(2));
+    if (!Number.isFinite(finalAmount) || finalAmount <= 0) {
+      return res.status(400).json({ error: "Cálculo do valor total do pedido inválido." });
     }
 
     paymentMode = configData.paymentMode || "automatic";
@@ -114,25 +148,9 @@ export default async function handler(req: any, res: any) {
     // 20 minutes for manual payment mode, 10 minutes for automatic mode
     expiresAt = currentNow + (paymentMode === "manual" || paymentGateway === "manual" ? 20 * 60 * 1000 : 10 * 60 * 1000);
 
-    // SERVER-SIDE RECALCULATION OF TRANSACTION_AMOUNT (Fixes Error 4037)
-    // Price per quota from config, fallback to request body price
-    const unitPrice = Number(configData.price || price || 0);
-    const calculatedAmount = Number((nums.length * unitPrice).toFixed(2));
-
-    // Validate calculated finalAmount
-    if (Number.isFinite(calculatedAmount) && calculatedAmount > 0) {
-      finalAmount = calculatedAmount;
-    } else if (Number.isFinite(Number(totalAmount)) && Number(totalAmount) > 0) {
-      finalAmount = Number(totalAmount);
-    } else {
-      console.warn(`❌ [TRANSACTION_AMOUNT_INVALID] Invalid total calculated for ${nums.length} numbers @ unit price ${unitPrice}`);
-      return res.status(400).json({ error: "O valor total do pedido é inválido. Por favor, selecione as cotas novamente." });
-    }
-
     const promotionEnabled = !!configData.promotionEnabled;
     const buy = Number(configData.promotionBuy || 5);
     const promoBonus = Number(configData.promotionBonus || 1);
-    const totalRaffleNumbers = Number(configData.totalNumbers || 150);
     const padLen = String(totalRaffleNumbers).length < 3 ? 3 : String(totalRaffleNumbers).length;
 
     // Bonus numbers prediction (Bonus numbers DO NOT add to charge amount!)
@@ -563,6 +581,7 @@ export default async function handler(req: any, res: any) {
     const orderRef = getAdminFirestore().collection("orders").doc(orderId);
     const newOrder = {
       id: orderId,
+      cancellationToken,
       raffleId: targetRaffleId,
       name,
       phone: dNormPhone,
