@@ -60,7 +60,6 @@ import { getAdminFirestore } from "./api/_firebaseAdmin.js";
 import healthHandler from "./api/health";
 import createPixHandler from "./api/create-pix";
 import webhookHandler from "./api/webhook";
-import simulateWebhookHandler from "./api/simulate-webhook";
 import adminActionHandler from "./api/admin-action";
 import sendReceiptHandler from "./api/send-receipt";
 import lockCotaHandler from "./api/lock-cota";
@@ -251,7 +250,6 @@ app.use("/api/test-supabase", (req, res) => {
 // Map serverless handlers directly as standard Express middleware routes!
 app.post("/api/create-pix", createPixHandler);
 app.post("/api/webhook", webhookHandler);
-app.post("/api/simulate-webhook", simulateWebhookHandler);
 app.post("/api/admin-action", adminActionHandler);
 app.post("/api/send-receipt", sendReceiptHandler);
 app.post("/api/lock-cota", lockCotaHandler);

@@ -167,7 +167,11 @@ export default async function handler(req: any, res: any) {
   const clientIp = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "Unknown IP";
   const userAgent = req.headers["user-agent"] || "Unknown User-Agent";
 
-  const computedLegacyToken = crypto.createHash("sha256").update((process.env.ADMIN_PASSWORD || "admin").trim() + "RifaMasterSaltSecureAudit").digest("hex");
+  const adminPasswordEnv = (process.env.ADMIN_PASSWORD || "").trim();
+  if (!adminPasswordEnv) {
+    console.error("❌ [Security Error] ADMIN_PASSWORD environment variable is not configured!");
+  }
+  const computedLegacyToken = crypto.createHash("sha256").update(adminPasswordEnv + "RifaMasterSaltSecureAudit").digest("hex");
 
   // Dynamic initialization safeguard: ensure we call ensureDefaultConfig before handling any requests
   if (isAdminInitialized()) {
@@ -218,7 +222,10 @@ export default async function handler(req: any, res: any) {
         console.warn("⚠️ [Admin Login] Rate limit read skipped (Quota/Connection):", secErr?.message || secErr);
       }
 
-      const configuredPassword = (process.env.ADMIN_PASSWORD || "").trim() || "admin";
+      const configuredPassword = (process.env.ADMIN_PASSWORD || "").trim();
+      if (!configuredPassword) {
+        return res.status(500).json({ error: "ADMIN_PASSWORD não está configurado no servidor." });
+      }
       const isPasswordValid = String(password).trim() === configuredPassword;
       const configuredEmail = (process.env.ADMIN_EMAIL || "").trim() || "admin@rifa.com";
       const isEmailValid = String(email).trim().toLowerCase() === configuredEmail.toLowerCase();
@@ -293,7 +300,7 @@ export default async function handler(req: any, res: any) {
       console.error("❌ [LOGIN_ACTION_EXCEPTION] Exception during admin login:", err);
       // Quota fallback: if password is correct, grant session
       const password = req.body?.password;
-      const configuredPassword = (process.env.ADMIN_PASSWORD || "").trim() || "admin";
+      const configuredPassword = (process.env.ADMIN_PASSWORD || "").trim();
       if (password && String(password).trim() === configuredPassword) {
         const token = "SES_" + crypto.randomBytes(32).toString("hex");
         inMemorySessions.set(token, Date.now() + 24 * 60 * 60 * 1000);
@@ -383,12 +390,7 @@ export default async function handler(req: any, res: any) {
         }
       } catch (fsErr: any) {
         const errorMsg = fsErr?.message || String(fsErr);
-        if (!errorMsg.includes("RESOURCE_EXHAUSTED")) {
-          console.warn("⚠️ [Admin Session Check] Firestore read error (using token format check):", errorMsg);
-        }
-        if (token.length > 20) {
-          isValidSession = true;
-        }
+        console.warn("⚠️ [Admin Session Check] Firestore read error during session validation:", errorMsg);
       }
     }
   }
