@@ -244,7 +244,7 @@ export default async function handler(req: any, res: any) {
     const orderDataForVal = orderDocSnap.data();
     const expectedValCents = Math.round(Number(orderDataForVal?.val || 0) * 100);
     const paidValCents = Math.round(Number(mpPaymentInfo?.transaction_amount || mpPaymentInfo?.total_paid_amount || 0) * 100);
-    if (expectedValCents > 0 && paidValCents > 0 && Math.abs(paidValCents - expectedValCents) > 10) {
+    if (expectedValCents > 0 && paidValCents > 0 && paidValCents !== expectedValCents) {
       console.error(`❌ [Webhook] Amount mismatch for order ${orderId}: expected ${expectedValCents} cents, paid ${paidValCents} cents`);
       return res.status(400).json({ error: "Amount mismatch" });
     }

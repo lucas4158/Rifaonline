@@ -111,7 +111,7 @@ export default async function handler(req: any, res: any) {
         if (gatewayStatus === "approved") {
           const expectedValCents = Math.round(Number(orderData?.val || 0) * 100);
           const paidValCents = Math.round(Number(mpInfo?.transaction_amount || mpInfo?.total_paid_amount || 0) * 100);
-          if (expectedValCents > 0 && paidValCents > 0 && Math.abs(paidValCents - expectedValCents) <= 10) {
+          if (expectedValCents > 0 && paidValCents > 0 && paidValCents === expectedValCents) {
             isApprovedOnGateway = true;
           } else {
             console.error(`❌ [CheckPayment] Amount mismatch: expected ${expectedValCents} cents, paid ${paidValCents} cents`);

@@ -143,7 +143,7 @@ export default async function handler(req: any, res: any) {
     if (sessionId) {
       try {
         const locksSnap = await db
-          .collection("locks")
+          .collectionGroup("locks")
           .where("sessionId", "==", sessionId)
           .get();
 

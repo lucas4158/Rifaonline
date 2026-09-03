@@ -1,5 +1,25 @@
 import { getAdminFirestore } from "./_firebaseAdmin.js";
 
+const ALLOWED_ORIGINS = [
+  "https://ais-dev-yqjhiz7q6asd2baqisutaf-537417047994.us-west2.run.app",
+  "https://ais-pre-yqjhiz7q6asd2baqisutaf-537417047994.us-west2.run.app",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000"
+];
+
+function setAdminCors(req: any, res: any) {
+  const origin = req.headers.origin;
+  if (origin && (ALLOWED_ORIGINS.some(o => origin.startsWith(o)) || origin.endsWith(".run.app") || origin.includes("localhost"))) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  } else {
+    res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGINS[0]);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  }
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+}
+
 function parseCookies(cookieHeader?: string) {
   const cookies: { [key: string]: string } = {};
   if (!cookieHeader) return cookies;
@@ -14,18 +34,28 @@ function parseCookies(cookieHeader?: string) {
 }
 
 export default async function handler(req: any, res: any) {
-  const origin = req.headers.origin;
-  if (origin) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-  } else {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-  }
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  setAdminCors(req, res);
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
+  }
+
+  // CSRF / Origin validation for state-changing requests
+  if (req.method === "POST") {
+    const origin = req.headers.origin;
+    const referer = req.headers.referer;
+    const host = req.headers.host;
+
+    if (origin) {
+      const isAllowed = ALLOWED_ORIGINS.some(o => origin.startsWith(o)) || (host && origin.includes(host));
+      if (!isAllowed) {
+        return res.status(403).json({ error: "CSRF protection: Invalid Origin." });
+      }
+    } else if (referer && host) {
+      if (!referer.includes(host)) {
+        return res.status(403).json({ error: "CSRF protection: Referer mismatch." });
+      }
+    }
   }
 
   // Handle logout request
@@ -33,7 +63,7 @@ export default async function handler(req: any, res: any) {
     console.log("[ADMIN_LOGOUT] Admin initiated logout. Clearing session cookie.");
     res.setHeader(
       "Set-Cookie",
-      "admin_session=; Path=/; HttpOnly; SameSite=None; Secure; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
+      "admin_session=; Path=/; HttpOnly; SameSite=Lax; Secure; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
     );
     return res.status(200).json({ success: true, message: "Logout realizado com sucesso" });
   }

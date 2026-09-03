@@ -176,7 +176,7 @@ export default async function handler(req: any, res: any) {
         attempts < maxAttempts
       ) {
         attempts++;
-        const randomVal = Math.floor(Math.random() * totalRaffleNumbers) + 1;
+        const randomVal = crypto.randomInt(1, totalRaffleNumbers + 1);
         const formatted = String(randomVal).padStart(padLen, "0");
         if (!excludedSet.has(formatted) && !candidateBonusPool.includes(formatted)) {
           candidateBonusPool.push(formatted);
@@ -189,7 +189,7 @@ export default async function handler(req: any, res: any) {
     // 2. Execute parallelized read-before-write transaction
     const tTransStart = Date.now();
     const transactionResult = await getAdminFirestore().runTransaction(async (transaction: any) => {
-      const lockRefs = allCheckNumbers.map((n) => getAdminFirestore().collection("locks").doc(n));
+      const lockRefs = allCheckNumbers.map((n) => getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("locks").doc(n));
       const numRefs = allCheckNumbers.map((n) => getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(n));
 
       const allSnaps = await transaction.getAll(...lockRefs, ...numRefs);
@@ -323,7 +323,7 @@ export default async function handler(req: any, res: any) {
 
       // Delete selection locks for requested numbers
       for (const num of nums) {
-        const lockDocRef = getAdminFirestore().collection("locks").doc(num);
+        const lockDocRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("locks").doc(num);
         transaction.delete(lockDocRef);
       }
 
@@ -406,7 +406,7 @@ export default async function handler(req: any, res: any) {
         const numRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
         batch.set(numRef, numUpdateData, { merge: true });
 
-        const lockRef = getAdminFirestore().collection("locks").doc(num);
+        const lockRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("locks").doc(num);
         batch.set(lockRef, {
           sessionId,
           expiresAt,
@@ -463,7 +463,7 @@ export default async function handler(req: any, res: any) {
   qrCodeBase64 = "";
 
   const generateValidCPF = (): string => {
-    const rnt = (max: number) => Math.floor(Math.random() * max);
+    const rnt = (max: number) => crypto.randomInt(0, max);
     const n = Array.from({ length: 9 }, () => rnt(10));
     let d1 = n.reduce((acc, curr, idx) => acc + curr * (10 - idx), 0);
     d1 = 11 - (d1 % 11);

@@ -1,3 +1,5 @@
+import crypto from "crypto";
+
 console.log("🚀 [PROMO_HELPER_LOADED] Promotional helper loading successfully into current thread context.");
 
 export async function allocatePromotionalBonus(
@@ -59,7 +61,7 @@ export async function allocatePromotionalBonus(
 
   while (candidateNumbers.length < neededNewBonusCount + 10 && attempts < maxAttempts) {
     attempts++;
-    const randomVal = Math.floor(Math.random() * totalNumbers) + 1;
+    const randomVal = crypto.randomInt(1, totalNumbers + 1);
     const formatted = String(randomVal).padStart(padLen, "0");
     if (!existingSet.has(formatted) && !candidateNumbers.includes(formatted)) {
       candidateNumbers.push(formatted);

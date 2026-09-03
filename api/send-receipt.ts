@@ -1,13 +1,5 @@
 import "dotenv/config";
-import path from "path";
-import fs from "fs";
-
 import { getAdminFirestore, isAdminInitialized } from "./_firebaseAdmin.js";
-
-
-
-// Initialize Firebase
-
 
 export default async function handler(req: any, res: any) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -23,59 +15,71 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
   }
 
-  const { orderId, name, phone, nums, totalAmount, status } = req.body;
+  const { orderId } = req.body;
 
-  if (!orderId || !name || !phone || !nums || !Array.isArray(nums)) {
-    return res.status(400).json({ error: "Dados incompletos para envio do comprovante." });
+  if (!orderId) {
+    return res.status(400).json({ error: "orderId é obrigatório." });
   }
 
-  console.log(`📠 [Receipt API] Received receipt for Order ID: ${orderId} (Client: ${name})`);
+  if (!isAdminInitialized()) {
+    return res.status(500).json({ error: "Banco de dados não inicializado." });
+  }
 
-  // Write receipt details to a central Firestore receipts collection for tracking
-  if (isAdminInitialized()) {
-    try {
-      await getAdminFirestore().collection("receipts").doc(orderId).set({
-        orderId,
-        name,
-        phone,
-        nums,
-        totalAmount: Number(totalAmount || 0),
-        status: status || "Pago",
-        submittedAt: new Date().toISOString()
-      }, { merge: true });
-      console.log(`✅ [Receipt API] Successfully logged receipt ${orderId} in Firestore.`);
-    } catch (dbErr: any) {
-      console.error(`❌ [Receipt API] Failed to log receipt ${orderId} in Firestore:`, dbErr.message || dbErr);
+  try {
+    const adminDb = getAdminFirestore();
+    const orderDoc = await adminDb.collection("orders").doc(orderId).get();
+
+    if (!orderDoc.exists) {
+      return res.status(404).json({ error: "Pedido não encontrado." });
     }
-  }
 
-  // If a generic receipt webhook is defined in the environment, trigger a notification
-  const extWebhookUrl = process.env.RECEIPT_WEBHOOK_URL;
-  if (extWebhookUrl && extWebhookUrl.startsWith("http")) {
-    try {
-      console.log(`📤 [Receipt API] Sending webhook notification to: ${extWebhookUrl}`);
-      const webRes = await fetch(extWebhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          event: "receipt_submitted",
-          orderId,
-          name,
-          phone,
-          nums,
-          totalAmount: Number(totalAmount || 0),
-          status: status || "Pago",
-          timestamp: new Date().toISOString()
-        })
-      });
-      console.log(`📤 [Receipt API] Webhook returned status: ${webRes.status}`);
-    } catch (webErr: any) {
-      console.error(`❌ [Receipt API] Failed to forward webhook:`, webErr.message || webErr);
+    const orderData = orderDoc.data();
+    const name = orderData?.name || "Cliente";
+    const phone = orderData?.phone || "";
+    const nums = orderData?.nums || [];
+    const totalAmount = Number(orderData?.val || 0);
+    const status = orderData?.status || "Aguardando";
+
+    console.log(`📠 [Receipt API] Processing authoritative receipt for Order ID: ${orderId} (Client: ${name})`);
+
+    await adminDb.collection("receipts").doc(orderId).set({
+      orderId,
+      name,
+      phone,
+      nums,
+      totalAmount,
+      status,
+      submittedAt: new Date().toISOString()
+    }, { merge: true });
+
+    const extWebhookUrl = process.env.RECEIPT_WEBHOOK_URL;
+    if (extWebhookUrl && extWebhookUrl.startsWith("http")) {
+      try {
+        await fetch(extWebhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            event: "receipt_submitted",
+            orderId,
+            name,
+            phone,
+            nums,
+            totalAmount,
+            status,
+            timestamp: new Date().toISOString()
+          })
+        });
+      } catch (webErr: any) {
+        console.error(`❌ [Receipt API] Failed to forward webhook:`, webErr?.message || webErr);
+      }
     }
-  }
 
-  return res.status(200).json({
-    success: true,
-    message: "Comprovante enviado com sucesso para o administrador!"
-  });
+    return res.status(200).json({
+      success: true,
+      message: "Comprovante enviado com sucesso para o administrador!"
+    });
+  } catch (err: any) {
+    console.error("❌ [Receipt API] Error processing receipt:", err);
+    return res.status(500).json({ error: "Erro interno ao processar comprovante." });
+  }
 }

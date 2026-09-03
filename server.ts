@@ -91,24 +91,6 @@ async function runBackgroundCleanup() {
 
   const now = Date.now();
   try {
-    // 1. Efficient query: Clean expired locks ONLY (where expiresAt <= now)
-    const locksSnap = await adminDb.collection("locks").where("expiresAt", "<=", now).limit(100).get();
-    const locksToDelete: string[] = [];
-    locksSnap.forEach((docSnap: any) => {
-      locksToDelete.push(docSnap.id);
-    });
-
-    if (locksToDelete.length > 0) {
-      console.log(`🧹 [Server Worker] Cleaning up ${locksToDelete.length} expired locks:`, locksToDelete);
-      for (const id of locksToDelete) {
-        try {
-          await adminDb.collection("locks").doc(id).delete();
-        } catch (e) {
-          console.error(`❌ [Server Worker] Failed to delete lock doc ${id}:`, e);
-        }
-      }
-    }
-
     // 2. Efficient query: Clean expired pending reservations ONLY (where expiresAt <= now)
     const resSnap = await adminDb.collection("reservations").where("expiresAt", "<=", now).limit(100).get();
     const expiredOrders: { id: string; nums: string[]; paymentId?: string; raffleId?: string }[] = [];
@@ -242,10 +224,6 @@ setInterval(() => {
 
 // API ROUTES
 app.use("/api/health", healthHandler);
-app.use("/api/test-supabase", (req, res) => {
-  req.query = { ...req.query, action: "test-supabase" };
-  return healthHandler(req, res);
-});
 
 // Map serverless handlers directly as standard Express middleware routes!
 app.post("/api/create-pix", createPixHandler);

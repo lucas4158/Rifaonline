@@ -139,19 +139,47 @@ if (isAdminInitialized()) {
   setTimeout(ensureDefaultConfig, 500);
 }
 
-export default async function handler(req: any, res: any) {
+const ALLOWED_ORIGINS = [
+  "https://ais-dev-yqjhiz7q6asd2baqisutaf-537417047994.us-west2.run.app",
+  "https://ais-pre-yqjhiz7q6asd2baqisutaf-537417047994.us-west2.run.app",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000"
+];
+
+function setAdminCors(req: any, res: any) {
   const origin = req.headers.origin;
-  if (origin) {
+  if (origin && (ALLOWED_ORIGINS.some(o => origin.startsWith(o)) || origin.endsWith(".run.app") || origin.includes("localhost"))) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
   } else {
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGINS[0]);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
   }
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+}
+
+export default async function handler(req: any, res: any) {
+  setAdminCors(req, res);
 
   if (req.method === "OPTIONS") {
     return res.status(200).end();
+  }
+
+  // CSRF / Origin validation for POST requests
+  const origin = req.headers.origin;
+  const referer = req.headers.referer;
+  const host = req.headers.host;
+
+  if (origin) {
+    const isAllowed = ALLOWED_ORIGINS.some(o => origin.startsWith(o)) || (host && origin.includes(host));
+    if (!isAllowed) {
+      return res.status(403).json({ error: "CSRF protection: Invalid Origin." });
+    }
+  } else if (referer && host) {
+    if (!referer.includes(host)) {
+      return res.status(403).json({ error: "CSRF protection: Referer mismatch." });
+    }
   }
 
   if (req.method !== "POST") {
@@ -1301,7 +1329,7 @@ export default async function handler(req: any, res: any) {
           }
 
           // 2. Check if locked dynamically
-          const lockRef = getAdminFirestore().collection("locks").doc(num);
+          const lockRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("locks").doc(num);
           const lockSnap = await lockRef.get();
           if (lockSnap.exists) {
             const lockData = lockSnap.data();
@@ -1346,7 +1374,7 @@ export default async function handler(req: any, res: any) {
           });
 
           // Clear locks if any
-          const lockRef = getAdminFirestore().collection("locks").doc(num);
+          const lockRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("locks").doc(num);
           batch.delete(lockRef);
         });
 
@@ -1990,7 +2018,7 @@ export default async function handler(req: any, res: any) {
         batch.delete(numDocRef);
 
         // Delete temporary lock doc if any
-        const lockRef = getAdminFirestore().collection("locks").doc(numberToRelease);
+        const lockRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("locks").doc(numberToRelease);
         batch.delete(lockRef);
 
         try {

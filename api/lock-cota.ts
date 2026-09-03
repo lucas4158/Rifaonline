@@ -167,7 +167,7 @@ export default async function handler(req: any, res: any) {
         const chunk = idsToProcess.slice(i, i + chunkSize);
 
         await db.runTransaction(async (transaction: any) => {
-          const lockRefs = chunk.map((num: string) => db.collection("locks").doc(num));
+          const lockRefs = chunk.map((num: string) => db.collection("raffles").doc(targetRaffleId).collection("locks").doc(num));
           const numRefs = chunk.map((num: string) =>
             db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num)
           );
@@ -182,7 +182,7 @@ export default async function handler(req: any, res: any) {
               const data = lockSnap.data();
               // Validate session ownership or TTL expiry
               if (data.sessionId === sessionId || data.expiresAt <= currentNow) {
-                transaction.delete(db.collection("locks").doc(num));
+                transaction.delete(db.collection("raffles").doc(targetRaffleId).collection("locks").doc(num));
               }
             }
           });
