@@ -9,12 +9,12 @@ const ALLOWED_ORIGINS = [
 
 function setAdminCors(req: any, res: any) {
   const origin = req.headers.origin;
-  if (origin && (ALLOWED_ORIGINS.some(o => origin.startsWith(o)) || origin.endsWith(".run.app") || origin.includes("localhost"))) {
+  const isAllowed = origin && ALLOWED_ORIGINS.some(o => origin === o || origin.startsWith(o) || origin.endsWith(".run.app") || origin.includes("localhost"));
+  if (isAllowed) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
   } else {
     res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGINS[0]);
-    res.setHeader("Access-Control-Allow-Credentials", "true");
   }
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");

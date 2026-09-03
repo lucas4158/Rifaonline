@@ -148,12 +148,12 @@ const ALLOWED_ORIGINS = [
 
 function setAdminCors(req: any, res: any) {
   const origin = req.headers.origin;
-  if (origin && (ALLOWED_ORIGINS.some(o => origin.startsWith(o)) || origin.endsWith(".run.app") || origin.includes("localhost"))) {
+  const isAllowed = origin && ALLOWED_ORIGINS.some(o => origin === o || origin.startsWith(o) || origin.endsWith(".run.app") || origin.includes("localhost"));
+  if (isAllowed) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
   } else {
     res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGINS[0]);
-    res.setHeader("Access-Control-Allow-Credentials", "true");
   }
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -318,7 +318,7 @@ export default async function handler(req: any, res: any) {
 
       res.setHeader(
         "Set-Cookie",
-        `admin_session=${token}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=86400;`
+        `admin_session=${token}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=86400;`
       );
 
       const totalDuration = Date.now() - loginStartTime;
@@ -334,7 +334,7 @@ export default async function handler(req: any, res: any) {
         inMemorySessions.set(token, Date.now() + 24 * 60 * 60 * 1000);
         res.setHeader(
           "Set-Cookie",
-          `admin_session=${token}; Path=/; HttpOnly; SameSite=None; Secure; Max-Age=86400;`
+          `admin_session=${token}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=86400;`
         );
         console.log("🟢 [Admin Auth Quota Fallback] Granted session despite quota exception.");
         return res.status(200).json({ success: true, token });
