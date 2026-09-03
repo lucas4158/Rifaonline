@@ -1,7 +1,6 @@
 import "dotenv/config";
 import { getAdminFirestore } from "./_firebaseAdmin.js";
 import { MercadoPagoConfig, Payment } from "mercadopago";
-import { pagbankService } from "../src/services/pagbankService.js";
 import { allocatePromotionalBonus } from "./_promoHelper.js";
 import { serverSupabaseSync } from "./_supabaseSync.js";
 import admin from "firebase-admin";
@@ -97,73 +96,26 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // Check payment status on Gateway (PagBank, Mercado Pago or Simulation)
+    // Check payment status on Gateway (Mercado Pago only - SIM_ simulation completely removed)
     const effectivePaymentId = paymentId || orderData.paymentId;
-    const isPagBank = orderData?.paymentGateway === "pagbank" || orderData?.paymentType === "PagBankPix" || String(effectivePaymentId).startsWith("ORDE_");
     let isApprovedOnGateway = false;
     let gatewayStatus = "pending";
-    let pbChargeId = "";
-    let pbPaidAmount = 0;
 
-    if (isPagBank) {
-      try {
-        const pbOrder = await pagbankService.getOrder(effectivePaymentId);
-        const charge = pbOrder?.charges?.[0] || {};
-        gatewayStatus = String(charge?.status || "pending").toLowerCase();
-        pbChargeId = charge?.id || "";
-        pbPaidAmount = (charge?.amount?.value || 0) / 100;
-
-        if (gatewayStatus === "paid" || gatewayStatus === "approved" || gatewayStatus === "authorized") {
-          const orderValInCents = Math.round(Number(orderData?.val || 0) * 100);
-          const pbPaidAmountCents = charge?.amount?.value || Math.round(pbPaidAmount * 100);
-          if (pbPaidAmountCents === orderValInCents) {
-            // Check Expiration (Correction 1)
-            const currentNow = Date.now();
-            const expiresAt = Number(orderData?.expiresAt || 0);
-            if (currentNow > expiresAt) {
-              console.warn(`⚠️ [PAYMENT_LATE] CheckPayment: Order ${targetOrderId} paid after expiration. Marking as payment_late.`);
-              await db.collection("orders").doc(targetOrderId).update({
-                status: "payment_late",
-                latePaymentAt: new Date().toISOString(),
-                latePaymentAmount: pbPaidAmount,
-                chargeId: pbChargeId,
-              });
-              await db.collection("adminLogs").add({
-                type: "PAYMENT_LATE",
-                orderId: targetOrderId,
-                raffleId: orderData.raffleId,
-                amount: pbPaidAmount,
-                message: `Pagamento recebido após expiração verificado via check-payment para o pedido ${targetOrderId}`,
-                createdAt: new Date().toISOString(),
-              });
-              return res.status(200).json({
-                approved: false,
-                status: "expired",
-                orderStatus: "payment_late",
-                orderId: targetOrderId,
-                error: "Pagamento recebido após o vencimento da reserva. Pedido marcado como pagamento tardio.",
-              });
-            }
-            isApprovedOnGateway = true;
-          } else {
-            console.error(`❌ [CheckPayment] PagBank amount mismatch: paid ${pbPaidAmountCents} cents, expected ${orderValInCents} cents`);
-          }
-        }
-      } catch (pbErr) {
-        console.error(`❌ [CheckPayment] Error fetching PagBank order ${effectivePaymentId}:`, pbErr);
-      }
-    } else if (String(effectivePaymentId).startsWith("SIM_")) {
-      const isProduction = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
-      if (!isProduction) {
-        isApprovedOnGateway = true;
-        gatewayStatus = "approved";
-      }
+    if (String(effectivePaymentId).startsWith("SIM_")) {
+      console.warn(`⚠️ [CheckPayment] Rejected simulated payment ID: ${effectivePaymentId}`);
+      isApprovedOnGateway = false;
     } else if (effectivePaymentId && mpPayment) {
       try {
         const mpInfo = await mpPayment.get({ id: Number(effectivePaymentId) });
         gatewayStatus = mpInfo?.status || "pending";
         if (gatewayStatus === "approved") {
-          isApprovedOnGateway = true;
+          const expectedValCents = Math.round(Number(orderData?.val || 0) * 100);
+          const paidValCents = Math.round(Number(mpInfo?.transaction_amount || mpInfo?.total_paid_amount || 0) * 100);
+          if (expectedValCents > 0 && paidValCents > 0 && Math.abs(paidValCents - expectedValCents) <= 10) {
+            isApprovedOnGateway = true;
+          } else {
+            console.error(`❌ [CheckPayment] Amount mismatch: expected ${expectedValCents} cents, paid ${paidValCents} cents`);
+          }
         }
       } catch (mpErr) {
         console.error(`❌ [CheckPayment] Error fetching payment ${effectivePaymentId} from MP API:`, mpErr);
@@ -193,7 +145,7 @@ export default async function handler(req: any, res: any) {
         const paymentRef = db.collection("payments").doc(String(effectivePaymentId));
 
         // Idempotency check (Correction 3)
-        const idempotencyKey = isPagBank ? `pagbank:${targetOrderId}:${pbChargeId}:${gatewayStatus}` : `mp:${targetOrderId}:${effectivePaymentId}:${gatewayStatus}`;
+        const idempotencyKey = `mp:${targetOrderId}:${effectivePaymentId}:${gatewayStatus}`;
         const eventRef = db.collection("processedWebhooks").doc(idempotencyKey);
         const eventSnap = await transaction.get(eventRef);
         if (eventSnap.exists) {

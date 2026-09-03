@@ -5,7 +5,6 @@ import { serverSupabaseSync } from "./_supabaseSync.js";
 import admin from "firebase-admin";
 import { getAdminFirestore } from "./_firebaseAdmin.js";
 import { MercadoPagoConfig, Payment } from "mercadopago";
-import { pagbankService } from "../src/services/pagbankService.js";
 
 // Initialize Mercado Pago
 let mpPayment: any = null;
@@ -38,162 +37,7 @@ export default async function handler(req: any, res: any) {
 
     const rawBody = req.body || {};
 
-    // Check if PagBank webhook payload
-    const isPagBank = rawBody?.charges || String(rawBody?.id || "").startsWith("ORDE_") || rawBody?.reference_id;
-    if (isPagBank) {
-      console.log("📥 [WEBHOOK_RECEIVED] PagBank webhook payload:", JSON.stringify(rawBody));
-      const orderId = rawBody?.reference_id;
-      const charge = rawBody?.charges?.[0] || {};
-      const chargeId = charge?.id || "unknown";
-      const status = String(charge?.status || "").toUpperCase();
-      const paidAmountCents = charge?.amount?.value || 0;
-      const paidAmount = paidAmountCents / 100;
-      const pagbankOrderId = rawBody?.id;
 
-      if (!orderId) {
-        return res.status(200).json({ status: "ignored", message: "No reference_id in PagBank webhook." });
-      }
-
-      const db = getAdminFirestore();
-      const orderRef = db.collection("orders").doc(orderId);
-      const orderSnap = await orderRef.get();
-
-      if (!orderSnap.exists) {
-        return res.status(200).json({ status: "ignored", message: "Order not found." });
-      }
-
-      const orderData = orderSnap.data();
-      const currentStatus = String(orderData?.status || "").toLowerCase();
-
-      if (currentStatus === "pago" || currentStatus === "paid" || currentStatus === "approved") {
-        return res.status(200).json({ status: "already_processed" });
-      }
-
-      if (orderData?.paymentGateway !== "pagbank" && orderData?.paymentType !== "PagBankPix") {
-        console.warn(`⚠️ [Webhook] PagBank webhook received for non-PagBank order ${orderId}`);
-        return res.status(200).json({ status: "ignored" });
-      }
-
-      const isPaid = status === "PAID" || status === "APPROVED" || status === "AUTHORIZED";
-      if (!isPaid) {
-        return res.status(200).json({ status: "received", message: `Status is ${status}` });
-      }
-
-      const orderValInCents = Math.round(Number(orderData?.val || 0) * 100);
-      if (paidAmountCents !== orderValInCents) {
-        console.error(`❌ [Webhook] Amount mismatch for order ${orderId}: paid ${paidAmountCents} cents, expected ${orderValInCents} cents`);
-        return res.status(400).json({ error: "Amount mismatch" });
-      }
-
-      // Check Expiration (Correction 1)
-      const currentNow = Date.now();
-      const expiresAt = Number(orderData?.expiresAt || 0);
-      if (currentNow > expiresAt) {
-        console.warn(`⚠️ [PAYMENT_LATE] Order ${orderId} paid after expiration (${new Date(expiresAt).toISOString()}). Marking as PAYMENT_LATE without auto-confirming.`);
-        await orderRef.update({
-          status: "payment_late",
-          latePaymentAt: new Date().toISOString(),
-          latePaymentAmount: paidAmount,
-          chargeId,
-        });
-        await db.collection("adminLogs").add({
-          type: "PAYMENT_LATE",
-          orderId,
-          raffleId: orderData.raffleId,
-          amount: paidAmount,
-          message: `Pagamento recebido após expiração para o pedido ${orderId}`,
-          createdAt: new Date().toISOString(),
-        });
-        return res.status(200).json({ status: "payment_late", message: "Payment received after expiration. Marked as payment_late for admin review." });
-      }
-
-      // Idempotency check (Correction 3)
-      const idempotencyEventKey = `pagbank:${orderId}:${chargeId}:${status}`;
-      const eventRef = db.collection("processedWebhooks").doc(idempotencyEventKey);
-
-      try {
-        await db.runTransaction(async (transaction: any) => {
-          const eventSnap = await transaction.get(eventRef);
-          if (eventSnap.exists) {
-            return;
-          }
-
-          const currentOrderSnap = await transaction.get(orderRef);
-          if (!currentOrderSnap.exists) throw new Error("ORDER_NOT_FOUND");
-          const curData = currentOrderSnap.data();
-          const curStatus = String(curData?.status || "").toLowerCase();
-          if (curStatus === "pago" || curStatus === "paid" || curStatus === "approved") {
-            return;
-          }
-
-          transaction.set(eventRef, {
-            key: idempotencyEventKey,
-            orderId,
-            gateway: "pagbank",
-            processedAt: new Date().toISOString(),
-          });
-
-          transaction.update(orderRef, {
-            status: "Pago",
-            paidAt: new Date().toISOString(),
-            chargeId,
-          });
-
-          const paymentIdToUpdate = pagbankOrderId || orderData.paymentId;
-          if (paymentIdToUpdate) {
-            const paymentRef = db.collection("payments").doc(String(paymentIdToUpdate));
-            transaction.set(paymentRef, {
-              status: "approved",
-              updatedAt: new Date().toISOString(),
-            }, { merge: true });
-          }
-
-          const targetRaffleId = orderData.raffleId || "current";
-          const allNums = orderData.nums || [];
-          const numUpdateData = {
-            status: "paid",
-            orderId,
-            paidAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          };
-
-          allNums.forEach((num: string) => {
-            const numRef = db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
-            transaction.set(numRef, numUpdateData, { merge: true });
-          });
-        });
-
-        console.log(`✅ [PagBank Webhook] Order ${orderId} successfully confirmed via webhook!`);
-
-        try {
-          const freshSnap = await orderRef.get();
-          const freshData = freshSnap.data();
-          if (freshData) {
-            const batch = db.batch();
-            await allocatePromotionalBonus(db, orderId, freshData, batch, freshData.raffleId || "current");
-            await batch.commit();
-          }
-          if (orderData.nums && orderData.nums.length > 0) {
-            serverSupabaseSync.syncNumberStates(
-              orderData.raffleId || "current",
-              orderData.nums.map((num: string) => ({
-                number: num,
-                status: "paid",
-                order_id: orderId,
-                is_bonus: (orderData.bonusNums || []).includes(num),
-              }))
-            ).catch(() => {});
-          }
-        } catch (postErr) {
-          console.error("⚠️ [Webhook Post-Processing Error]:", postErr);
-        }
-
-        return res.status(200).json({ status: "success", message: "Order confirmed." });
-      } catch (txErr: any) {
-        console.error("❌ [PagBank Webhook Transaction Error]:", txErr);
-        return res.status(500).json({ error: txErr.message || "Webhook processing error" });
-      }
-    }
     const rawQuery = req.query || {};
 
     const rawXSignature = req.headers["x-signature"];
@@ -259,7 +103,13 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // 3. Strict HMAC Signature Validation for Modern Webhooks
+    // 3. Strict HMAC Signature Validation for Modern Webhooks & Production Security
+    const isProduction = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
+    if (isProduction && !process.env.MP_WEBHOOK_SECRET) {
+      console.error("❌ [Webhook Security] MP_WEBHOOK_SECRET is mandatory in production environment.");
+      return res.status(500).json({ error: "Webhook secret configuration is missing in production." });
+    }
+
     if (process.env.MP_WEBHOOK_SECRET) {
       if (!hasXSignature || !hasDataId) {
         logDiagnostic("FAILED_MISSING_SIGNATURE", 401);
@@ -303,22 +153,15 @@ export default async function handler(req: any, res: any) {
       logDiagnostic("BYPASSED_NO_SECRET_CONFIGURED", 200);
     }
 
-    // 3. Consult payment status directly from Mercado Pago API using Access Token
-    const isProduction = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
+    // 3. Consult payment status directly from Mercado Pago API using Access Token (SIM_ simulation completely removed)
     const hasMP = !!process.env.MP_ACCESS_TOKEN && mpPayment;
     let paymentIsApproved = false;
     let mpStatus = "unknown";
     let mpPaymentInfo: any = null;
 
     if (String(paymentId).startsWith("SIM_")) {
-      if (isProduction) {
-        console.warn(`⚠️ [WEBHOOK_PAYMENT_FLOW] Simulated payment ID (${paymentId}) rejected in production environment!`);
-        paymentIsApproved = false;
-      } else {
-        paymentIsApproved = true;
-        mpStatus = "approved";
-        console.log("🧪 [WEBHOOK_PAYMENT_FLOW] Processing SIMULATED payment approval (non-production)!");
-      }
+      console.warn(`⚠️ [WEBHOOK_PAYMENT_FLOW] Rejected simulated payment ID: ${paymentId}`);
+      paymentIsApproved = false;
     } else if (hasMP) {
       try {
         mpPaymentInfo = await mpPayment.get({ id: Number(paymentId) });
@@ -396,6 +239,14 @@ export default async function handler(req: any, res: any) {
     if (!orderDocSnap || !orderDocSnap.exists) {
       console.warn(`⚠️ [WEBHOOK_PAYMENT_FLOW] No order found matching paymentId=${paymentId}`);
       return res.status(200).json({ status: "ignored", message: "Order not found." });
+    }
+
+    const orderDataForVal = orderDocSnap.data();
+    const expectedValCents = Math.round(Number(orderDataForVal?.val || 0) * 100);
+    const paidValCents = Math.round(Number(mpPaymentInfo?.transaction_amount || mpPaymentInfo?.total_paid_amount || 0) * 100);
+    if (expectedValCents > 0 && paidValCents > 0 && Math.abs(paidValCents - expectedValCents) > 10) {
+      console.error(`❌ [Webhook] Amount mismatch for order ${orderId}: expected ${expectedValCents} cents, paid ${paidValCents} cents`);
+      return res.status(400).json({ error: "Amount mismatch" });
     }
 
     console.log(`[WEBHOOK_PAYMENT_FLOW] Order located: orderId=${orderId} for paymentId=${paymentId}`);

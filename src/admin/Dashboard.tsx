@@ -168,7 +168,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   const [modalPromoBonus, setModalPromoBonus] = useState<string>("1");
   const [modalPurchaseMode, setModalPurchaseMode] = useState<"manual" | "aleatorio">("manual");
   const [modalPaymentMode, setModalPaymentMode] = useState<"automatic" | "manual">("automatic");
-  const [modalPaymentGateway, setModalPaymentGateway] = useState<"pagbank" | "mercadopago" | "manual">("pagbank");
+  const [modalPaymentGateway, setModalPaymentGateway] = useState<"mercadopago" | "manual">("mercadopago");
   const [modalDrawMode, setModalDrawMode] = useState<"automatico" | "federal">("automatico");
   const [modalFederalConcurso, setModalFederalConcurso] = useState<string>("");
   const [modalFederalData, setModalFederalData] = useState<string>("");
@@ -833,7 +833,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     setModalPromoBonus("1");
     setModalPurchaseMode("manual");
     setModalPaymentMode("automatic");
-    setModalPaymentGateway("pagbank");
+    setModalPaymentGateway("mercadopago");
     setModalDrawMode("automatico");
     setModalFederalConcurso("");
     setModalFederalData("");
@@ -931,7 +931,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     setModalPromoBonus(String(raffle.promotionBonus || 1));
     setModalPurchaseMode(raffle.purchaseMode || "manual");
     setModalPaymentMode(raffle.paymentMode || "automatic");
-    setModalPaymentGateway(raffle.paymentGateway || (raffle.paymentMode === "manual" ? "manual" : "pagbank"));
+    setModalPaymentGateway(raffle.paymentGateway || (raffle.paymentMode === "manual" ? "manual" : "mercadopago"));
     setModalDrawMode(raffle.drawMode || "automatico");
     setModalFederalConcurso(raffle.federalConcurso || "");
     setModalFederalData(raffle.federalData || "");
@@ -4451,29 +4451,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                 {/* GATEWAY DE PAGAMENTO */}
                 <div className="space-y-4 pt-2 border-t border-zinc-900">
                   <span className="text-[10px] font-black uppercase tracking-wider text-violet-400">💳 Gateway de pagamento</span>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setModalPaymentGateway("pagbank");
-                        setModalPaymentMode("automatic");
-                      }}
-                      className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
-                        modalPaymentGateway === "pagbank"
-                          ? "bg-emerald-500/10 border-emerald-500 text-white shadow-md shadow-emerald-500/10"
-                          : "bg-zinc-900/50 border-zinc-850 text-zinc-400 hover:border-zinc-700"
-                      }`}
-                    >
-                      <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
-                        modalPaymentGateway === "pagbank" ? "border-emerald-400 bg-emerald-500 text-white" : "border-zinc-700 bg-zinc-900"
-                      }`}>
-                        {modalPaymentGateway === "pagbank" && <div className="w-2 h-2 rounded-full bg-white" />}
-                      </div>
-                      <div className="space-y-0.5">
-                        <div className="text-xs font-black uppercase tracking-wide text-white">PagBank</div>
-                        <div className="text-[9px] text-zinc-400 leading-tight">Pix automático + QR Code</div>
-                      </div>
-                    </button>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
                     <button
                       type="button"
