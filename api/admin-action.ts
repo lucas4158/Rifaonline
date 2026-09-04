@@ -1445,7 +1445,7 @@ export default async function handler(req: any, res: any) {
         const targetRaffleId = raffleId || "current";
         const adminDb = getAdminFirestore();
 
-        // 1. Fetch raffle config to get price per number
+        // 1. Fetch raffle config to get price per number and total numbers
         const raffleRef = adminDb.collection("raffles").doc(targetRaffleId);
         const raffleSnap = await raffleRef.get();
         if (!raffleSnap.exists) {
@@ -1453,7 +1453,12 @@ export default async function handler(req: any, res: any) {
         }
         const raffleData = raffleSnap.data() || {};
         const pricePerNumber = Number(raffleData.price || 1);
-        const totalAmount = pricePerNumber * numbers.length;
+        const totalRaffleNumbers = Number(raffleData.totalNumbers || 1000);
+        const padLen = String(totalRaffleNumbers).length < 3 ? 3 : String(totalRaffleNumbers).length;
+
+        // Normalize numbers with proper padding (e.g. "7" -> "007")
+        const normalizedNumbers = numbers.map((num: string) => String(num).trim().padStart(padLen, "0"));
+        const totalAmount = pricePerNumber * normalizedNumbers.length;
 
         // 3. Create orderId and paymentId
         const orderId = "ADMIN_BUY_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6).toUpperCase();
@@ -1461,15 +1466,21 @@ export default async function handler(req: any, res: any) {
         const nowIso = new Date().toISOString();
         const adminUid = req.body.adminUid || "administrador";
 
-        // Execute atomically in a transaction
+        // Execute atomically in a transaction checking both numbers and locks
         await adminDb.runTransaction(async (transaction: any) => {
           const currentNow = Date.now();
-          const numRefs = numbers.map((num: string) => raffleRef.collection("numbers").doc(String(num)));
-          const numSnaps = await transaction.getAll(...numRefs);
+          const numRefs = normalizedNumbers.map((num: string) => raffleRef.collection("numbers").doc(num));
+          const lockRefs = normalizedNumbers.map((num: string) => raffleRef.collection("locks").doc(num));
+          const allSnaps = await transaction.getAll(...numRefs, ...lockRefs);
 
-          for (let i = 0; i < numSnaps.length; i++) {
+          const numSnaps = allSnaps.slice(0, numRefs.length);
+          const lockSnaps = allSnaps.slice(numRefs.length);
+
+          for (let i = 0; i < normalizedNumbers.length; i++) {
+            const num = normalizedNumbers[i];
             const numSnap = numSnaps[i];
-            const num = numbers[i];
+            const lockSnap = lockSnaps[i];
+
             if (numSnap.exists) {
               const numData = numSnap.data() || {};
               const st = String(numData.status || "").toLowerCase();
@@ -1477,8 +1488,15 @@ export default async function handler(req: any, res: any) {
               if (st === "paid" || st === "pago") {
                 throw new Error(`A cota ${num} já está paga.`);
               }
-              if (st === "reserved" && !isExp && numData.sessionId !== "admin_manual_session") {
+              if (st === "reserved" && !isExp) {
                 throw new Error(`A cota ${num} já está reservada por outro usuário.`);
+              }
+            }
+
+            if (lockSnap.exists) {
+              const lockData = lockSnap.data() || {};
+              if (lockData.expiresAt && lockData.expiresAt > currentNow) {
+                throw new Error(`A cota ${num} está temporariamente bloqueada por seleção de outro cliente.`);
               }
             }
           }
@@ -1490,7 +1508,7 @@ export default async function handler(req: any, res: any) {
             raffleId: targetRaffleId,
             name: String(customerName).trim(),
             phone: String(customerPhone).trim(),
-            nums: numbers,
+            nums: normalizedNumbers,
             val: totalAmount,
             amount: totalAmount,
             status: "Pago",
@@ -1508,7 +1526,7 @@ export default async function handler(req: any, res: any) {
             raffleId: targetRaffleId,
             name: String(customerName).trim(),
             phone: String(customerPhone).trim(),
-            nums: numbers,
+            nums: normalizedNumbers,
             val: totalAmount,
             status: "Pago",
             createdAt: nowIso,
@@ -1530,10 +1548,10 @@ export default async function handler(req: any, res: any) {
 
           // Mark numbers as paid in subcollection and increment soldCount
           let mainPaidCount = 0;
-          numbers.forEach((num: string, idx: number) => {
+          normalizedNumbers.forEach((num: string, idx: number) => {
             mainPaidCount++;
             transaction.set(numRefs[idx], {
-              id: String(num),
+              id: num,
               status: "paid",
               orderId: orderId,
               name: String(customerName).trim(),
@@ -1541,6 +1559,9 @@ export default async function handler(req: any, res: any) {
               isBonus: false,
               updatedAt: nowIso
             }, { merge: true });
+
+            // Clear any active locks for this number
+            transaction.delete(lockRefs[idx]);
           });
 
           if (mainPaidCount > 0) {
@@ -1552,13 +1573,27 @@ export default async function handler(req: any, res: any) {
 
         // Allocate promotional bonus if enabled on raffle
         const batch = adminDb.batch();
-        await allocatePromotionalBonus(adminDb, orderId, {
+        const allocatedBonus = await allocatePromotionalBonus(adminDb, orderId, {
           name: customerName,
           phone: customerPhone,
-          nums: numbers
+          nums: normalizedNumbers
         }, batch, targetRaffleId);
         await batch.commit();
-        console.log(`✅ [Admin Buy Cota] Successfully created and approved manual order ${orderId} for ${numbers.length} numbers.`);
+
+        // Sync to Supabase in background for complete multi-database realtime alignment
+        serverSupabaseSync.syncConfirmedPayment({
+          orderId,
+          raffleId: targetRaffleId,
+          customerName,
+          customerPhone,
+          amount: totalAmount,
+          paymentId,
+          numsCount: normalizedNumbers.length,
+          numbers: normalizedNumbers,
+          bonusNums: []
+        }).catch(() => {});
+
+        console.log(`✅ [Admin Buy Cota] Successfully created and approved manual order ${orderId} for ${normalizedNumbers.length} numbers.`);
 
         // Audit log
         await logAuditEvent(targetRaffleId, "ADMIN_MANUAL_BUY", adminUid, {
