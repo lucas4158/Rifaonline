@@ -123,12 +123,12 @@ export const pixService = {
     }
   },
 
-  async checkPaymentStatus(orderId: string, raffleId?: string): Promise<any> {
+  async checkPaymentStatus(orderId?: string, paymentId?: string, raffleId?: string): Promise<any> {
     try {
       const response = await fetch("/api/check-payment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, raffleId: raffleId || "current" }),
+        body: JSON.stringify({ orderId, paymentId, raffleId: raffleId || "current" }),
       });
       const data = await response.json();
       return data;
@@ -139,7 +139,6 @@ export const pixService = {
   },
 
   async checkPayment(params: { paymentId?: string; orderId?: string; raffleId?: string }): Promise<any> {
-    const idToUse = params.orderId || params.paymentId || "";
-    return this.checkPaymentStatus(idToUse, params.raffleId);
+    return this.checkPaymentStatus(params.orderId, params.paymentId, params.raffleId);
   }
 };

@@ -99,12 +99,10 @@ export const raffleNumbersService = {
         .eq("number", String(number));
 
       if (error) {
-        console.warn(`[SUPABASE_NUMBERS] Failed deleting number ${number}:`, error.message);
         return false;
       }
       return true;
     } catch (err) {
-      console.warn(`[SUPABASE_NUMBERS] Exception deleting number ${number}:`, err);
       return false;
     }
   }

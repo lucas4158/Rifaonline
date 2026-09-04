@@ -52,6 +52,14 @@ export default async function handler(req: any, res: any) {
     if (targetOrderId) {
       const orderRef = db.collection("orders").doc(targetOrderId);
       targetOrderSnap = await orderRef.get();
+      if (!targetOrderSnap.exists) {
+        const q = db.collection("orders").where("paymentId", "==", String(targetOrderId)).limit(1);
+        const qSnap = await q.get();
+        if (!qSnap.empty) {
+          targetOrderSnap = qSnap.docs[0];
+          targetOrderId = targetOrderSnap.id;
+        }
+      }
     }
 
     if ((!targetOrderSnap || !targetOrderSnap.exists) && paymentId) {
@@ -121,34 +129,39 @@ export default async function handler(req: any, res: any) {
       isApprovedOnGateway = false;
     } else if (effectivePaymentId && mpPayment) {
       try {
-        const mpInfo = await mpPayment.get({ id: Number(effectivePaymentId) });
-        gatewayStatus = mpInfo?.status || "pending";
+        const numericId = Number(effectivePaymentId);
+        if (isNaN(numericId) || numericId <= 0 || String(effectivePaymentId).startsWith("PAY_") || String(effectivePaymentId).startsWith("MANUAL")) {
+          console.log(`[CheckPayment] Skipping Mercado Pago check for non-numeric or manual paymentId: ${effectivePaymentId}`);
+        } else {
+          const mpInfo = await mpPayment.get({ id: numericId });
+          gatewayStatus = mpInfo?.status || "pending";
 
-        if (mpInfo?.id && String(mpInfo.id) !== String(effectivePaymentId)) {
-          console.error(`❌ [CheckPayment] CRITICAL SECURITY: Fetched payment ID (${mpInfo.id}) does not match effective payment ID (${effectivePaymentId})!`);
-          return res.status(200).json({ approved: false, error: "Payment ID verification failed." });
-        }
-
-        if (gatewayStatus === "approved") {
-          const metaOrderId = mpInfo?.metadata?.order_id || mpInfo?.metadata?.orderId;
-          const metaRaffleId = mpInfo?.metadata?.raffle_id || mpInfo?.metadata?.raffleId;
-          const orderRaffleId = orderData.raffleId || "current";
-
-          if (!metaOrderId || metaOrderId !== targetOrderId) {
-            console.error(`❌ [CheckPayment] CRITICAL SECURITY: Payment metadata order_id (${metaOrderId}) missing or does not match orderId (${targetOrderId})!`);
-            return res.status(200).json({ approved: false, error: "Payment does not belong to this order." });
-          }
-          if (metaRaffleId && metaRaffleId !== orderRaffleId) {
-            console.error(`❌ [CheckPayment] CRITICAL SECURITY: Payment metadata raffle_id (${metaRaffleId}) does not match order raffleId (${orderRaffleId})!`);
-            return res.status(200).json({ approved: false, error: "Payment raffle mismatch." });
+          if (mpInfo?.id && String(mpInfo.id) !== String(effectivePaymentId)) {
+            console.error(`❌ [CheckPayment] CRITICAL SECURITY: Fetched payment ID (${mpInfo.id}) does not match effective payment ID (${effectivePaymentId})!`);
+            return res.status(200).json({ approved: false, error: "Payment ID verification failed." });
           }
 
-          const expectedValCents = Math.round(Number(orderData?.val || 0) * 100);
-          const paidValCents = Math.round(Number(mpInfo?.transaction_amount || mpInfo?.total_paid_amount || 0) * 100);
-          if (expectedValCents > 0 && paidValCents > 0 && paidValCents === expectedValCents) {
-            isApprovedOnGateway = true;
-          } else {
-            console.error(`❌ [CheckPayment] Amount mismatch: expected ${expectedValCents} cents, paid ${paidValCents} cents`);
+          if (gatewayStatus === "approved") {
+            const metaOrderId = mpInfo?.metadata?.order_id || mpInfo?.metadata?.orderId;
+            const metaRaffleId = mpInfo?.metadata?.raffle_id || mpInfo?.metadata?.raffleId;
+            const orderRaffleId = orderData.raffleId || "current";
+
+            if (!metaOrderId || metaOrderId !== targetOrderId) {
+              console.error(`❌ [CheckPayment] CRITICAL SECURITY: Payment metadata order_id (${metaOrderId}) missing or does not match orderId (${targetOrderId})!`);
+              return res.status(200).json({ approved: false, error: "Payment does not belong to this order." });
+            }
+            if (metaRaffleId && metaRaffleId !== orderRaffleId) {
+              console.error(`❌ [CheckPayment] CRITICAL SECURITY: Payment metadata raffle_id (${metaRaffleId}) does not match order raffleId (${orderRaffleId})!`);
+              return res.status(200).json({ approved: false, error: "Payment raffle mismatch." });
+            }
+
+            const expectedValCents = Math.round(Number(orderData?.val || 0) * 100);
+            const paidValCents = Math.round(Number(mpInfo?.transaction_amount || mpInfo?.total_paid_amount || 0) * 100);
+            if (expectedValCents > 0 && paidValCents > 0 && paidValCents === expectedValCents) {
+              isApprovedOnGateway = true;
+            } else {
+              console.error(`❌ [CheckPayment] Amount mismatch: expected ${expectedValCents} cents, paid ${paidValCents} cents`);
+            }
           }
         }
       } catch (mpErr) {

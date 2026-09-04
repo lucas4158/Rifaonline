@@ -1525,20 +1525,20 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
   const recentlyToggledRef = useRef<Record<string, number>>({});
 
   const clearMyLocks = async (numsToClear?: string[]) => {
-    // 1. If there's an active unpaid order, check if it was recently approved on Firestore
+    // 1. If there's an active unpaid order, check if it was recently approved via backend API
     if (paymentStep !== "finished" && mpPaymentInfo?.orderId) {
       try {
-        const orderSnap = await getDoc(doc(db, "orders", mpPaymentInfo.orderId));
-        if (orderSnap.exists()) {
-          const s = (orderSnap.data()?.status || "").toLowerCase();
-          if (s === "pago" || s === "paid" || s === "confirmed") {
-            console.log("🛑 [clearMyLocks] Order is already paid. Aborting lock release to protect paid quotas.");
-            setPaymentStep("finished");
-            return;
-          }
+        const checkRes = await pixService.checkPayment({
+          orderId: mpPaymentInfo.orderId,
+          raffleId: selectedCustomerRaffleId || raffleConfig.id || "current"
+        });
+        if (checkRes?.approved || checkRes?.status === "approved") {
+          console.log("🛑 [clearMyLocks] Order is already paid. Aborting lock release to protect paid quotas.");
+          setPaymentStep("finished");
+          return;
         }
       } catch (e) {
-        console.error("Error verifying order status in clearMyLocks:", e);
+        // silently catch
       }
     }
 
@@ -1868,7 +1868,14 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
   useEffect(() => {
     if (paymentStep === "pix" && mpPaymentInfo?.paymentId) {
       const paymentId = mpPaymentInfo.paymentId;
-      if (String(paymentId).startsWith("SIM_")) return; // Do not poll for simulated tests
+      if (
+        String(paymentId).startsWith("SIM_") ||
+        mpPaymentInfo?.isManual ||
+        String(paymentId).startsWith("PAY_") ||
+        String(paymentId).startsWith("MANUAL")
+      ) {
+        return; // Do not poll for simulated or manual payments
+      }
       
       console.log(`🔄 [Frontend Poller] Initiating status check for payment ID ${paymentId}`);
       let timeoutId: any = null;
@@ -1915,92 +1922,6 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       };
     }
   }, [paymentStep, mpPaymentInfo?.paymentId, selectedCustomerRaffleId, raffleConfig.id]);
-
-  // Instant direct document listener for the active order to confirm payment < 1s
-  useEffect(() => {
-    if (paymentStep === "pix" && mpPaymentInfo?.orderId) {
-      console.log(`📡 [Instant Order Sync] Listening to changes for current order: ${mpPaymentInfo.orderId}`);
-      const orderRef = doc(db, "orders", mpPaymentInfo.orderId);
-      const unsub = onSnapshot(orderRef, (docSnap) => {
-        // Enforce that we only process updates for the order we launched the listener for, preventing old order late events
-        if (mpPaymentInfoRef.current?.orderId !== mpPaymentInfo?.orderId) {
-          console.log(`📡 [Instant Order Sync] Ignoring stale order snapshot event`);
-          return;
-        }
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-
-          // Strict Security Checklist on Snapshot Trigger
-          const currentRaffleId = selectedCustomerRaffleId || raffleConfig.id || "current";
-          const userPhoneNorm = String(userData.phone || "").replace(/\D/g, "");
-          const orderPhoneNorm = String(data?.phone || "").replace(/\D/g, "");
-          
-          const isRaffleMatch = !data?.raffleId || data?.raffleId === currentRaffleId;
-          const isPaymentIdMatch = !data?.paymentId || String(data?.paymentId) === String(mpPaymentInfo?.paymentId);
-          const isOwnerBySession = sessionId && data?.sessionId === sessionId;
-          const isOwnerByPhone = userPhoneNorm && orderPhoneNorm && (userPhoneNorm === orderPhoneNorm);
-          const isOwnerByOrder = mpPaymentInfo?.orderId && (data?.id === mpPaymentInfo.orderId || docSnap.id === mpPaymentInfo.orderId);
-          const hasOwnership = isOwnerBySession || isOwnerByPhone || isOwnerByOrder;
-
-          if (!isRaffleMatch || !isPaymentIdMatch || !hasOwnership) {
-            console.error("[Instant Order Sync] SECURITY VIOLATION / MISMATCH DETECTED!", {
-              isRaffleMatch,
-              isPaymentIdMatch,
-              hasOwnership,
-              orderRaffleId: data?.raffleId,
-              expectedRaffleId: currentRaffleId,
-              orderPaymentId: data?.paymentId,
-              expectedPaymentId: mpPaymentInfo?.paymentId
-            });
-            setGlobalToast({
-              message: "⚠️ Erro de concorrência ou dados inválidos detectados na reserva.",
-              type: "error"
-            });
-            // Abort and force back to selection
-            setMpPaymentInfo(null);
-            setPaymentExpiresAt(null);
-            setSubmittedNumbers([]);
-            setSelectedNumbers([]);
-            setPaymentStep("data");
-            return;
-          }
-
-          const s = (data?.status || "").toLowerCase();
-          if (s === "pago" || s === "paid" || s === "confirmed") {
-            console.log("💰 [Instant Order Sync] Payment approved! Advancing to finished step.");
-            if (data?.bonusNums) {
-              setMpPaymentInfo((prev) => prev ? { ...prev, bonusNums: data.bonusNums } : prev);
-            }
-            if (data?.nums) {
-              setSubmittedNumbers(data.nums);
-            }
-            setPaymentStep("finished");
-          } else if (s === "expired" || s === "canceled" || s === "cancelado") {
-            if (
-              isGeneratingPaymentRef.current ||
-              (ignoreCancellationForOrderIdRef.current && ignoreCancellationForOrderIdRef.current === mpPaymentInfo?.orderId)
-            ) {
-              console.log("🔄 [Instant Order Sync] Ignorando status cancelado pois estamos no fluxo de transição ou cancelamento esperado.");
-              return;
-            }
-            console.log("⏰ [Instant Order Sync] Order expired or canceled! Closing payment modal and clearing active Pix data.");
-            setMpPaymentInfo(null);
-            setPaymentExpiresAt(null);
-            setSubmittedNumbers([]);
-            setSelectedNumbers([]);
-            setPaymentStep("data");
-            setGlobalToast({
-              message: "⏰ Sua reserva expirou. O pagamento foi invalidado e o QR Code removido.",
-              type: "error"
-            });
-          }
-        }
-      }, (err) => {
-        console.error("Erro no listener de instant order sync:", err);
-      });
-      return () => unsub();
-    }
-  }, [paymentStep, mpPaymentInfo?.orderId, db, selectedCustomerRaffleId, raffleConfig.id, userData.phone, sessionId]);
 
   // Handle local checkout expiration (10-minute timer)
   useEffect(() => {
@@ -2198,19 +2119,18 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
   const handleReturnToSelection = async () => {
     if (isGeneratingPayment) return;
     try {
-      // 1. If there's an active order, cancel it in Firestore
+      // 1. If there's an active order, cancel it via backend API
       if (mpPaymentInfo?.orderId) {
         try {
-          const orderDocRef = doc(db, "orders", mpPaymentInfo.orderId);
-          const freshSnap = await getDoc(orderDocRef);
-          if (freshSnap.exists()) {
-            const statusStr = (freshSnap.data()?.status || "").toLowerCase();
-            if (statusStr === "pago" || statusStr === "paid" || statusStr === "confirmed") {
-              console.log("🛑 Order is already Pago/paid. Aborting return/cancel flow.");
-              setPaymentStep("finished");
-              alert("Seu pagamento já foi aprovado e seu pedido está confirmado!");
-              return;
-            }
+          const checkRes = await pixService.checkPayment({
+            orderId: mpPaymentInfo.orderId,
+            raffleId: selectedCustomerRaffleId || raffleConfig.id || "current"
+          });
+          if (checkRes?.approved || checkRes?.status === "approved") {
+            console.log("🛑 Order is already Pago/paid. Aborting return/cancel flow.");
+            setPaymentStep("finished");
+            alert("Seu pagamento já foi aprovado e seu pedido está confirmado!");
+            return;
           }
           ignoreCancellationForOrderIdRef.current = mpPaymentInfo.orderId;
           await pixService.cancelOrder(mpPaymentInfo.orderId);
@@ -4459,77 +4379,120 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -25 }}
-                      className="grid lg:grid-cols-2 gap-6 lg:gap-10 w-full max-w-full overflow-hidden"
+                      className={mpPaymentInfo?.isManual ? "w-full max-w-2xl mx-auto overflow-hidden" : "grid lg:grid-cols-2 gap-6 lg:gap-10 w-full max-w-full overflow-hidden"}
                     >
                       <div className="w-full max-w-full overflow-hidden">
                         <button
                           onClick={handleReturnToSelection}
-                          className="text-zinc-500 hover:text-white flex items-center gap-2 mb-6 font-bold text-sm transition-colors"
+                          className="text-zinc-500 hover:text-white flex items-center gap-2 mb-6 font-bold text-sm transition-colors cursor-pointer"
                         >
                           <X className="w-4 h-4" /> Voltar para dados
                         </button>
 
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-                          <div className="flex flex-col">
-                            <h2 className="text-2xl sm:text-3xl font-black text-white">
-                              Pagamento Pix
-                            </h2>
-                            <span className="text-amber-400 text-xs font-bold uppercase tracking-widest mt-1">
-                              {mpPaymentInfo?.isManual ? "Pix Manual — Aguardando Aprovação" : "Mercado Pago Pix Automatizado"}
-                            </span>
-                          </div>
-                          <div className="flex items-center self-start sm:self-auto gap-2 bg-amber-500/10 text-amber-400 text-[10px] px-3.5 py-2 rounded-full font-black border border-amber-500/20 animate-pulse shrink-0">
-                            <Clock className="w-3.5 h-3.5" />
-                            RESERVA ATIVA: {formatTime(timerInSeconds)}
-                          </div>
-                        </div>
-
-                        {isSelectionChanged && !isGeneratingPayment && (
-                          <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-2xl p-4 mb-6 flex items-start gap-3 animate-pulse">
-                            <RefreshCw className="w-5 h-5 animate-spin shrink-0 mt-0.5" />
-                            <div className="space-y-1">
-                              <p className="font-extrabold text-xs sm:text-sm text-amber-300">
-                                Alteração detectada no carrinho!
-                              </p>
-                              <p className="text-zinc-400 text-[11px] sm:text-xs leading-relaxed font-semibold">
-                                O valor da sua compra mudou. Aguarde 1 segundo para gerarmos automaticamente o Pix com o novo valor correspondente.
-                              </p>
-                            </div>
-                          </div>
-                        )}
-
                         {mpPaymentInfo?.isManual ? (
-                          <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-3xl p-6 sm:p-8 mb-6 flex flex-col items-center text-center w-full max-w-full overflow-hidden space-y-4">
-                            <div className="w-12 h-12 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-1">
-                              <Clock className="w-6 h-6" />
-                            </div>
-                            <h3 className="text-lg font-black text-white">💰 Pagamento via Pix</h3>
-                            <div className="text-zinc-300 text-xs sm:text-sm leading-relaxed space-y-2 text-left w-full bg-zinc-900/40 p-4 rounded-2xl border border-zinc-800">
-                              <p className="font-bold text-amber-400 text-center mb-2">Sua reserva foi realizada!</p>
-                              <p>1. Copie a chave Pix abaixo e faça o pagamento no seu banco.</p>
-                              <p>2. Após realizar o pagamento, envie o comprovante pelo WhatsApp.</p>
-                              <p>3. Nossa equipe irá conferir o pagamento e aprovar sua compra.</p>
-                              <p className="pt-2 font-semibold text-amber-300">⏱️ A reserva das suas cotas é válida por 20 minutos.</p>
-                              <p className="text-zinc-400 text-[11px] pt-1">⚠️ Importante: suas cotas só serão confirmadas após a aprovação do pagamento pela nossa equipe.</p>
-                            </div>
-
-                            {mpPaymentInfo.manualInstructions && (
-                              <p className="text-zinc-400 text-xs italic">
-                                &ldquo;{mpPaymentInfo.manualInstructions}&rdquo;
-                              </p>
-                            )}
-
-                            {mpPaymentInfo.manualPixReceiver && (
-                              <div className="text-xs text-zinc-400 bg-zinc-900/60 px-4 py-2 rounded-xl border border-zinc-800">
-                                <span className="font-bold text-zinc-300">Recebedor:</span> {mpPaymentInfo.manualPixReceiver}
+                          <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5 sm:p-6 mb-6 flex flex-col items-center text-center w-full max-w-full overflow-hidden space-y-4 shadow-2xl">
+                            {/* Header */}
+                            <div className="w-full flex items-center justify-between border-b border-zinc-800 pb-3">
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-sm sm:text-base font-black text-white">Pagamento Pix Manual</h3>
                               </div>
-                            )}
-                            <div className="w-full bg-zinc-900 border border-zinc-700/60 rounded-2xl p-4 mt-2">
-                              <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500 mb-1">Chave Pix (Copia e Cola)</p>
-                              <p className="font-mono font-bold text-amber-400 text-xs sm:text-sm break-all select-all">
-                                {mpPaymentInfo.manualPixKey || mpPaymentInfo.qrCode}
-                              </p>
+                              <div className="flex items-center gap-2 bg-amber-500/10 text-amber-400 text-[10px] px-3 py-1 rounded-full font-black border border-amber-500/20">
+                                <Clock className="w-3 h-3 animate-spin" />
+                                <span>{Math.floor(timerInSeconds / 60).toString().padStart(2, "0")}:{(timerInSeconds % 60).toString().padStart(2, "0")}</span>
+                              </div>
                             </div>
+
+                            {/* Valor e Recebedor Compacto */}
+                            <div className="w-full grid grid-cols-2 gap-3">
+                              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-3 text-center">
+                                <p className="text-[10px] text-emerald-400 uppercase font-bold mb-0.5">Valor Total</p>
+                                <p className="text-xl font-black text-emerald-400">
+                                  R$ {totalAmount.toFixed(2).replace(".", ",")}
+                                </p>
+                              </div>
+                              <div className="bg-zinc-850/60 border border-zinc-800 rounded-2xl p-3 text-left flex flex-col justify-center">
+                                <p className="text-[10px] uppercase font-bold text-zinc-500">Recebedor</p>
+                                <p className="text-xs sm:text-sm font-bold text-zinc-200 truncate">
+                                  {raffleConfig.pixReceiver || mpPaymentInfo.manualPixReceiver || "Lucas Gomes Silva"}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Chave Pix Copia e Cola Box */}
+                            <div className="w-full bg-zinc-850/60 border border-zinc-800 rounded-2xl p-3.5 space-y-1.5 text-left">
+                              <p className="text-[10px] uppercase font-black tracking-wider text-zinc-500">
+                                Chave Pix (Copia e Cola)
+                              </p>
+                              <div className="bg-zinc-900 p-2.5 rounded-xl border border-zinc-750 font-mono font-bold text-amber-400 text-xs sm:text-sm break-all select-all">
+                                {mpPaymentInfo.manualPixKey || mpPaymentInfo.qrCode}
+                              </div>
+                            </div>
+
+                            {/* Copiar Chave Button */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const keyToCopy = mpPaymentInfo.manualPixKey || mpPaymentInfo.qrCode;
+                                if (keyToCopy) {
+                                  safeCopyToClipboard(keyToCopy);
+                                  setIsCopied(true);
+                                  setTimeout(() => setIsCopied(false), 2000);
+                                }
+                              }}
+                              className={`w-full py-3.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer ${
+                                isCopied ? "bg-emerald-500 text-black shadow-emerald-500/20" : "bg-amber-500 hover:bg-amber-400 text-black shadow-amber-500/20"
+                              }`}
+                            >
+                              {isCopied ? (
+                                <>
+                                  <CheckCircle2 className="w-4 h-4" />
+                                  <span>Chave Pix Copiada!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-4 h-4" />
+                                  <span>Copiar Chave Pix</span>
+                                </>
+                              )}
+                            </button>
+
+                            {/* Cotas Selecionadas & Ações */}
+                            <div className="w-full flex flex-col sm:flex-row items-center justify-between gap-3 bg-zinc-850/40 border border-zinc-800 rounded-2xl p-3 text-left">
+                              <div>
+                                <p className="text-[10px] uppercase font-bold text-zinc-500 mb-1">Cotas Reservadas ({submittedNumbers.length})</p>
+                                <div className="flex flex-wrap gap-1 font-mono">
+                                  {submittedNumbers.map((n) => (
+                                    <span key={n} className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold text-[11px] px-2 py-0.5 rounded-lg">
+                                      [{n}]
+                                    </span>
+                                  ))}
+                                  {mpPaymentInfo?.bonusNums && mpPaymentInfo.bonusNums.map((n) => (
+                                    <span key={n} className="bg-pink-500/10 border border-pink-500/20 text-pink-400 font-bold text-[11px] px-2 py-0.5 rounded-lg">
+                                      [{n}] (Grátis)
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="text-right sm:text-right w-full sm:w-auto">
+                                <p className="text-[10px] uppercase font-bold text-zinc-500">Pedido</p>
+                                <p className="text-xs font-mono text-zinc-300">{mpPaymentInfo?.orderId}</p>
+                              </div>
+                            </div>
+
+                            {/* WhatsApp Receipt Button */}
+                            <a
+                              href={`https://wa.me/${whatsappPhone}?text=${encodeURIComponent(`Olá! Acabei de realizar o pagamento da minha compra.\n\nRifa: ${raffleConfig.title}\nPedido: ${mpPaymentInfo?.orderId}\nCotas: ${submittedNumbers.join(", ")}\nValor: R$ ${totalAmount.toFixed(2)}\n\nEstou enviando o comprovante para conferência.`)}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3.5 px-4 rounded-2xl text-xs sm:text-sm uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 cursor-pointer"
+                            >
+                              <MessageCircle className="w-5 h-5 flex-shrink-0" />
+                              Enviar Comprovante WhatsApp
+                            </a>
+
+                            <p className="text-[11px] text-zinc-500">
+                              Apos o pagamento, envie o comprovante para agilizar a aprovacao das cotas.
+                            </p>
                           </div>
                         ) : (
                           <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-3xl p-4 sm:p-8 mb-6 flex flex-col items-center justify-center relative group w-full max-w-full overflow-hidden">
@@ -6626,17 +6589,16 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
                     if (mpPaymentInfo?.orderId) {
                       try {
-                        const orderDocRef = doc(db, "orders", mpPaymentInfo.orderId);
-                        const freshSnap = await getDoc(orderDocRef);
-                        if (freshSnap.exists()) {
-                          const statusStr = (freshSnap.data()?.status || "").toLowerCase();
-                          if (statusStr === "pago" || statusStr === "paid" || statusStr === "confirmed") {
-                            console.log("🛑 Order is already Pago/paid. Aborting exit cancellation.");
-                            setPaymentStep("finished");
-                            alert("Seu pagamento já foi aprovado e seu pedido está confirmado! Suas cotas estão garantidas.");
-                            setShowExitConfirm(false);
-                            return;
-                          }
+                        const checkRes = await pixService.checkPayment({
+                          orderId: mpPaymentInfo.orderId,
+                          raffleId: selectedCustomerRaffleId || raffleConfig.id || "current"
+                        });
+                        if (checkRes?.approved || checkRes?.status === "approved") {
+                          console.log("🛑 Order is already Pago/paid. Aborting exit cancellation.");
+                          setPaymentStep("finished");
+                          alert("Seu pagamento já foi aprovado e seu pedido está confirmado! Suas cotas estão garantidas.");
+                          setShowExitConfirm(false);
+                          return;
                         }
                         ignoreCancellationForOrderIdRef.current = mpPaymentInfo.orderId;
                         await pixService.cancelOrder({
