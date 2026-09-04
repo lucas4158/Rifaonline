@@ -9,7 +9,7 @@ const ALLOWED_ORIGINS = [
 
 function setAdminCors(req: any, res: any) {
   const origin = req.headers.origin;
-  const isAllowed = origin && ALLOWED_ORIGINS.some(o => origin === o || origin.startsWith(o) || origin.endsWith(".run.app") || origin.includes("localhost"));
+  const isAllowed = origin && ALLOWED_ORIGINS.includes(origin);
   if (isAllowed) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");

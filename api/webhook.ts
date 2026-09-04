@@ -242,6 +242,19 @@ export default async function handler(req: any, res: any) {
     }
 
     const orderDataForVal = orderDocSnap.data();
+    const metaOrderId = mpPaymentInfo?.metadata?.order_id || mpPaymentInfo?.metadata?.orderId;
+    const metaRaffleId = mpPaymentInfo?.metadata?.raffle_id || mpPaymentInfo?.metadata?.raffleId;
+    const orderRaffleId = orderDataForVal.raffleId || "current";
+
+    if (metaOrderId && metaOrderId !== orderId) {
+      console.error(`❌ [Webhook] CRITICAL SECURITY: Payment metadata order_id (${metaOrderId}) does not match located orderId (${orderId})!`);
+      return res.status(200).json({ status: "ignored", message: "Order ID metadata mismatch." });
+    }
+    if (metaRaffleId && metaRaffleId !== orderRaffleId) {
+      console.error(`❌ [Webhook] CRITICAL SECURITY: Payment metadata raffle_id (${metaRaffleId}) does not match order raffleId (${orderRaffleId})!`);
+      return res.status(200).json({ status: "ignored", message: "Raffle ID metadata mismatch." });
+    }
+
     const expectedValCents = Math.round(Number(orderDataForVal?.val || 0) * 100);
     const paidValCents = Math.round(Number(mpPaymentInfo?.transaction_amount || mpPaymentInfo?.total_paid_amount || 0) * 100);
     if (expectedValCents > 0 && paidValCents > 0 && paidValCents !== expectedValCents) {

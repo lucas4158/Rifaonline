@@ -84,13 +84,11 @@ export default async function handler(req: any, res: any) {
       if (adminDb) {
         const variantsToQuery = phoneVariants.slice(0, 10);
         
-        // Query fields: phone, customerPhone, customer_phone
+        // Query fields: phone, customerPhone, customer_phone using indexed queries
         const promises = [
           adminDb.collection("orders").where("phone", "in", variantsToQuery).get().catch(() => null),
           adminDb.collection("orders").where("customerPhone", "in", variantsToQuery).get().catch(() => null),
           adminDb.collection("orders").where("customer_phone", "in", variantsToQuery).get().catch(() => null),
-          // Fallback: fetch recent orders to do robust in-memory digit normalization check
-          adminDb.collection("orders").orderBy("createdAt", "desc").limit(300).get().catch(() => null),
         ];
 
         const snapshots = await Promise.all(promises);

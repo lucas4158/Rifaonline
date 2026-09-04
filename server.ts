@@ -71,8 +71,8 @@ import customerHistoryHandler from "./api/customer-history";
 const app = express();
 const PORT = 3000;
 
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ limit: "1mb", extended: true }));
 
 // Expired Reservation & Lock Cleanup Routine (Server-side background worker using Admin SDK)
 let backgroundCleanupPausedUntil = 0;

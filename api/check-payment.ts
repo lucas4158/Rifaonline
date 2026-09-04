@@ -109,6 +109,19 @@ export default async function handler(req: any, res: any) {
         const mpInfo = await mpPayment.get({ id: Number(effectivePaymentId) });
         gatewayStatus = mpInfo?.status || "pending";
         if (gatewayStatus === "approved") {
+          const metaOrderId = mpInfo?.metadata?.order_id || mpInfo?.metadata?.orderId;
+          const metaRaffleId = mpInfo?.metadata?.raffle_id || mpInfo?.metadata?.raffleId;
+          const orderRaffleId = orderData.raffleId || "current";
+
+          if (metaOrderId && metaOrderId !== targetOrderId) {
+            console.error(`❌ [CheckPayment] CRITICAL SECURITY: Payment metadata order_id (${metaOrderId}) does not match orderId (${targetOrderId})!`);
+            return res.status(200).json({ approved: false, error: "Payment does not belong to this order." });
+          }
+          if (metaRaffleId && metaRaffleId !== orderRaffleId) {
+            console.error(`❌ [CheckPayment] CRITICAL SECURITY: Payment metadata raffle_id (${metaRaffleId}) does not match order raffleId (${orderRaffleId})!`);
+            return res.status(200).json({ approved: false, error: "Payment raffle mismatch." });
+          }
+
           const expectedValCents = Math.round(Number(orderData?.val || 0) * 100);
           const paidValCents = Math.round(Number(mpInfo?.transaction_amount || mpInfo?.total_paid_amount || 0) * 100);
           if (expectedValCents > 0 && paidValCents > 0 && paidValCents === expectedValCents) {

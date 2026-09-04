@@ -148,7 +148,7 @@ const ALLOWED_ORIGINS = [
 
 function setAdminCors(req: any, res: any) {
   const origin = req.headers.origin;
-  const isAllowed = origin && ALLOWED_ORIGINS.some(o => origin === o || origin.startsWith(o) || origin.endsWith(".run.app") || origin.includes("localhost"));
+  const isAllowed = origin && ALLOWED_ORIGINS.includes(origin);
   if (isAllowed) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
@@ -199,7 +199,6 @@ export default async function handler(req: any, res: any) {
   if (!adminPasswordEnv) {
     console.error("❌ [Security Error] ADMIN_PASSWORD environment variable is not configured!");
   }
-  const computedLegacyToken = crypto.createHash("sha256").update(adminPasswordEnv + "RifaMasterSaltSecureAudit").digest("hex");
 
   // Dynamic initialization safeguard: ensure we call ensureDefaultConfig before handling any requests
   if (isAdminInitialized()) {
@@ -287,13 +286,6 @@ export default async function handler(req: any, res: any) {
           lockedUntil: 0,
           lastLogin: new Date().toISOString()
         }, { merge: true }).catch(() => {});
-      }
-
-      
-      if (isAdminInitialized()) {
-        getAdminFirestore().collection("admins").doc("config").set({ token: computedLegacyToken }, { merge: true }).catch((syncErr) => {
-          console.warn("⚠️ [ADMIN_TOKEN_SYNC_ERROR] Sync warning:", syncErr?.message || syncErr);
-        });
       }
 
       const token = "SES_" + crypto.randomBytes(32).toString("hex");
@@ -397,12 +389,7 @@ export default async function handler(req: any, res: any) {
       isValidSession = true;
     }
     
-    // 2. Check token against session or valid token format
-    if (!isValidSession && token === computedLegacyToken) {
-      isValidSession = true;
-    }
-
-    // 3. Fallback: Check Firestore session if not found in memory
+    // 2. Fallback: Check Firestore session if not found in memory
     if (!isValidSession && token.startsWith("SES_")) {
       try {
         const adminDb = getAdminFirestore();
@@ -563,7 +550,7 @@ export default async function handler(req: any, res: any) {
         console.log("[CONFIG_SAVE_START] Began processing save-config action.");
         const payload = {
           ...cleanedConfig,
-          adminToken: computedLegacyToken
+          adminToken: "session_authenticated"
         };
         try {
           console.log(`[FIRESTORE_WRITE_START] Saving raffle configurations to path '/raffles/${targetRaffleId}'...`);
@@ -608,7 +595,7 @@ export default async function handler(req: any, res: any) {
           isActive: isRaffleActive,
           status: isRaffleActive ? "ativa" : "pausada",
           updatedAt: new Date().toISOString(),
-          adminToken: computedLegacyToken
+          adminToken: "session_authenticated"
         };
 
         try {
@@ -740,7 +727,7 @@ export default async function handler(req: any, res: any) {
           seedVersion,
           algorithmVersion,
           updatedAt: new Date().toISOString(),
-          adminToken: computedLegacyToken,
+          adminToken: "session_authenticated",
         };
 
         await getAdminFirestore().collection("raffles").doc(targetRaffleId).set(resetConfig, { merge: true });
@@ -990,7 +977,7 @@ export default async function handler(req: any, res: any) {
           seedCommitment,
           seedVersion,
           algorithmVersion,
-          adminToken: computedLegacyToken,
+          adminToken: "session_authenticated",
         };
 
         const drawId = "PENDING_DRAW_" + Date.now() + "_" + crypto.randomBytes(2).toString("hex").toUpperCase();
@@ -1131,7 +1118,7 @@ export default async function handler(req: any, res: any) {
           drawDate: configToPublish.drawDate || nowObj.toLocaleDateString("pt-BR"),
           drawTime: configToPublish.drawTime || nowObj.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
           updatedAt: nowObj.toISOString(),
-          adminToken: computedLegacyToken
+          adminToken: "session_authenticated"
         };
 
         const drawMethodLabel = configToPublish.drawAudit?.drawMethod || configToPublish.drawMethod || "Loteria Federal";
@@ -1906,7 +1893,7 @@ export default async function handler(req: any, res: any) {
           const configRef = getAdminFirestore().collection("raffles").doc("current");
           const payload = {
             ...backup.config,
-            adminToken: computedLegacyToken,
+            adminToken: "session_authenticated",
           };
           batch.set(configRef, payload, { merge: true });
           count++;
@@ -2235,7 +2222,7 @@ export default async function handler(req: any, res: any) {
           pixKeyType: String(pixKeyType || "").trim(),
           pixBankLogo: String(pixBankLogo || "").trim(),
           updatedAt: new Date().toISOString(),
-          adminToken: computedLegacyToken
+          adminToken: "session_authenticated"
         };
         
         try {
@@ -2411,7 +2398,7 @@ export default async function handler(req: any, res: any) {
           algorithmVersion: aVersion,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          adminToken: computedLegacyToken,
+          adminToken: "session_authenticated",
         };
 
         await getAdminFirestore().collection("raffles").doc(newRaffleId).set(rafflePayload);
@@ -2467,7 +2454,7 @@ export default async function handler(req: any, res: any) {
           algorithmVersion: aVersion,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          adminToken: computedLegacyToken,
+          adminToken: "session_authenticated",
         };
 
         // Explicitly delete 'seed' if it was copied from legacy sourceData
@@ -2496,7 +2483,7 @@ export default async function handler(req: any, res: any) {
           isRaffleActive: false,
           isActive: false,
           updatedAt: new Date().toISOString(),
-          adminToken: computedLegacyToken,
+          adminToken: "session_authenticated",
         });
         return res.status(200).json({ success: true });
       }
@@ -2511,7 +2498,7 @@ export default async function handler(req: any, res: any) {
           isRaffleActive: false,
           isActive: false,
           updatedAt: new Date().toISOString(),
-          adminToken: computedLegacyToken,
+          adminToken: "session_authenticated",
         });
         return res.status(200).json({ success: true });
       }
