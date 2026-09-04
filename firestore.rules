@@ -163,8 +163,7 @@ service cloud.firestore {
     // Secure draws
     match /draws/{drawId} {
       allow read, list: if true;
-      allow create, update: if isValidId(drawId) && isValidDraw(request.resource.data);
-      allow delete: if false;
+      allow create, update, delete: if false;
     }
 
     // Global Winners History collection ("Histórico de Ganhadores") - Read-only for clients, write via Admin SDK

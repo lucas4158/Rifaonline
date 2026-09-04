@@ -1586,118 +1586,152 @@ export default async function handler(req: any, res: any) {
 
         const adminDb = getAdminFirestore();
         const orderRef = adminDb.collection("orders").doc(orderId);
-        const orderSnap = await orderRef.get();
-        if (!orderSnap.exists) {
-          return res.status(404).json({ error: "Pedido correspondente não encontrado." });
-        }
-
-        const orderData = orderSnap.data() || {};
-        const targetRaffleId = req.body.raffleId || orderData.raffleId || "current";
-        const orderNums: string[] = Array.from(new Set([
-          ...(Array.isArray(orderData.nums) ? orderData.nums : []),
-          ...(Array.isArray(orderData.purchasedNums) ? orderData.purchasedNums : []),
-          ...(Array.isArray(orderData.bonusNums) ? orderData.bonusNums : []),
-          ...(Array.isArray(orderData.numbers) ? orderData.numbers : [])
-        ]));
-        const currentStatus = String(orderData.status || "").toLowerCase();
-
-        // 1. Idempotency Check
-        const isAlreadyPaid = currentStatus === "pago" || currentStatus === "paid" || currentStatus === "approved" || currentStatus === "confirmed";
-        if (isAlreadyPaid) {
-          console.log(`ℹ️ [Manual Approve] Order ${orderId} is already paid. Returning idempotent response.`);
-          return res.status(200).json({
-            success: true,
-            alreadyPaid: true,
-            message: "Este pedido já consta como Pago.",
-            orderId
-          });
-        }
-
-        // 1.5. Expiration Check (Prevent approval of expired manual orders)
-        const expiresAtValue = Number(orderData.expiresAt || 0);
-        if (expiresAtValue > 0 && Date.now() > expiresAtValue) {
-          console.warn(`⚠️ [Manual Approve Expired] Order ${orderId} has expired (expiresAt: ${expiresAtValue}). Blocking approval.`);
-          return res.status(400).json({
-            error: "Este pedido já expirou (prazo limite de pagamento ultrapassado). Não é possível aprová-lo."
-          });
-        }
-
-        // 2. Cotas Conflict Verification
-        for (const cotaNum of orderNums) {
-          const cotaSnap = await adminDb.collection("raffles").doc(targetRaffleId).collection("numbers").doc(cotaNum).get();
-          if (cotaSnap.exists) {
-            const cotaData = cotaSnap.data() || {};
-            const cotaStatus = String(cotaData.status || "").toLowerCase();
-            if (cotaStatus === "paid" && cotaData.orderId && cotaData.orderId !== orderId) {
-              console.warn(`⚠️ [Manual Approve Conflict] Cota ${cotaNum} is already paid by order ${cotaData.orderId}. Blocking approval of order ${orderId}.`);
-              return res.status(400).json({
-                error: `Conflito de cotas: A cota ${cotaNum} já foi paga e atribuída a outro pedido (${cotaData.orderId}). Não é possível aprovar este pedido.`
-              });
-            }
-          }
-        }
-
-        // 3. Perform atomic batch update
-        const batch = adminDb.batch();
+        const adminUid = req.body.adminUid || "administrador";
         const nowIso = new Date().toISOString();
 
-        const adminUid = req.body.adminUid || "administrador";
+        let conflictError: string | null = null;
+        let alreadyPaidResponse: any = null;
+        let expiredError: string | null = null;
+        let orderNums: string[] = [];
+        let orderData: any = {};
+        let targetRaffleId = "current";
+        let paymentId = "";
 
-        batch.update(orderRef, {
-          status: "Pago",
-          approvedAt: nowIso,
-          approvedBy: adminUid,
-          manuallyApproved: true,
-          updatedAt: nowIso
-        });
+        try {
+          await adminDb.runTransaction(async (transaction: any) => {
+            const orderSnap = await transaction.get(orderRef);
+            if (!orderSnap.exists) {
+              throw new Error("ORDER_NOT_FOUND");
+            }
 
-        const resRef = adminDb.collection("reservations").doc(orderId);
-        batch.set(resRef, {
-          status: "Pago",
-          approvedAt: nowIso,
-          manuallyApproved: true,
-          updatedAt: nowIso
-        }, { merge: true });
+            orderData = orderSnap.data() || {};
+            targetRaffleId = req.body.raffleId || orderData.raffleId || "current";
+            orderNums = Array.from(new Set([
+              ...(Array.isArray(orderData.nums) ? orderData.nums : []),
+              ...(Array.isArray(orderData.purchasedNums) ? orderData.purchasedNums : []),
+              ...(Array.isArray(orderData.bonusNums) ? orderData.bonusNums : []),
+              ...(Array.isArray(orderData.numbers) ? orderData.numbers : [])
+            ]));
+            const currentStatus = String(orderData.status || "").toLowerCase();
 
-        const paymentId = orderData.paymentId || ("MANUAL_" + orderId);
-        const payRef = adminDb.collection("payments").doc(String(paymentId));
-        batch.set(payRef, {
-          id: String(paymentId),
-          orderId: orderId,
-          status: "approved",
-          amount: Number(orderData.val || orderData.amount || 0),
-          method: "manual_approval",
-          createdAt: orderData.createdAt || nowIso,
-          updatedAt: nowIso
-        }, { merge: true });
+            // 1. Idempotency Check
+            const isAlreadyPaid = currentStatus === "pago" || currentStatus === "paid" || currentStatus === "approved" || currentStatus === "confirmed";
+            if (isAlreadyPaid) {
+              alreadyPaidResponse = {
+                success: true,
+                alreadyPaid: true,
+                message: "Este pedido já consta como Pago.",
+                orderId
+              };
+              return;
+            }
 
-        const bonusNumsSet = new Set<string>(orderData.bonusNums || []);
-        let mainPaidCount = 0;
-        orderNums.forEach((num: string) => {
-          const isBonus = bonusNumsSet.has(num);
-          if (!isBonus) mainPaidCount++;
-          const numDocRef = adminDb.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
-          batch.set(numDocRef, {
-            id: num,
-            status: "paid",
-            orderId: orderId,
-            name: orderData.name || "Cliente",
-            phone: orderData.phone || "",
-            isBonus: isBonus,
-            updatedAt: nowIso
-          }, { merge: true });
-        });
+            // 1.5. Expiration Check inside transaction
+            const expiresAtValue = Number(orderData.expiresAt || 0);
+            if (expiresAtValue > 0 && Date.now() > expiresAtValue) {
+              expiredError = "Este pedido já expirou (prazo limite de pagamento ultrapassado). Não é possível aprová-lo.";
+              return;
+            }
 
-        if (mainPaidCount > 0) {
-          const raffleRef = adminDb.collection("raffles").doc(targetRaffleId);
-          batch.update(raffleRef, {
-            soldCount: admin.firestore.FieldValue.increment(mainPaidCount)
+            // 2. Cotas Conflict Verification inside transaction using transaction.get
+            const numRefs = orderNums.map((cotaNum) =>
+              adminDb.collection("raffles").doc(targetRaffleId).collection("numbers").doc(cotaNum)
+            );
+            const numSnaps = await transaction.getAll(...numRefs);
+
+            for (let i = 0; i < numSnaps.length; i++) {
+              const cotaSnap = numSnaps[i];
+              const cotaNum = orderNums[i];
+              if (cotaSnap.exists) {
+                const cotaData = cotaSnap.data() || {};
+                const cotaStatus = String(cotaData.status || "").toLowerCase();
+                if (cotaStatus === "paid" && cotaData.orderId && cotaData.orderId !== orderId) {
+                  conflictError = `Conflito de cotas: A cota ${cotaNum} já foi paga e atribuída a outro pedido (${cotaData.orderId}). Não é possível aprovar este pedido.`;
+                  return;
+                }
+              }
+            }
+
+            // 3. Perform transactional writes
+            transaction.update(orderRef, {
+              status: "Pago",
+              approvedAt: nowIso,
+              approvedBy: adminUid,
+              manuallyApproved: true,
+              updatedAt: nowIso
+            });
+
+            const resRef = adminDb.collection("reservations").doc(orderId);
+            transaction.set(resRef, {
+              status: "Pago",
+              approvedAt: nowIso,
+              manuallyApproved: true,
+              updatedAt: nowIso
+            }, { merge: true });
+
+            paymentId = orderData.paymentId || ("MANUAL_" + orderId);
+            const payRef = adminDb.collection("payments").doc(String(paymentId));
+            transaction.set(payRef, {
+              id: String(paymentId),
+              orderId: orderId,
+              status: "approved",
+              amount: Number(orderData.val || orderData.amount || 0),
+              method: "manual_approval",
+              createdAt: orderData.createdAt || nowIso,
+              updatedAt: nowIso
+            }, { merge: true });
+
+            const bonusNumsSet = new Set<string>(orderData.bonusNums || []);
+            let mainPaidCount = 0;
+            for (let i = 0; i < orderNums.length; i++) {
+              const num = orderNums[i];
+              const isBonus = bonusNumsSet.has(num);
+              if (!isBonus) mainPaidCount++;
+              const numDocRef = numRefs[i];
+              transaction.set(numDocRef, {
+                id: num,
+                status: "paid",
+                orderId: orderId,
+                name: orderData.name || "Cliente",
+                phone: orderData.phone || "",
+                isBonus: isBonus,
+                updatedAt: nowIso
+              }, { merge: true });
+            }
+
+            if (mainPaidCount > 0) {
+              const raffleRef = adminDb.collection("raffles").doc(targetRaffleId);
+              transaction.update(raffleRef, {
+                soldCount: admin.firestore.FieldValue.increment(mainPaidCount)
+              });
+            }
           });
+        } catch (txErr: any) {
+          if (txErr.message === "ORDER_NOT_FOUND") {
+            return res.status(404).json({ error: "Pedido correspondente não encontrado." });
+          }
+          console.error("❌ [Manual Approve Transaction Error]:", txErr);
+          return res.status(500).json({ error: "Erro ao processar aprovação manual no banco de dados." });
         }
 
-        await allocatePromotionalBonus(adminDb, orderId, orderData, batch, targetRaffleId);
+        if (alreadyPaidResponse) {
+          return res.status(200).json(alreadyPaidResponse);
+        }
+        if (expiredError) {
+          return res.status(400).json({ error: expiredError });
+        }
+        if (conflictError) {
+          return res.status(400).json({ error: conflictError });
+        }
 
-        await batch.commit();
+        const batchForBonus = adminDb.batch();
+        await allocatePromotionalBonus(adminDb, orderId, orderData, batchForBonus, targetRaffleId);
+        try {
+          await batchForBonus.commit();
+        } catch (bonusCommitErr) {
+          console.error("Non-critical error committing promotional bonus for manual order:", bonusCommitErr);
+        }
+
         console.log(`✅ [Manual Approve Success] Order ${orderId} manually approved successfully.`);
 
         // 4. Audit Log
