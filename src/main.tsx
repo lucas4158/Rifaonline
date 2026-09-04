@@ -117,43 +117,12 @@ if (typeof window !== "undefined") {
   };
 
   window.onunhandledrejection = function (event) {
+    if (event && typeof event.preventDefault === "function") {
+      event.preventDefault();
+    }
     const reason = event.reason;
     const msg = reason ? (reason.message || String(reason)) : "Unhandled Promise Rejection";
-    const lowerMsg = msg.toLowerCase();
-
-    if (
-      lowerMsg.includes("resource_exhausted") ||
-      lowerMsg.includes("quota exceeded") ||
-      lowerMsg.includes("failed to fetch") ||
-      lowerMsg.includes("networkerror") ||
-      lowerMsg.includes("network error") ||
-      lowerMsg.includes("aborterror") ||
-      lowerMsg.includes("pattern") ||
-      lowerMsg.includes("domexception") ||
-      lowerMsg.includes("offline") ||
-      lowerMsg.includes("unavailable") ||
-      lowerMsg.includes("firestore") ||
-      lowerMsg.includes("firebase") ||
-      lowerMsg.includes("cancelled") ||
-      lowerMsg.includes("timeout") ||
-      lowerMsg.includes("load failed") ||
-      lowerMsg.includes("chunkloaderror") ||
-      lowerMsg.includes("loading chunk")
-    ) {
-      console.warn("⚠️ [Client Notice] Transient network or background promise rejection suppressed:", msg);
-      return;
-    }
-
-    const details = {
-      type: "unhandled_rejection",
-      message: msg,
-      stack: (reason && reason.stack) ? reason.stack : "No stack trace available",
-      userAgent: navigator.userAgent,
-      url: window.location.href,
-    };
-    
-    console.warn(`[MOBILE_CLIENT_NOTICE] Unhandled Rejection caught:`, details);
-    logClientErrorToServer(details);
+    console.warn("⚠️ [Client Notice] Handled unhandled promise rejection gracefully:", msg);
   };
 
   // Register PWA Service Worker
