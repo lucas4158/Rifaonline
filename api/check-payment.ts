@@ -98,6 +98,10 @@ export default async function handler(req: any, res: any) {
 
     // Check payment status on Gateway (Mercado Pago only - SIM_ simulation completely removed)
     const effectivePaymentId = paymentId || orderData.paymentId;
+    if (orderData.paymentId && paymentId && orderData.paymentId !== String(paymentId)) {
+      console.error(`❌ [CheckPayment] CRITICAL SECURITY: Order already assigned to paymentId ${orderData.paymentId}, but requested check is for ${paymentId}`);
+      return res.status(200).json({ approved: false, error: "Payment ID mismatch for this order." });
+    }
     let isApprovedOnGateway = false;
     let gatewayStatus = "pending";
 
@@ -113,8 +117,8 @@ export default async function handler(req: any, res: any) {
           const metaRaffleId = mpInfo?.metadata?.raffle_id || mpInfo?.metadata?.raffleId;
           const orderRaffleId = orderData.raffleId || "current";
 
-          if (metaOrderId && metaOrderId !== targetOrderId) {
-            console.error(`❌ [CheckPayment] CRITICAL SECURITY: Payment metadata order_id (${metaOrderId}) does not match orderId (${targetOrderId})!`);
+          if (!metaOrderId || metaOrderId !== targetOrderId) {
+            console.error(`❌ [CheckPayment] CRITICAL SECURITY: Payment metadata order_id (${metaOrderId}) missing or does not match orderId (${targetOrderId})!`);
             return res.status(200).json({ approved: false, error: "Payment does not belong to this order." });
           }
           if (metaRaffleId && metaRaffleId !== orderRaffleId) {

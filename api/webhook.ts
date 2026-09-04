@@ -246,8 +246,8 @@ export default async function handler(req: any, res: any) {
     const metaRaffleId = mpPaymentInfo?.metadata?.raffle_id || mpPaymentInfo?.metadata?.raffleId;
     const orderRaffleId = orderDataForVal.raffleId || "current";
 
-    if (metaOrderId && metaOrderId !== orderId) {
-      console.error(`❌ [Webhook] CRITICAL SECURITY: Payment metadata order_id (${metaOrderId}) does not match located orderId (${orderId})!`);
+    if (!metaOrderId || metaOrderId !== orderId) {
+      console.error(`❌ [Webhook] CRITICAL SECURITY: Payment metadata order_id (${metaOrderId}) missing or does not match located orderId (${orderId})!`);
       return res.status(200).json({ status: "ignored", message: "Order ID metadata mismatch." });
     }
     if (metaRaffleId && metaRaffleId !== orderRaffleId) {

@@ -119,17 +119,28 @@ if (typeof window !== "undefined") {
   window.onunhandledrejection = function (event) {
     const reason = event.reason;
     const msg = reason ? (reason.message || String(reason)) : "Unhandled Promise Rejection";
+    const lowerMsg = msg.toLowerCase();
 
     if (
-      msg.includes("RESOURCE_EXHAUSTED") ||
-      msg.includes("Quota exceeded") ||
-      msg.includes("Failed to fetch") ||
-      msg.includes("NetworkError") ||
-      msg.includes("AbortError") ||
-      msg.includes("pattern") ||
-      msg.includes("DOMException")
+      lowerMsg.includes("resource_exhausted") ||
+      lowerMsg.includes("quota exceeded") ||
+      lowerMsg.includes("failed to fetch") ||
+      lowerMsg.includes("networkerror") ||
+      lowerMsg.includes("network error") ||
+      lowerMsg.includes("aborterror") ||
+      lowerMsg.includes("pattern") ||
+      lowerMsg.includes("domexception") ||
+      lowerMsg.includes("offline") ||
+      lowerMsg.includes("unavailable") ||
+      lowerMsg.includes("firestore") ||
+      lowerMsg.includes("firebase") ||
+      lowerMsg.includes("cancelled") ||
+      lowerMsg.includes("timeout") ||
+      lowerMsg.includes("load failed") ||
+      lowerMsg.includes("chunkloaderror") ||
+      lowerMsg.includes("loading chunk")
     ) {
-      console.warn("⚠️ [Client Notice] Transient network or background event caught:", msg);
+      console.warn("⚠️ [Client Notice] Transient network or background promise rejection suppressed:", msg);
       return;
     }
 
@@ -141,21 +152,6 @@ if (typeof window !== "undefined") {
       url: window.location.href,
     };
     
-    const errDiv = document.createElement("div");
-    errDiv.style.position = "fixed";
-    errDiv.style.top = "0";
-    errDiv.style.left = "0";
-    errDiv.style.width = "100%";
-    errDiv.style.height = "100%";
-    errDiv.style.backgroundColor = "rgba(100, 50, 0, 0.9)";
-    errDiv.style.color = "white";
-    errDiv.style.zIndex = "9999999";
-    errDiv.style.padding = "20px";
-    errDiv.style.overflow = "auto";
-    errDiv.style.fontFamily = "monospace";
-    errDiv.innerHTML = `<h3>UNHANDLED PROMISE REJECTION</h3><p><strong>Message:</strong> ${msg}</p><pre style="white-space: pre-wrap; font-size: 10px;">${details.stack}</pre><button onclick="this.parentElement.remove()" style="padding: 10px; background: white; color: black; margin-top: 20px;">Dismiss</button>`;
-    document.body.appendChild(errDiv);
-
     console.warn(`[MOBILE_CLIENT_NOTICE] Unhandled Rejection caught:`, details);
     logClientErrorToServer(details);
   };
