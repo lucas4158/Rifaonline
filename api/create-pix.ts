@@ -82,7 +82,7 @@ export default async function handler(req: any, res: any) {
   let allNums = [...nums];
   let bonusNums: string[] = [];
 
-  // High entropy Order ID and Cancellation Token (P0-06)
+  // High entropy Order ID and Cancellation Token
   const orderId = "ord_" + crypto.randomBytes(16).toString("hex");
   const cancellationToken = crypto.randomBytes(32).toString("hex");
 
@@ -98,7 +98,7 @@ export default async function handler(req: any, res: any) {
   let manualInstructions = "Realize o pagamento Pix utilizando a chave acima e aguarde a conferência do administrador.";
 
   try {
-    // 1. Fetch raffle config first for authoritative pricing (P0-03) and rigid quota validation (P0-04)
+    // 1. Fetch raffle config first for authoritative pricing and rigid quota validation
     const tRaffleStart = Date.now();
     const configRef = getAdminFirestore().collection("raffles").doc(targetRaffleId);
     const configSnap = await configRef.get();
@@ -116,7 +116,7 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: "Preço da rifa não configurado ou inválido no servidor." });
     }
 
-    // Rigid Quota Validation (P0-04)
+    // Rigid Quota Validation
     if (!Array.isArray(nums) || nums.length === 0 || nums.length > 500) {
       return res.status(400).json({ error: "Quantidade de cotas inválida (mínimo 1, máximo 500)." });
     }
@@ -133,7 +133,7 @@ export default async function handler(req: any, res: any) {
       uniqueNumsSet.add(numStr);
     }
 
-    // 100% Server-side Pricing (P0-03)
+    // 100% Server-side Pricing
     finalAmount = Number((nums.length * unitPrice).toFixed(2));
     if (!Number.isFinite(finalAmount) || finalAmount <= 0) {
       return res.status(400).json({ error: "Cálculo do valor total do pedido inválido." });
@@ -145,7 +145,6 @@ export default async function handler(req: any, res: any) {
     manualPixReceiver = configData.manualPixReceiver || configData.pixReceiver || "";
     manualInstructions = configData.manualInstructions || "Realize o pagamento Pix utilizando a chave acima e aguarde a conferência do administrador.";
 
-    // 20 minutes for manual payment mode, 10 minutes for automatic mode
     expiresAt = currentNow + (paymentMode === "manual" || paymentGateway === "manual" ? 20 * 60 * 1000 : 10 * 60 * 1000);
 
     const promotionEnabled = !!configData.promotionEnabled;
@@ -153,10 +152,7 @@ export default async function handler(req: any, res: any) {
     const promoBonus = Number(configData.promotionBonus || 1);
     const padLen = String(totalRaffleNumbers).length < 3 ? 3 : String(totalRaffleNumbers).length;
 
-    // Bonus numbers prediction (Bonus numbers DO NOT add to charge amount!)
     const predictedBonus = promotionEnabled ? Math.floor(nums.length / buy) * promoBonus : 0;
-    console.log(`[PROMO_CALCULATED] orderId: ${orderId}, boughtCount: ${nums.length}, buyRule: ${buy}, bonusRatio: ${promoBonus}, predictedBonus: ${predictedBonus}`);
-
     const candidateBonusPool: string[] = [];
     const retainedBonus: string[] = [];
 
@@ -186,7 +182,28 @@ export default async function handler(req: any, res: any) {
 
     const allCheckNumbers = Array.from(new Set([...nums, ...retainedBonus, ...candidateBonusPool]));
 
-    // 2. Execute parallelized read-before-write transaction
+    // ETAPA 1 — Criar pedido com status "creating_payment" ANTES de reservar cotas ou chamar gateway
+    const initialOrderRef = getAdminFirestore().collection("orders").doc(orderId);
+    await initialOrderRef.set({
+      id: orderId,
+      cancellationToken,
+      raffleId: targetRaffleId,
+      name,
+      phone: dNormPhone,
+      nums: [...nums],
+      purchasedNums: nums,
+      bonusNums: [],
+      val: finalAmount,
+      status: "creating_payment",
+      paymentStatus: "creating_payment",
+      createdAt: new Date().toISOString(),
+      expiresAt: expiresAt,
+      paymentMode,
+      isManual: paymentMode === "manual" || paymentGateway === "manual",
+      sessionId,
+    });
+
+    // ETAPA 2 — Reservar cotas atomicamente
     const tTransStart = Date.now();
     const transactionResult = await getAdminFirestore().runTransaction(async (transaction: any) => {
       const lockRefs = allCheckNumbers.map((n) => getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("locks").doc(n));
@@ -210,7 +227,6 @@ export default async function handler(req: any, res: any) {
         }
       });
 
-      // Evaluate requested numbers (nums) for conflicts
       const conflicts: string[] = [];
       for (const num of nums) {
         const lockData = lockMap.get(num);
@@ -252,11 +268,9 @@ export default async function handler(req: any, res: any) {
       }
 
       if (conflicts.length > 0) {
-        console.warn(`⚠️ [CONFLICT_DETECTED] Conflict detected for cotas: ${conflicts.join(", ")} on session: ${sessionId}`);
         return { success: false, conflicts };
       }
 
-      // Evaluate and select free bonus numbers
       const selectedBonus: string[] = [];
       if (predictedBonus > 0) {
         const candidateList = [...retainedBonus, ...candidateBonusPool];
@@ -300,12 +314,6 @@ export default async function handler(req: any, res: any) {
       bonusNums = selectedBonus;
       allNums = [...nums, ...bonusNums];
 
-      if (bonusNums.length > 0) {
-        console.log(`[BONUS_SELECTED] orderId: ${orderId}, selectedBonus: ${bonusNums.join(", ")}`);
-        console.log(`[BONUS_RESERVED] orderId: ${orderId}, reservedBonusNums: ${bonusNums.join(", ")}`);
-      }
-
-      // Reserve all numbers (purchased + bonus)
       for (const num of allNums) {
         const numDocRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
         transaction.set(numDocRef, {
@@ -321,7 +329,6 @@ export default async function handler(req: any, res: any) {
         });
       }
 
-      // Delete selection locks for requested numbers
       for (const num of nums) {
         const lockDocRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("locks").doc(num);
         transaction.delete(lockDocRef);
@@ -333,6 +340,7 @@ export default async function handler(req: any, res: any) {
     tValAndTrans = Date.now() - tTransStart;
 
     if (!transactionResult.success) {
+      await initialOrderRef.set({ status: "conflict_cancelled", paymentStatus: "conflict" }, { merge: true });
       return res.status(400).json({
         error: `As seguintes cotas acabaram de ser adquiridas ou reservadas por outro cliente: ${transactionResult.conflicts?.join(", ")}. Por favor, escolha outros números.`,
         conflicts: transactionResult.conflicts,
@@ -351,12 +359,19 @@ export default async function handler(req: any, res: any) {
         }))
       ).catch(() => {});
     }
+
+    // Update order with confirmed nums & bonusNums
+    await initialOrderRef.set({
+      nums: allNums,
+      bonusNums: bonusNums,
+    }, { merge: true });
+
   } catch (dbErr: any) {
     console.error("❌ [Firestore Serverless] Error checking/locking numbers atomically:", dbErr);
     return res.status(500).json({ error: "Erro ao processar as cotas em lote no banco de dados. Por favor, tente novamente." });
   }
 
-  // Check if manual payment mode is enabled for this raffle
+  // Handle Manual Payment Mode
   if (paymentMode === "manual" || paymentGateway === "manual") {
     console.log(`📋 [Manual Payment] Raffle ${targetRaffleId} is in manual mode. Skipping automated gateway call.`);
     paymentId = `MANUAL_${orderId}`;
@@ -364,11 +379,23 @@ export default async function handler(req: any, res: any) {
     qrCodeBase64 = "";
 
     try {
-      const tSaveStart = Date.now();
       const batch = getAdminFirestore().batch();
-
       const orderRef = getAdminFirestore().collection("orders").doc(orderId);
-      const newOrder = {
+      batch.set(orderRef, {
+        status: "Aguardando",
+        paymentStatus: "manual_pending",
+        isManual: true,
+        paymentId,
+        paymentType: "ManualPix",
+        qrCode,
+        qrCodeBase64,
+        manualInstructions,
+        manualPixKey,
+        manualPixReceiver,
+      }, { merge: true });
+
+      const reservationRef = getAdminFirestore().collection("reservations").doc(orderId);
+      batch.set(reservationRef, {
         id: orderId,
         raffleId: targetRaffleId,
         name,
@@ -378,45 +405,11 @@ export default async function handler(req: any, res: any) {
         bonusNums: bonusNums,
         val: finalAmount,
         status: "Aguardando",
-        isManual: true,
         createdAt: new Date().toISOString(),
         expiresAt: expiresAt,
-        paymentId,
-        paymentType: "ManualPix",
-        qrCode,
-        qrCodeBase64,
-        manualInstructions,
-        manualPixKey,
-        manualPixReceiver,
-        sessionId,
-      };
-      batch.set(orderRef, newOrder);
-
-      const numUpdateData = {
-        status: "reserved",
-        sessionId,
-        phone: dNormPhone,
-        name,
-        expiresAt,
-        orderId,
-        updatedAt: new Date().toISOString(),
-      };
-
-      allNums.forEach((num: string) => {
-        const numRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
-        batch.set(numRef, numUpdateData, { merge: true });
-
-        const lockRef = getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("locks").doc(num);
-        batch.set(lockRef, {
-          sessionId,
-          expiresAt,
-          orderId,
-          updatedAt: new Date().toISOString(),
-        });
-      });
+      }, { merge: true });
 
       await batch.commit();
-      console.log(`✅ [Manual Payment] Order ${orderId} successfully created in Manual mode.`);
 
       return res.status(200).json({
         success: true,
@@ -437,30 +430,15 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-
-
   // Check Mercado Pago configuration
   const hasMP = !!process.env.MP_ACCESS_TOKEN && mpPayment;
 
   if (!hasMP) {
     console.error("❌ [Mercado Pago Error] MP_ACCESS_TOKEN is missing or MercadoPago client is uninitialized.");
-    try {
-      const cleanupBatch = getAdminFirestore().batch();
-      allNums.forEach((num: string) => {
-        cleanupBatch.delete(getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num));
-      });
-      await cleanupBatch.commit();
-    } catch (cleanErr) {
-      console.error("❌ [Rollback Error] Error cleaning up reserved numbers:", cleanErr);
-    }
     return res.status(502).json({
       error: "O sistema de pagamento por PIX não está configurado corretamente (MP_ACCESS_TOKEN ausente).",
     });
   }
-
-  paymentId = "";
-  qrCode = "";
-  qrCodeBase64 = "";
 
   const generateValidCPF = (): string => {
     const rnt = (max: number) => crypto.randomInt(0, max);
@@ -552,56 +530,36 @@ export default async function handler(req: any, res: any) {
     qrCodeBase64 = mpResponse.point_of_interaction?.transaction_data?.qr_code_base64 || "";
 
     if (!qrCode) {
-      throw new Error("Mercado Pago não retornou o código QR Pix (qr_code). Verifique se a conta possui chave Pix habilitada.");
+      throw new Error("Mercado Pago não retornou o código QR Pix (qr_code).");
     }
 
     console.log(`✅ [MercadoPago Serverless] Real payment generated! ID: ${paymentId} (Amount: R$${finalAmount})`);
   } catch (mpError: any) {
     console.error("❌ [MercadoPago Serverless] API creation failed:", mpError?.message || mpError);
-    try {
-      const cleanupBatch = getAdminFirestore().batch();
-      allNums.forEach((num: string) => {
-        cleanupBatch.delete(getAdminFirestore().collection("raffles").doc(targetRaffleId).collection("numbers").doc(num));
-      });
-      await cleanupBatch.commit();
-    } catch (cleanErr) {
-      console.error("❌ [Rollback Error] Error cleaning up reserved numbers:", cleanErr);
-    }
     const errDetail = mpError?.message || mpError?.toString() || "Erro desconhecido do Mercado Pago";
     return res.status(502).json({
       error: `Erro ao gerar Pix no Mercado Pago: ${errDetail}`,
     });
   }
 
-  // Create order documents in Firestore using batch write
+  // ETAPA 4 — Persistir paymentId no pedido já criado e registrar payments/{paymentId}
   try {
     const tSaveStart = Date.now();
     const batch = getAdminFirestore().batch();
 
     const orderRef = getAdminFirestore().collection("orders").doc(orderId);
-    const newOrder = {
-      id: orderId,
-      cancellationToken,
-      raffleId: targetRaffleId,
-      name,
-      phone: dNormPhone,
-      nums: allNums,
-      purchasedNums: nums,
-      bonusNums: bonusNums,
-      val: finalAmount,
+    batch.update(orderRef, {
       status: "pending_payment",
-      createdAt: new Date().toISOString(),
-      expiresAt: expiresAt,
+      paymentStatus: "created",
       paymentId,
       paymentType: "MercadoPagoPix",
       qrCode,
       qrCodeBase64,
       isSimulated: false,
-    };
-    batch.set(orderRef, newOrder);
+    });
 
     const reservationRef = getAdminFirestore().collection("reservations").doc(orderId);
-    const newReservation = {
+    batch.set(reservationRef, {
       id: orderId,
       raffleId: targetRaffleId,
       name,
@@ -613,11 +571,10 @@ export default async function handler(req: any, res: any) {
       status: "pending_payment",
       createdAt: new Date().toISOString(),
       expiresAt: expiresAt,
-    };
-    batch.set(reservationRef, newReservation);
+    }, { merge: true });
 
     const paymentRef = getAdminFirestore().collection("payments").doc(paymentId);
-    const newPayment = {
+    batch.set(paymentRef, {
       id: paymentId,
       orderId: orderId,
       raffleId: targetRaffleId,
@@ -625,8 +582,7 @@ export default async function handler(req: any, res: any) {
       amount: finalAmount,
       createdAt: new Date().toISOString(),
       isSimulated: false,
-    };
-    batch.set(paymentRef, newPayment);
+    });
 
     await batch.commit();
     tFinalSave = Date.now() - tSaveStart;
@@ -653,7 +609,9 @@ export default async function handler(req: any, res: any) {
       },
     });
   } catch (err: any) {
-    console.error("❌ [Serverless] Error committing batch in database:", err);
-    return res.status(500).json({ error: "Erro ao criar reserva no banco de dados." });
+    console.error("❌ [Serverless] Error committing batch in database after MP payment creation:", err);
+    // Order was already created in Etapa 1, so it remains in database for recovery/reconciliation
+    return res.status(500).json({ error: "Pagamento criado no gateway, mas houve erro ao atualizar o pedido no banco de dados. O pedido encontra-se registrado." });
   }
 }
+

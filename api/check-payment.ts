@@ -82,6 +82,17 @@ export default async function handler(req: any, res: any) {
     const orderData = targetOrderSnap.data();
     const currentOrderStatus = (orderData?.status || "").toLowerCase();
 
+    if (orderData.isManual || orderData.paymentMode === "manual" || String(orderData.paymentId).startsWith("MANUAL_")) {
+      console.log(`[CheckPayment] Order ${targetOrderId} is manual. Skipping Mercado Pago verification.`);
+      return res.status(200).json({
+        approved: false,
+        status: orderData.status,
+        orderStatus: orderData.status,
+        orderId: targetOrderId,
+        isManual: true,
+      });
+    }
+
     // If already paid, return early
     if (currentOrderStatus === "pago" || currentOrderStatus === "paid" || currentOrderStatus === "approved") {
       console.log(`[PAYMENT_STATUS_CHECKED] Order ${targetOrderId} is already PAID. Returning confirmed status.`);
@@ -96,7 +107,7 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    // Check payment status on Gateway (Mercado Pago only - SIM_ simulation completely removed)
+    // Check payment status on Gateway (Mercado Pago only)
     const effectivePaymentId = paymentId || orderData.paymentId;
     if (orderData.paymentId && paymentId && orderData.paymentId !== String(paymentId)) {
       console.error(`❌ [CheckPayment] CRITICAL SECURITY: Order already assigned to paymentId ${orderData.paymentId}, but requested check is for ${paymentId}`);
@@ -112,6 +123,12 @@ export default async function handler(req: any, res: any) {
       try {
         const mpInfo = await mpPayment.get({ id: Number(effectivePaymentId) });
         gatewayStatus = mpInfo?.status || "pending";
+
+        if (mpInfo?.id && String(mpInfo.id) !== String(effectivePaymentId)) {
+          console.error(`❌ [CheckPayment] CRITICAL SECURITY: Fetched payment ID (${mpInfo.id}) does not match effective payment ID (${effectivePaymentId})!`);
+          return res.status(200).json({ approved: false, error: "Payment ID verification failed." });
+        }
+
         if (gatewayStatus === "approved") {
           const metaOrderId = mpInfo?.metadata?.order_id || mpInfo?.metadata?.orderId;
           const metaRaffleId = mpInfo?.metadata?.raffle_id || mpInfo?.metadata?.raffleId;

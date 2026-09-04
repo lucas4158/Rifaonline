@@ -242,6 +242,12 @@ export default async function handler(req: any, res: any) {
     }
 
     const orderDataForVal = orderDocSnap.data();
+
+    if (orderDataForVal.isManual || orderDataForVal.paymentMode === "manual" || String(orderDataForVal.paymentId).startsWith("MANUAL_")) {
+      console.log(`[Webhook] Order ${orderId} is manual. Ignoring Mercado Pago webhook.`);
+      return res.status(200).json({ status: "ignored", message: "Manual order ignored by MP webhook." });
+    }
+
     const metaOrderId = mpPaymentInfo?.metadata?.order_id || mpPaymentInfo?.metadata?.orderId;
     const metaRaffleId = mpPaymentInfo?.metadata?.raffle_id || mpPaymentInfo?.metadata?.raffleId;
     const orderRaffleId = orderDataForVal.raffleId || "current";

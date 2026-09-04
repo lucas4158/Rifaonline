@@ -36,7 +36,6 @@ export async function allocatePromotionalBonus(
     return;
   }
 
-  // Generic calculation: works for 2x1, 5x1, 2x3, 5x5, etc.
   const calculatedBonus = Math.floor(originalNums.length / buy) * bonus;
   console.log(`[PROMO_CALCULATED] orderId: ${orderId}, boughtCount: ${originalNums.length}, buyRule: ${buy}, bonusRatio: ${bonus}, calculatedBonus: ${calculatedBonus}`);
 
@@ -50,71 +49,92 @@ export async function allocatePromotionalBonus(
     return;
   }
 
-  // Find free available numbers from the database WITHOUT full collection scan
   const neededNewBonusCount = calculatedBonus - preallocatedBonus.length;
   const padLen = String(totalNumbers).length < 3 ? 3 : String(totalNumbers).length;
   const existingSet = new Set<string>([...(orderData.nums || []), ...preallocatedBonus]);
 
-  const candidateNumbers: string[] = [];
-  let attempts = 0;
-  const maxAttempts = totalNumbers * 2;
+  let selectedBonus: string[] = [];
 
-  while (candidateNumbers.length < neededNewBonusCount + 10 && attempts < maxAttempts) {
-    attempts++;
-    const randomVal = crypto.randomInt(1, totalNumbers + 1);
-    const formatted = String(randomVal).padStart(padLen, "0");
-    if (!existingSet.has(formatted) && !candidateNumbers.includes(formatted)) {
-      candidateNumbers.push(formatted);
-    }
-  }
+  try {
+    await db.runTransaction(async (transaction: any) => {
+      const candidateNumbers: string[] = [];
+      let attempts = 0;
+      const maxAttempts = totalNumbers * 2;
 
-  if (candidateNumbers.length === 0) {
-    console.warn(`[INSUFFICIENT_PROMOTION_CAPACITY] No candidates available for bonus allocation.`);
+      while (candidateNumbers.length < neededNewBonusCount + 15 && attempts < maxAttempts) {
+        attempts++;
+        const randomVal = crypto.randomInt(1, totalNumbers + 1);
+        const formatted = String(randomVal).padStart(padLen, "0");
+        if (!existingSet.has(formatted) && !candidateNumbers.includes(formatted)) {
+          candidateNumbers.push(formatted);
+        }
+      }
+
+      if (candidateNumbers.length === 0) return;
+
+      const candRefs = candidateNumbers.map((num) =>
+        db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num)
+      );
+      const candSnaps = await transaction.getAll(...candRefs);
+
+      const now = Date.now();
+      const claimed: string[] = [];
+
+      for (let i = 0; i < candSnaps.length; i++) {
+        if (claimed.length >= neededNewBonusCount) break;
+        const docSnap = candSnaps[i];
+        const candNum = candidateNumbers[i];
+
+        if (!docSnap.exists) {
+          claimed.push(candNum);
+          transaction.set(candRefs[i], {
+            id: candNum,
+            status: "paid",
+            orderId: orderId,
+            name: orderData.name,
+            phone: orderData.phone,
+            isBonus: true,
+            updatedAt: new Date().toISOString()
+          });
+        } else {
+          const d = docSnap.data();
+          const status = (d?.status || "").toLowerCase().trim();
+          const expires = d?.expiresAt || 0;
+          const isExp = expires > 0 && now >= expires;
+
+          const isBusy =
+            status === "paid" ||
+            status === "pago" ||
+            ((status === "reserved" || status === "pending_payment" || status === "aguardando") && !isExp);
+
+          if (!isBusy) {
+            claimed.push(candNum);
+            transaction.set(candRefs[i], {
+              id: candNum,
+              status: "paid",
+              orderId: orderId,
+              name: orderData.name,
+              phone: orderData.phone,
+              isBonus: true,
+              updatedAt: new Date().toISOString()
+            }, { merge: true });
+          }
+        }
+      }
+
+      selectedBonus = claimed;
+    });
+  } catch (txErr: any) {
+    console.error(`❌ [PromoHelper] Atomic transaction error allocating bonus for order ${orderId}:`, txErr?.message || txErr);
     return;
   }
 
-  // Fetch candidate document references in parallel (only candidateNumbers.length reads, e.g. 5-10 reads max)
-  const candRefs = candidateNumbers.map((num) =>
-    db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num)
-  );
-  const candSnaps = await Promise.all(candRefs.map((ref: any) => ref.get()));
-
-  const now = Date.now();
-  const selectedBonus: string[] = [];
-
-  for (let i = 0; i < candSnaps.length; i++) {
-    if (selectedBonus.length >= neededNewBonusCount) break;
-    const docSnap = candSnaps[i];
-    const candNum = candidateNumbers[i];
-
-    if (!docSnap.exists) {
-      // Document does not exist in numbers collection -> 100% free!
-      selectedBonus.push(candNum);
-    } else {
-      const d = docSnap.data();
-      if (d) {
-        const status = (d.status || "").toLowerCase().trim();
-        const expires = d.expiresAt || 0;
-        const isExp = expires > 0 && now >= expires;
-
-        const isBusy =
-          status === "paid" ||
-          status === "pago" ||
-          ((status === "reserved" || status === "pending_payment" || status === "aguardando") && !isExp);
-
-        if (!isBusy) {
-          selectedBonus.push(candNum);
-        }
-      }
-    }
+  if (selectedBonus.length === 0) {
+    console.warn(`[INSUFFICIENT_PROMOTION_CAPACITY] Could not claim any bonus numbers atomically for order ${orderId}`);
+    return;
   }
 
-  if (selectedBonus.length < neededNewBonusCount) {
-    console.warn(`[INSUFFICIENT_PROMOTION_CAPACITY] Could not find enough free candidate numbers! Selected: ${selectedBonus.length}, Needed: ${neededNewBonusCount}`);
-    if (selectedBonus.length === 0) return;
-  }
-
-  console.log(`[BONUS_SELECTED] orderId: ${orderId}, newlySelectedBonus: ${selectedBonus.join(", ")}`);
+  console.log(`[BONUS_SELECTED_ATOMIC] orderId: ${orderId}, newlyClaimedBonus: ${selectedBonus.join(", ")}`);
 
   const mergedBonus = Array.from(new Set([...preallocatedBonus, ...selectedBonus]));
   const existingNums = orderData.nums || [];
@@ -130,19 +150,6 @@ export async function allocatePromotionalBonus(
     nums: mergedNums,
     bonusNums: mergedBonus
   }, { merge: true });
-
-  selectedBonus.forEach((num) => {
-    const numDocRef = db.collection("raffles").doc(targetRaffleId).collection("numbers").doc(num);
-    batch.set(numDocRef, {
-      id: num,
-      status: "paid",
-      orderId: orderId,
-      name: orderData.name,
-      phone: orderData.phone,
-      isBonus: true,
-      updatedAt: new Date().toISOString()
-    });
-  });
 
   console.log(`[BONUS_PAID] orderId: ${orderId}, totalBonusNums: ${mergedBonus.join(", ")}`);
 }
