@@ -51,79 +51,44 @@ export const realtimeService = {
     let isMounted = true;
     let firestoreUnsub: (() => void) | null = null;
 
-    // Try Supabase first
+    // Primary source of truth: Firestore onSnapshot (mandatory per Rule 6)
+    if (db) {
+      const colRef = collection(db, "raffles", raffleId, "numbers");
+      firestoreUnsub = onSnapshot(
+        colRef,
+        (querySnap) => {
+          if (!isMounted) return;
+          const activeNumbers: Record<string, { id: string; status: string; orderId?: string; name?: string; expiresAt?: number }> = {};
+          querySnap.forEach((docSnap) => {
+            const data = docSnap.data() as any;
+            if (data) {
+              activeNumbers[docSnap.id] = data;
+            }
+          });
+          onSyncThrottled(activeNumbers);
+          console.log(`[FIRESTORE_NUMBERS_SYNC] Synced numbers from Firestore source of truth (${raffleId}). Count: ${querySnap.size}`);
+        },
+        (error) => {
+          try {
+            handleFirestoreError(error, OperationType.LIST, `raffles/${raffleId}/numbers`);
+          } catch (e) {}
+        }
+      );
+    }
+
+    // Optional background Supabase check without overriding Firestore source of truth
     raffleNumbersService.getRaffleNumbersMap(raffleId).then((map) => {
       if (!isMounted) return;
       if (Object.keys(map).length > 0) {
-        onSyncThrottled(map);
-        console.log(`[SUPABASE_REALTIME] Loaded initial raffle numbers from Supabase for raffle ${raffleId}:`, Object.keys(map).length);
-      } else {
-        console.log(`[SUPABASE_FALLBACK] Supabase returned empty map for raffle ${raffleId}. Falling back to Firestore snapshot...`);
-        // Fallback to Firestore if Supabase is empty
-        if (db) {
-          const colRef = collection(db, "raffles", raffleId, "numbers");
-          firestoreUnsub = onSnapshot(
-            colRef,
-            (querySnap) => {
-              if (!isMounted) return;
-              const activeNumbers: Record<string, { id: string; status: string; orderId?: string; name?: string; expiresAt?: number }> = {};
-              querySnap.forEach((docSnap) => {
-                const data = docSnap.data() as any;
-                if (data) {
-                  activeNumbers[docSnap.id] = data;
-                }
-              });
-              onSyncThrottled(activeNumbers);
-              console.log(`[FIRESTORE_FALLBACK] Synced numbers from Firestore (${raffleId}). Count: ${querySnap.size}`);
-            },
-            (error) => {
-              try {
-                handleFirestoreError(error, OperationType.LIST, `raffles/${raffleId}/numbers`);
-              } catch (e) {}
-            }
-          );
-        }
+        console.log(`[SUPABASE_SYNC] Supabase numbers map loaded in background for raffle ${raffleId}:`, Object.keys(map).length);
       }
-    });
-
-    // Supabase Realtime Subscription for live updates
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      return () => {
-        isMounted = false;
-        if (firestoreUnsub) firestoreUnsub();
-      };
-    }
-
-    const channelName = `raffle_numbers_chan_${raffleId}_${Math.random().toString(36).substring(2, 9)}`;
-    const channel = supabase
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'raffle_numbers',
-          filter: `raffle_id=eq.${raffleId}`,
-        },
-        async () => {
-          if (!isMounted) return;
-          const updatedMap = await raffleNumbersService.getRaffleNumbersMap(raffleId);
-          if (isMounted && Object.keys(updatedMap).length > 0) {
-            onSyncThrottled(updatedMap);
-          }
-        }
-      )
-      .subscribe();
+    }).catch(() => {});
 
     return () => {
       isMounted = false;
       if (firestoreUnsub) {
         try { firestoreUnsub(); } catch (e) {}
       }
-      try {
-        supabase.removeChannel(channel);
-      } catch (e) {}
     };
   },
 
