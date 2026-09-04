@@ -1669,7 +1669,37 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
     return [];
   });
   const [isCopied, setIsCopied] = useState(false);
-  const [successTimer, setSuccessTimer] = useState(10);
+  const [successTimer, setSuccessTimer] = useState(20);
+
+  // Play a pleasant success chime notification using Web Audio API
+  const playSuccessChime = () => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const ctx = new AudioContextClass();
+      const now = ctx.currentTime;
+
+      const playTone = (freq: number, startTime: number, duration: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(freq, startTime);
+        
+        gain.gain.setValueAtTime(0.18, startTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.start(startTime);
+        osc.stop(startTime + duration);
+      };
+
+      playTone(523.25, now, 0.2); // C5
+      playTone(659.25, now + 0.15, 0.2); // E5
+      playTone(783.99, now + 0.3, 0.4); // G5
+    } catch (e) {}
+  };
 
   // Reservation States
   const isGeneratingPaymentRef = useRef(false);
@@ -1807,10 +1837,11 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
     } catch (e) {}
   }, [paymentExpiresAt]);
 
-  // Auto-close success modal after 10 seconds of payment confirmation
+  // Auto-close success modal after 20 seconds of payment confirmation
   useEffect(() => {
     if (paymentStep === "finished") {
-      setSuccessTimer(10);
+      playSuccessChime();
+      setSuccessTimer(20);
       const interval = setInterval(() => {
         setSuccessTimer((prev) => {
           if (prev <= 1) {
