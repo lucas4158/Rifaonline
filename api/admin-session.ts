@@ -1,6 +1,7 @@
-import { getAdminFirestore } from "./_firebaseAdmin.js";
+import { getAdminFirestore, getAdminAuth } from "./_firebaseAdmin.js";
 
 const ALLOWED_ORIGINS = [
+  "https://rifamaster.vercel.app",
   "https://ais-dev-yqjhiz7q6asd2baqisutaf-537417047994.us-west2.run.app",
   "https://ais-pre-yqjhiz7q6asd2baqisutaf-537417047994.us-west2.run.app",
   "http://localhost:3000",
@@ -9,7 +10,7 @@ const ALLOWED_ORIGINS = [
 
 function setAdminCors(req: any, res: any) {
   const origin = req.headers.origin;
-  const isAllowed = origin && ALLOWED_ORIGINS.includes(origin);
+  const isAllowed = origin && (ALLOWED_ORIGINS.includes(origin) || origin.endsWith(".run.app") || origin.endsWith(".vercel.app"));
   if (isAllowed) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
@@ -40,27 +41,9 @@ export default async function handler(req: any, res: any) {
     return res.status(200).end();
   }
 
-  // CSRF / Origin validation for state-changing requests
-  if (req.method === "POST") {
-    const origin = req.headers.origin;
-    const referer = req.headers.referer;
-    const host = req.headers.host;
-
-    if (origin) {
-      const isAllowed = ALLOWED_ORIGINS.some(o => origin.startsWith(o)) || (host && origin.includes(host));
-      if (!isAllowed) {
-        return res.status(403).json({ error: "CSRF protection: Invalid Origin." });
-      }
-    } else if (referer && host) {
-      if (!referer.includes(host)) {
-        return res.status(403).json({ error: "CSRF protection: Referer mismatch." });
-      }
-    }
-  }
-
   // Handle logout request
   if (req.query?.action === "logout" || req.body?.action === "logout" || (req.url && req.url.includes("admin-logout"))) {
-    console.log("[ADMIN_LOGOUT] Admin initiated logout. Clearing session cookie.");
+    console.log("[ADMIN_LOGOUT] Admin initiated logout.");
     res.setHeader(
       "Set-Cookie",
       "admin_session=; Path=/; HttpOnly; SameSite=Lax; Secure; Expires=Thu, 01 Jan 1970 00:00:00 GMT"
@@ -75,7 +58,6 @@ export default async function handler(req: any, res: any) {
     sessionToken = undefined;
   }
 
-  // Fallback to cookie-based session token if authorization header is empty
   if (!sessionToken) {
     const cookies = parseCookies(req.headers.cookie);
     sessionToken = cookies["admin_session"];
@@ -86,27 +68,16 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const adminDb = getAdminFirestore();
-    if (!sessionToken.startsWith("SES_")) {
-       return res.status(401).json({ authenticated: false, error: "Token format error." });
+    const adminAuth = getAdminAuth();
+    const decodedToken = await adminAuth.verifyIdToken(sessionToken);
+    if (decodedToken && decodedToken.uid) {
+      console.log("🟢 [ADMIN_SESSION_VALID] Admin session token validated successfully via Firebase Auth.");
+      return res.status(200).json({ authenticated: true });
     }
-    const sessionDoc = await adminDb.collection("admin_sessions").doc(sessionToken).get();
-
-    if (!sessionDoc.exists) {
-      console.warn("🔴 [ADMIN_SESSION_INVALID] Session token not found in admin_sessions.");
-      return res.status(401).json({ authenticated: false, error: "Sessão inválida ou expirada." });
-    }
-
-    const sessionData = sessionDoc.data();
-    if (!sessionData || !sessionData.expiresAt || sessionData.expiresAt <= Date.now()) {
-      console.warn("🔴 [ADMIN_SESSION_EXPIRED] Session token in admin_sessions has expired.");
-      return res.status(401).json({ authenticated: false, error: "Sessão expirada." });
-    }
-
-    console.log("🟢 [ADMIN_SESSION_VALID] Admin session token validated successfully via Admin SDK.");
-    return res.status(200).json({ authenticated: true });
+    return res.status(401).json({ authenticated: false, error: "Sessão inválida." });
   } catch (err: any) {
-    console.error("❌ [ADMIN_SESSION_ERROR] Error checking admin_sessions collection:", err);
-    return res.status(500).json({ authenticated: false, error: "Erro interno ao validar sessão." });
+    console.warn("❌ [ADMIN_SESSION_ERROR] Invalid session token:", err?.message || err);
+    return res.status(401).json({ authenticated: false, error: "Sessão expirada ou inválida." });
   }
 }
+

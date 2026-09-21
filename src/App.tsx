@@ -2269,15 +2269,14 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
           (dbNum.status === "reserved" || dbNum.status === "pending_payment" || dbNum.status === "Aguardando") &&
           dbNum.expiresAt && dbNum.expiresAt > now
         ) {
-          // Permite se for o pedido atual do próprio usuário, ou a mesma sessão, ou o mesmo celular
-          const isMyOrder = mpPaymentInfo?.orderId && dbNum.orderId === mpPaymentInfo.orderId;
-          const isMySession = sessionId && dbNum.sessionId === sessionId;
-          const safeDbPhone = String(dbNum.phone || "").replace(/\D/g, "");
-          const safeUserPhone = String(userData.phone || "").replace(/\D/g, "");
-          const isMyPhone = safeUserPhone && safeDbPhone && (safeDbPhone === safeUserPhone);
+          // Permite se estiver no carrinho atual ou pagamento atual do usuário
+          const isMyOrder = mpPaymentInfo?.nums && Array.isArray(mpPaymentInfo.nums) && mpPaymentInfo.nums.includes(id);
+          const isMySelection = selectedNumbers.includes(id);
+          const activeLock = locks[id];
+          const isMyLock = activeLock && activeLock.sessionId === sessionId;
 
-          if (!isMyOrder && !isMySession && !isMyPhone) {
-            return false; // Pertence de fato a outro usuário/pedido
+          if (!isMyOrder && !isMySelection && !isMyLock) {
+            return false; // Pertence a outro usuário
           }
         }
       }
@@ -2291,7 +2290,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       }
       return true;
     });
-  }, [selectedNumbers, dbNumbers, locks, sessionId, now, slowNow, mpPaymentInfo, userData.phone]);
+  }, [selectedNumbers, dbNumbers, locks, sessionId, now, slowNow, mpPaymentInfo]);
 
   const stats = useMemo(() => {
     const res = calculateRaffleStats(raffleConfig, numbers, orders, selectedNumbersSet);
@@ -2691,7 +2690,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
         recentlyToggledRef.current[id] = Date.now();
         setSelectedNumbers((prev) => [...prev, id]);
         try {
-          const data = await pixService.lockCota({ numberId: id, sessionId, action: "lock", raffleId: selectedCustomerRaffleId || raffleConfig.id || "current" });
+          const data = await pixService.lockCota({ numberId: id, sessionId, action: "lock", raffleId: selectedCustomerRaffleId || raffleConfig.id || "current", phone: userData?.phone });
           if (data.expiresAt) {
             setSelectionExpiresAt(data.expiresAt);
           }
@@ -2796,7 +2795,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
       // Save temporary locks through the secure backend API using BATCH mode
       try {
-        const data = await pixService.lockCota({ numbers: toSelect, sessionId, action: "lock", raffleId: selectedCustomerRaffleId || raffleConfig.id || "current" });
+        const data = await pixService.lockCota({ numbers: toSelect, sessionId, action: "lock", raffleId: selectedCustomerRaffleId || raffleConfig.id || "current", phone: userData?.phone });
         if (data.expiresAt) {
            setSelectionExpiresAt(data.expiresAt);
         }

@@ -90,9 +90,6 @@ export async function allocatePromotionalBonus(
           transaction.set(candRefs[i], {
             id: candNum,
             status: "paid",
-            orderId: orderId,
-            name: orderData.name,
-            phone: orderData.phone,
             isBonus: true,
             updatedAt: new Date().toISOString()
           });

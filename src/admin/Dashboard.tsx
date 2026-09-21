@@ -12,7 +12,7 @@ import { db } from "../services/firebase";
 import { adminService } from "../services/adminService";
 import { performRobustImageUpload } from "../services/uploadService";
 import { realtimeService } from "../realtime/realtimeService";
-import { RaffleConfig } from "../types";
+import { RaffleConfig, PaymentGateway } from "../types";
 import { collection, getDocs, onSnapshot, doc, updateDoc, getDoc, query, where } from "firebase/firestore";
 import { useAuth } from "./AuthContext";
 import { useRaffleConfig } from "./RaffleConfigContext";
@@ -168,7 +168,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   const [modalPromoBonus, setModalPromoBonus] = useState<string>("1");
   const [modalPurchaseMode, setModalPurchaseMode] = useState<"manual" | "aleatorio">("manual");
   const [modalPaymentMode, setModalPaymentMode] = useState<"automatic" | "manual">("automatic");
-  const [modalPaymentGateway, setModalPaymentGateway] = useState<"mercadopago" | "manual">("mercadopago");
+  const [modalPaymentGateway, setModalPaymentGateway] = useState<PaymentGateway>("mercadopago");
   const [modalDrawMode, setModalDrawMode] = useState<"automatico" | "federal">("automatico");
   const [modalFederalConcurso, setModalFederalConcurso] = useState<string>("");
   const [modalFederalData, setModalFederalData] = useState<string>("");
@@ -931,7 +931,9 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     setModalPromoBonus(String(raffle.promotionBonus || 1));
     setModalPurchaseMode(raffle.purchaseMode || "manual");
     setModalPaymentMode(raffle.paymentMode || "automatic");
-    setModalPaymentGateway(raffle.paymentGateway || (raffle.paymentMode === "manual" ? "manual" : "mercadopago"));
+    const legacyGw = (raffle.paymentGateway as string) || (raffle.paymentMode === "manual" ? "manual" : "mercadopago");
+    const normalizedGw: PaymentGateway = legacyGw === "asaas" ? "mercadopago" : "mercadopago";
+    setModalPaymentGateway(normalizedGw);
     setModalDrawMode(raffle.drawMode || "automatico");
     setModalFederalConcurso(raffle.federalConcurso || "");
     setModalFederalData(raffle.federalData || "");
@@ -4473,29 +4475,6 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                       <div className="space-y-0.5">
                         <div className="text-xs font-black uppercase tracking-wide text-white">Mercado Pago</div>
                         <div className="text-[9px] text-zinc-400 leading-tight">Pix automático</div>
-                      </div>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setModalPaymentGateway("manual");
-                        setModalPaymentMode("manual");
-                      }}
-                      className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
-                        modalPaymentGateway === "manual"
-                          ? "bg-amber-500/10 border-amber-500 text-white shadow-md shadow-amber-500/10"
-                          : "bg-zinc-900/50 border-zinc-850 text-zinc-400 hover:border-zinc-700"
-                      }`}
-                    >
-                      <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
-                        modalPaymentGateway === "manual" ? "border-amber-400 bg-amber-500 text-black" : "border-zinc-700 bg-zinc-900"
-                      }`}>
-                        {modalPaymentGateway === "manual" && <div className="w-2 h-2 rounded-full bg-black" />}
-                      </div>
-                      <div className="space-y-0.5">
-                        <div className="text-xs font-black uppercase tracking-wide text-white">Pix Manual</div>
-                        <div className="text-[9px] text-zinc-400 leading-tight">Comprovante + aprovação admin</div>
                       </div>
                     </button>
                   </div>

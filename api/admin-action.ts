@@ -760,18 +760,19 @@ export default async function handler(req: any, res: any) {
         
         // Fetch current orders to calculate candidates
         let ordersQuerySnap: any;
-        if (targetRaffleId === "current") {
+        if (targetRaffleId === "current" || targetRaffleId === "all") {
           ordersQuerySnap = await getAdminFirestore().collection("orders").get();
         } else {
           ordersQuerySnap = await getAdminFirestore().collection("orders").where("raffleId", "==", targetRaffleId).get();
-          if (ordersQuerySnap.empty) {
-            ordersQuerySnap = await getAdminFirestore().collection("orders").get();
-          }
         }
         const orders: any[] = [];
         ordersQuerySnap.forEach((docSnap: any) => {
           orders.push({ id: docSnap.id, ...docSnap.data() });
         });
+
+        if (targetRaffleId !== "current" && targetRaffleId !== "all" && orders.length === 0) {
+          return res.status(404).json({ error: "Nenhuma cota elegível encontrada para esta rifa." });
+        }
 
         // Fetch config for totalNumbers bounds
         const configDocSnap = await getAdminFirestore().collection("raffles").doc(targetRaffleId).get();
@@ -1008,6 +1009,7 @@ export default async function handler(req: any, res: any) {
           console.log(`[FIRESTORE_WRITE_SUCCESS] Participant snapshot successfully persisted in Firestore.`);
         } catch (snapErr: any) {
           console.error(`[FIRESTORE_WRITE_ERROR] Failed saving participant snapshot to Firestore:`, snapErr);
+          throw snapErr; // Fail-closed
         }
 
         // 2. Record drawing history event in draws for internal tracking (contains revealed seed and participantsHash reference)
@@ -2687,13 +2689,28 @@ export default async function handler(req: any, res: any) {
 
         if (orderSnap.exists) {
           const orderData = orderSnap.data();
+          const statusLower = String(orderData.status || "").toLowerCase();
+          if (statusLower === "pago" || statusLower === "paid" || statusLower === "confirmed" || statusLower === "approved") {
+            return res.status(400).json({ error: "Não é permitido excluir um pedido pago. Utilize o fluxo de cancelamento/estorno adequado." });
+          }
+
           const raffleId = orderData.raffleId || "current";
           const nums: string[] = Array.isArray(orderData.nums) ? orderData.nums : [];
 
-          // Release all numbers allocated to this order
+          // Release all numbers allocated to this order IF NOT PAID
           for (const numId of nums) {
             try {
-              await getAdminFirestore().collection("raffles").doc(raffleId).collection("numbers").doc(String(numId)).delete();
+              const numRef = getAdminFirestore().collection("raffles").doc(raffleId).collection("numbers").doc(String(numId));
+              const numSnap = await numRef.get();
+              if (numSnap.exists) {
+                const numData = numSnap.data();
+                const numStatus = String(numData?.status || "").toLowerCase();
+                if (numStatus === "paid" || numStatus === "pago") {
+                  console.warn(`[DELETE_ORDER_BLOCKED] Number ${numId} is PAID. Skipping deletion.`);
+                  continue;
+                }
+              }
+              await numRef.delete();
             } catch (e) {
               console.warn(`Could not release number ${numId}:`, e);
             }

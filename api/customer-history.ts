@@ -2,13 +2,38 @@ import "dotenv/config";
 import { getAdminFirestore } from "./_firebaseAdmin.js";
 import { getSupabaseAdmin, getSupabaseClient } from "../src/services/supabase/supabaseClient.js";
 
+const ALLOWED_ORIGINS = [
+  "https://rifamaster.vercel.app",
+  "https://ais-dev-yqjhiz7q6asd2baqisutaf-537417047994.us-west2.run.app",
+  "https://ais-pre-yqjhiz7q6asd2baqisutaf-537417047994.us-west2.run.app",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000"
+];
+
+const ipRateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+function checkRateLimit(clientIp: string): boolean {
+  const now = Date.now();
+  const record = ipRateLimitMap.get(clientIp);
+  if (!record || now > record.resetTime) {
+    ipRateLimitMap.set(clientIp, { count: 1, resetTime: now + 60000 });
+    return true;
+  }
+  if (record.count >= 20) {
+    return false;
+  }
+  record.count++;
+  return true;
+}
+
 function setCorsHeaders(req: any, res: any) {
   const origin = req.headers.origin;
-  if (origin) {
+  const isAllowed = origin && (ALLOWED_ORIGINS.includes(origin) || origin.endsWith(".run.app") || origin.endsWith(".vercel.app"));
+  if (isAllowed) {
     res.setHeader("Access-Control-Allow-Origin", origin);
     res.setHeader("Access-Control-Allow-Credentials", "true");
   } else {
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGINS[0]);
   }
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -36,14 +61,18 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const clientIp = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown";
+  if (!checkRateLimit(String(clientIp))) {
+    return res.status(429).json({ error: "Muitas requisições. Tente novamente mais tarde." });
+  }
+
   const rawPhone = req.method === "POST" ? req.body?.phone : req.query?.phone;
   const canonicalPhone = String(rawPhone || "").replace(/\D/g, "");
 
-  if (!canonicalPhone || canonicalPhone.length < 8) {
+  if (!canonicalPhone || canonicalPhone.length < 8 || canonicalPhone.length > 15) {
     return res.status(200).json({
       success: true,
-      phone: canonicalPhone,
-      maskedPhone: maskPhoneNumber(canonicalPhone),
+      phone: canonicalPhone ? maskPhoneNumber(canonicalPhone) : "",
       orders: [],
     });
   }
@@ -60,7 +89,6 @@ export default async function handler(req: any, res: any) {
     const raffleTitleMap = new Map<string, string>();
     const adminDb = getAdminFirestore();
 
-    // Helper to get raffle title lazily without full collection scan
     async function getRaffleTitle(raffleId: string): Promise<string> {
       if (!raffleId) return "Rifa";
       if (raffleTitleMap.has(raffleId)) return raffleTitleMap.get(raffleId)!;
@@ -73,18 +101,13 @@ export default async function handler(req: any, res: any) {
             return title;
           }
         }
-      } catch (e) {
-        // ignore
-      }
+      } catch (e) {}
       return "Rifa";
     }
 
-    // 2. Fetch Operational Orders from Firestore (using Admin SDK with multi-format variants & robust fallback)
     try {
       if (adminDb) {
         const variantsToQuery = phoneVariants.slice(0, 10);
-        
-        // Query fields: phone, customerPhone, customer_phone using indexed queries
         const promises = [
           adminDb.collection("orders").where("phone", "in", variantsToQuery).get().catch(() => null),
           adminDb.collection("orders").where("customerPhone", "in", variantsToQuery).get().catch(() => null),
@@ -99,8 +122,6 @@ export default async function handler(req: any, res: any) {
             snap.docs.forEach((docSnap) => {
               const data = docSnap.data();
               const orderId = docSnap.id;
-              
-              // Check if order phone matches any variant by normalized digits
               const orderPhoneRaw = String(data.phone || data.customerPhone || data.customer_phone || "").replace(/\D/g, "");
               const matches = phoneVariants.some(v => orderPhoneRaw.includes(v) || v.includes(orderPhoneRaw));
 
@@ -114,7 +135,6 @@ export default async function handler(req: any, res: any) {
         for (const [orderId, data] of docsMap.entries()) {
           const status = String(data.status || "").toLowerCase();
 
-          // Standardize status
           let cleanStatus = data.status || "Aguardando";
           if (status === "paid" || status === "approved" || status === "pago") {
             cleanStatus = "Pago";
@@ -136,15 +156,15 @@ export default async function handler(req: any, res: any) {
             nums: Array.isArray(data.nums) ? data.nums : [],
             val: Number(data.val || 0),
             status: cleanStatus,
-            paymentId: data.paymentId || null,
             createdAt: data.createdAt || new Date().toISOString(),
             source: "firestore",
           });
         }
       }
     } catch (fsErr) {
-      console.warn("⚠️ [Customer History] Firestore query warning:", fsErr);
+      console.warn("⚠️ [Customer History] Firestore query warning");
     }
+
 
     // 3. Fetch Permanent History from Supabase (with multi-format variants)
     try {

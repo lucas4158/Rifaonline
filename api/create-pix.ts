@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { getAdminFirestore } from "./_firebaseAdmin.js";
 import { serverSupabaseSync } from "./_supabaseSync.js";
 import { MercadoPagoConfig, Payment } from "mercadopago";
+import { normalizePaymentGateway } from "./_paymentGateways.js";
 
 // Initialize Mercado Pago
 let mpPayment: any = null;
@@ -140,7 +141,14 @@ export default async function handler(req: any, res: any) {
     }
 
     paymentMode = configData.paymentMode || "automatic";
-    paymentGateway = String(configData.paymentGateway || configData.gateway || (paymentMode === "manual" ? "manual" : "mercadopago")).toLowerCase();
+    let rawGateway = String(configData.paymentGateway || configData.gateway || (paymentMode === "manual" ? "manual" : "mercadopago")).toLowerCase();
+    if (rawGateway === "asaas") {
+      rawGateway = "mercadopago";
+      if (configSnap.exists) {
+        configRef.update({ paymentGateway: "mercadopago" }).catch(() => {});
+      }
+    }
+    paymentGateway = rawGateway === "manual" ? "manual" : normalizePaymentGateway(rawGateway);
     manualPixKey = configData.manualPixKey || configData.pixKey || "";
     manualPixReceiver = configData.manualPixReceiver || configData.pixReceiver || "";
     manualInstructions = configData.manualInstructions || "Realize o pagamento Pix utilizando a chave acima e aguarde a conferência do administrador.";
@@ -319,11 +327,9 @@ export default async function handler(req: any, res: any) {
         transaction.set(numDocRef, {
           id: num,
           status: "reserved",
-          orderId: orderId,
-          sessionId: sessionId,
-          name: name,
-          phone: dNormPhone,
           expiresAt: expiresAt,
+          sessionId: sessionId || "",
+          phone: dNormPhone || "",
           isBonus: bonusNums.includes(num),
           updatedAt: new Date().toISOString(),
         });
@@ -430,7 +436,7 @@ export default async function handler(req: any, res: any) {
     }
   }
 
-  // Check Mercado Pago configuration
+  // Generate Pix via Mercado Pago
   const hasMP = !!process.env.MP_ACCESS_TOKEN && mpPayment;
 
   if (!hasMP) {
@@ -552,6 +558,7 @@ export default async function handler(req: any, res: any) {
       status: "pending_payment",
       paymentStatus: "created",
       paymentId,
+      gateway: paymentGateway,
       paymentType: "MercadoPagoPix",
       qrCode,
       qrCodeBase64,
@@ -594,7 +601,10 @@ export default async function handler(req: any, res: any) {
       orderId,
       paymentId,
       qrCode,
+      pixCopyPaste: qrCode,
       qrCodeBase64,
+      expirationDate: new Date(expiresAt).toISOString(),
+      gateway: paymentGateway,
       isSimulated: false,
       expiresAt,
       bonusNums,

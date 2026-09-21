@@ -285,9 +285,6 @@ export default async function handler(req: any, res: any) {
           transaction.set(numRefs[i], {
             id: orderNums[i],
             status: "paid",
-            orderId: targetOrderId,
-            name: currentOrder.name,
-            phone: currentOrder.phone,
             isBonus: isBonus,
             updatedAt: new Date().toISOString(),
           });

@@ -9,6 +9,8 @@ export type Status =
   | "bonus_reserved"
   | "bonus_paid";
 
+export type PaymentGateway = "mercadopago";
+
 export interface NumberItem {
   id: string;
   status: Status;
@@ -76,7 +78,7 @@ export interface RaffleConfig {
   whatsappGroupUrl?: string;
   purchaseMode?: "manual" | "aleatorio";
   paymentMode?: "automatic" | "manual";
-  paymentGateway?: "mercadopago" | "manual";
+  paymentGateway?: PaymentGateway;
   drawMode?: "automatico" | "federal";
   federalConcurso?: string;
   federalData?: string;

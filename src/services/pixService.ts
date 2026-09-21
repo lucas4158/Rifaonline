@@ -71,6 +71,7 @@ export const pixService = {
     sessionId: string;
     action?: string;
     raffleId?: string;
+    phone?: string;
   }): Promise<any> {
     try {
       const list = params.numbers || params.nums || (params.numberId ? [params.numberId] : []);
@@ -84,6 +85,7 @@ export const pixService = {
           sessionId: params.sessionId,
           action: params.action || "lock",
           raffleId: params.raffleId || "current",
+          phone: params.phone,
         }),
       });
       const data = await response.json();

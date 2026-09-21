@@ -22,8 +22,9 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
   }
 
-  const { numberId, sessionId, action, numbers, raffleId } = req.body;
+  const { numberId, sessionId, action, numbers, raffleId, phone } = req.body;
   const targetRaffleId = raffleId || "current";
+  const dNormPhone = phone ? String(phone).replace(/\D/g, "") : undefined;
 
   const idsToProcess: string[] = numbers && Array.isArray(numbers) && numbers.length > 0
     ? numbers
@@ -126,8 +127,9 @@ export default async function handler(req: any, res: any) {
               {
                 id: num,
                 status: "reserved",
-                sessionId: sessionId,
                 expiresAt: expiresAt,
+                sessionId: sessionId,
+                ...(dNormPhone ? { phone: dNormPhone } : {}),
                 updatedAt: new Date().toISOString(),
               },
               { merge: true }
