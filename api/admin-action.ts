@@ -1426,6 +1426,89 @@ export default async function handler(req: any, res: any) {
         }
       }
 
+      case "save-product": {
+        const { productData } = req.body;
+        if (!productData || !productData.id) return res.status(400).json({ error: "Dados do produto inválidos." });
+        
+        await getAdminFirestore().collection("products").doc(productData.id).set({
+          ...productData,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        
+        return res.status(200).json({ success: true });
+      }
+
+      case "fetch-ml-product": {
+        const { url } = req.body;
+        if (!url || (!url.includes("mercadolivre.com") && !url.includes("meli.la"))) {
+          return res.status(400).json({ error: "Link inválido. Forneça um link do Mercado Livre." });
+        }
+        
+        console.log(`[ADMIN_ACTION] Starting 3-stage ML import for: ${url}`);
+        
+        let finalUrl = url;
+        let itemId = "";
+
+        // Stage 1: Resolve URL
+        try {
+          console.log(`[STAGE 1] Resolving URL...`);
+          // Try HEAD first, fallback to GET
+          let response = await fetch(url, { method: 'HEAD', redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0' } });
+          if (!response.ok) {
+            response = await fetch(url, { method: 'GET', redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0' } });
+          }
+          finalUrl = response.url;
+          const idMatch = finalUrl.match(/(ML[A-Z]\d+)/);
+          if (!idMatch) throw new Error("Não foi possível extrair o ID do produto da URL final.");
+          itemId = idMatch[1];
+          console.log(`[STAGE 1] Success. ID: ${itemId}`);
+        } catch (e: any) {
+          return res.status(500).json({ error: `Falha na resolução do link: ${e.message}` });
+        }
+
+        // Stage 2: Consult API
+        let mlData: any;
+        try {
+          console.log(`[STAGE 2] Consulting API...`);
+          const apiResponse = await fetch(`https://api.mercadolibre.com/items/${itemId}`, {
+            headers: { 
+              'User-Agent': 'Mozilla/5.0 (compatible; RifaMasterBot/1.0)',
+              'Accept': 'application/json'
+            }
+          });
+          
+          if (!apiResponse.ok) {
+            const errorText = await apiResponse.text();
+            console.error(`[STAGE 2] API Error: ${apiResponse.status} - ${errorText}`);
+            return res.status(apiResponse.status === 404 ? 404 : 500).json({ 
+              error: `Erro ML API (${apiResponse.status}): ${errorText.substring(0, 100)}` 
+            });
+          }
+          mlData = await apiResponse.json();
+          console.log(`[STAGE 2] Success.`);
+        } catch (e: any) {
+          return res.status(500).json({ error: `Falha na chamada da API: ${e.message}` });
+        }
+
+        // Stage 3: Map Data
+        try {
+          console.log(`[STAGE 3] Mapping data...`);
+          const productData = {
+            name: mlData.title || "Sem título",
+            price: mlData.price || 0,
+            description: mlData.plain_text || "Importado via API do Mercado Livre.",
+            images: mlData.pictures ? mlData.pictures.map((p: any) => p.secure_url) : [mlData.thumbnail],
+            isAffiliate: true,
+            affiliateLink: url,
+            category: mlData.category_id || "Geral",
+            isActive: false
+          };
+          return res.status(200).json({ success: true, productData });
+        } catch (e: any) {
+          return res.status(500).json({ error: `Falha no mapeamento: ${e.message}` });
+        }
+      }
+
       case "sync-winners-history": {
         try {
           await syncMultiWinnerHistoryForRaffles();

@@ -278,6 +278,8 @@ class StoreService {
       sku: productData.sku?.trim() || "",
       weight: productData.weight?.trim() || "",
       linkedRaffleId: productData.linkedRaffleId || "",
+      isAffiliate: Boolean(productData.isAffiliate),
+      affiliateLink: productData.affiliateLink?.trim() || "",
       createdAt: productData.createdAt || now,
       updatedAt: now,
     };

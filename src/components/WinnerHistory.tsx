@@ -58,6 +58,15 @@ export default function WinnerHistory({ setCurrentPath }: WinnerHistoryProps) {
     return () => unsub();
   }, []);
 
+  const groupedWinners = useMemo(() => {
+    const groups: { [key: string]: any[] } = {};
+    winners.forEach(w => {
+      if (!groups[w.raffleId]) groups[w.raffleId] = [];
+      groups[w.raffleId].push(w);
+    });
+    return Object.values(groups);
+  }, [winners]);
+
   const totalWinners = winners.length;
   const totalRaffles = new Set(winners.map(w => w.raffleId)).size;
   const totalPrizes = winners.length;
@@ -93,10 +102,11 @@ export default function WinnerHistory({ setCurrentPath }: WinnerHistoryProps) {
              {/* Carousel */}
         <div className="overflow-hidden" ref={emblaRef}>
           <div className="flex gap-6">
-            {winners.map((w, index) => {
-              const isDestaque = w.status === "Destaque";
+            {groupedWinners.map((group, index) => {
+              const mainWinner = group[0];
+              const isDestaque = mainWinner.status === "Destaque";
               return (
-                <div key={w.id || index} className="flex-[0_0_85%] sm:flex-[0_0_40%] md:flex-[0_0_30%] min-w-0" onClick={() => setSelectedWinner(w)}>
+                <div key={mainWinner.raffleId || index} className="flex-[0_0_85%] sm:flex-[0_0_40%] md:flex-[0_0_30%] min-w-0" onClick={() => setSelectedWinner(mainWinner)}>
                   <div className={`relative rounded-3xl p-6 shadow-2xl cursor-pointer transition-all border ${
                     isDestaque 
                       ? "bg-gradient-to-b from-[#181510] to-[#0c0c0c] border-amber-500/50 hover:border-amber-400" 
@@ -107,35 +117,24 @@ export default function WinnerHistory({ setCurrentPath }: WinnerHistoryProps) {
                         <Trophy className="w-2.5 h-2.5" /> Destaque
                       </span>
                     )}
-                    {w.position && w.position > 1 && !isDestaque && (
-                      <span className="absolute top-3 right-3 bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md z-10">
-                        #{w.position}º Lugar
-                      </span>
-                    )}
-                    {w.prizeImageUrl ? (
-                      <img src={w.prizeImageUrl} alt={w.prizeTitle} className="w-full h-48 object-cover rounded-2xl mb-4" referrerPolicy="no-referrer" />
-                    ) : (
-                      <div className="w-full h-48 bg-zinc-900 rounded-2xl mb-4 flex items-center justify-center text-zinc-700 font-bold">Sem imagem</div>
-                    )}
-                    <div className="flex items-center gap-1.5 mb-1">
-                      {w.position && (
-                        <span className="px-2 py-0.5 bg-zinc-800 text-amber-400 border border-zinc-700 text-[10px] font-black uppercase rounded">
-                          {w.position}º
-                        </span>
-                      )}
-                      <h3 className="font-black text-lg text-white truncate">{w.prizeTitle}</h3>
-                    </div>
-                    <div className="flex items-center gap-2 mb-2">
-                      {w.winnerImageUrl ? (
-                        <img src={w.winnerImageUrl} alt={w.winnerName} className="w-6 h-6 rounded-full object-cover border border-orange-500" referrerPolicy="no-referrer" />
-                      ) : (
-                        <div className="w-6 h-6 rounded-full bg-zinc-850 flex items-center justify-center text-[10px] text-zinc-500 font-black">🏆</div>
-                      )}
-                      <p className="text-orange-400 font-bold truncate text-sm">{w.winnerName}</p>
-                    </div>
-                    <div className="flex justify-between text-xs text-zinc-400">
-                      <span>🎟️ {w.winnerNumber}</span>
-                      <span>{w.drawDate}</span>
+                    
+                    <h3 className="font-black text-lg text-white mb-4 truncate">{mainWinner.raffleName}</h3>
+                    
+                    <div className="space-y-3">
+                      {group.map((w, wIndex) => (
+                        <div key={wIndex} className="flex items-center gap-3 bg-zinc-900/50 p-2 rounded-xl">
+                          {w.winnerImageUrl ? (
+                            <img src={w.winnerImageUrl} alt={w.winnerName} className="w-8 h-8 rounded-full object-cover border border-orange-500" referrerPolicy="no-referrer" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-zinc-850 flex items-center justify-center text-[10px] text-zinc-500 font-black">🏆</div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-orange-400 font-bold truncate text-sm">{w.winnerName}</p>
+                            <p className="text-xs text-zinc-500 truncate">{w.prizeTitle}</p>
+                          </div>
+                          <span className="text-xs font-mono text-zinc-300">🎟️ {w.winnerNumber}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>

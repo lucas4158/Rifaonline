@@ -129,11 +129,13 @@ export interface Product {
   isNew?: boolean;
   isPromotion?: boolean;
   isUnavailable?: boolean;
-  isActive?: boolean;
+  isActive: boolean;
   condition?: "novo" | "usado";
   sku?: string;
   weight?: string;
   linkedRaffleId?: string;
+  isAffiliate?: boolean;
+  affiliateLink?: string;
   createdAt?: string;
   updatedAt?: string;
 }

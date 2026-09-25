@@ -124,6 +124,23 @@
         "updatedAt": { "type": "string", "description": "ISO timestamp of the lock creation" }
       },
       "required": ["sessionId", "expiresAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Store items, including affiliate products",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "description": { "type": "string" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "isAffiliate": { "type": "boolean", "description": "Whether this is an affiliate product" },
+        "affiliateLink": { "type": "string", "description": "Original affiliate link" },
+        "category": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "name", "price", "isActive"]
     }
   },
   "firestore": {
@@ -154,6 +171,10 @@
     "/locks/{numberId}": {
       "schema": "Lock",
       "description": "Collection containing temporary selection locks for numbers"
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Collection of store items"
     }
   }
 }
