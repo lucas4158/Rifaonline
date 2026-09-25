@@ -40,14 +40,14 @@ export const purchaseHistoryService = {
         .upsert(payload, { onConflict: "firestore_order_id" });
 
       if (error) {
-        console.error("[SUPABASE_SYNC] purchase_history failed:", error.message);
+        console.debug("[SUPABASE_SYNC] purchase_history skipped:", error.message);
         return false;
       }
 
-      console.log(`[SUPABASE_SYNC] purchase_history: success (orderId: ${item.firestore_order_id})`);
+      console.debug(`[SUPABASE_SYNC] purchase_history: success (orderId: ${item.firestore_order_id})`);
       return true;
     } catch (err: any) {
-      console.error("[SUPABASE_SYNC] purchase_history exception:", err?.message || err);
+      console.debug("[SUPABASE_SYNC] purchase_history bypassed (Firestore unaffected):", err?.message || err);
       return false;
     }
   },

@@ -38,14 +38,14 @@ export const notificationService = {
         .upsert(payload, { onConflict: "firestore_event_id" });
 
       if (error) {
-        console.error("[SUPABASE_SYNC] admin_notifications failed:", error.message);
+        console.debug("[SUPABASE_SYNC] admin_notifications skipped:", error.message);
         return false;
       }
 
-      console.log(`[SUPABASE_SYNC] admin_notifications: success (eventId: ${item.firestore_event_id})`);
+      console.debug(`[SUPABASE_SYNC] admin_notifications: success (eventId: ${item.firestore_event_id})`);
       return true;
     } catch (err: any) {
-      console.error("[SUPABASE_SYNC] admin_notifications exception:", err?.message || err);
+      console.debug("[SUPABASE_SYNC] admin_notifications bypassed (Firestore unaffected):", err?.message || err);
       return false;
     }
   },

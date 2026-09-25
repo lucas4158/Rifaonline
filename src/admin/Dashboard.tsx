@@ -5,7 +5,7 @@ import {
   DollarSign, Check, Calendar, Phone, ArrowLeft, LogOut, MessageCircle, CheckCircle2,
   Image as ImageIcon, Loader2, Play, LayoutDashboard, ClipboardList, PlusCircle, Award, Settings,
   Copy, Edit3, Archive, Power, Sparkles, Eye, CheckCircle, Pause, ShoppingBag, ShoppingCart, Ticket, Save, FolderOpen,
-  Calculator, Users, Grid, Star, BarChart3, TrendingUp, PieChart as PieChartIcon, Clock
+  Calculator, Users, Grid, Star, BarChart3, TrendingUp, PieChart as PieChartIcon, Clock, Key, CreditCard
 } from "lucide-react";
 
 import { db } from "../services/firebase";
@@ -68,6 +68,29 @@ function normalizeFederalRuleId(rule: string): string {
   
   return "ultimo_digito_1";
 }
+
+const parseLocalizedNumber = (val: string, integerOnly: boolean = false): number => {
+  let rawStr = String(val).trim().replace(/\s/g, "");
+  if (rawStr.includes(".") && rawStr.includes(",")) {
+    const dotIdx = rawStr.lastIndexOf(".");
+    const commaIdx = rawStr.lastIndexOf(",");
+    if (commaIdx > dotIdx) {
+      rawStr = rawStr.replace(/\./g, "").replace(",", ".");
+    } else {
+      rawStr = rawStr.replace(/,/g, "");
+    }
+  } else if (rawStr.includes(",")) {
+    rawStr = rawStr.replace(",", ".");
+  } else if (rawStr.includes(".")) {
+    if (integerOnly) {
+      const parts = rawStr.split(".");
+      if (parts.length === 2 && parts[1].length === 3) {
+        rawStr = rawStr.replace(/\./g, "");
+      }
+    }
+  }
+  return integerOnly ? parseInt(rawStr, 10) : parseFloat(rawStr);
+};
 
 export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }: DashboardProps) {
   const { logout, navigate } = useAuth();
@@ -169,6 +192,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   const [modalPurchaseMode, setModalPurchaseMode] = useState<"manual" | "aleatorio">("manual");
   const [modalPaymentMode, setModalPaymentMode] = useState<"automatic" | "manual">("automatic");
   const [modalPaymentGateway, setModalPaymentGateway] = useState<PaymentGateway>("mercadopago");
+  const [modalMpAccessToken, setModalMpAccessToken] = useState<string>("");
+  const [modalMpWebhookSecret, setModalMpWebhookSecret] = useState<string>("");
   const [modalDrawMode, setModalDrawMode] = useState<"automatico" | "federal">("automatico");
   const [modalFederalConcurso, setModalFederalConcurso] = useState<string>("");
   const [modalFederalData, setModalFederalData] = useState<string>("");
@@ -201,6 +226,13 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   const [globalPixPhone, setGlobalPixPhone] = useState<string>("");
   const [isSubmittingGlobalPix, setIsSubmittingGlobalPix] = useState<boolean>(false);
 
+  // Mercado Pago Configuration Modal State
+  const [showMercadoPagoModal, setShowMercadoPagoModal] = useState<boolean>(false);
+  const [mpAccessTokenInput, setMpAccessTokenInput] = useState<string>("");
+  const [mpWebhookSecretInput, setMpWebhookSecretInput] = useState<string>("");
+  const [applyMpGlobally, setApplyMpGlobally] = useState<boolean>(true);
+  const [isSubmittingMpConfig, setIsSubmittingMpConfig] = useState<boolean>(false);
+
   // Manual Buy Form State
   const [manualCustomerName, setManualCustomerName] = useState<string>("");
   const [manualCustomerPhone, setManualCustomerPhone] = useState<string>("");
@@ -223,10 +255,18 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
       .from("admin_notifications")
       .select("id", { count: "exact" })
       .eq("read", false)
-      .then(({ count, error }) => {
-        if (error) console.error(error);
-        else if (count !== null) setUnreadNotificationsCount(count);
-      });
+      .then(
+        ({ count, error }) => {
+          if (error) {
+            console.debug("[SUPABASE_NOTIFICATIONS] Notification query bypassed:", error.message || error);
+          } else if (count !== null) {
+            setUnreadNotificationsCount(count);
+          }
+        },
+        (err: any) => {
+          console.debug("[SUPABASE_NOTIFICATIONS] Notification query failed:", err?.message || err);
+        }
+      );
   }, [currentAdminTab]);
   const [winnersList, setWinnersList] = useState<any[]>([]);
   const [editingWinner, setEditingWinner] = useState<any | null>(null);
@@ -797,6 +837,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     let defaultReceiver = "";
     let defaultBank = "";
     let defaultPhone = "";
+    let defaultMpToken = "";
+    let defaultMpSecret = "";
 
     try {
       const globalPixDoc = await getDoc(doc(db, "raffles", "global_pix"));
@@ -806,6 +848,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         defaultReceiver = data.pixReceiver || "";
         defaultBank = data.pixBank || "";
         defaultPhone = data.pixPhone || "";
+        defaultMpToken = data.mpAccessToken || "";
+        defaultMpSecret = data.mpWebhookSecret || "";
       } else {
         const activeRaffle = raffles.find(r => r.status === "ativa" || r.isRaffleActive !== false);
         if (activeRaffle) {
@@ -813,11 +857,15 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
           defaultReceiver = activeRaffle.pixReceiver || "";
           defaultBank = activeRaffle.pixBank || "";
           defaultPhone = activeRaffle.pixPhone || "";
+          defaultMpToken = activeRaffle.mpAccessToken || "";
+          defaultMpSecret = activeRaffle.mpWebhookSecret || "";
         } else if (raffleConfig) {
           defaultKey = raffleConfig.pixKey || "";
           defaultReceiver = raffleConfig.pixReceiver || "";
           defaultBank = raffleConfig.pixBank || "";
           defaultPhone = raffleConfig.pixPhone || "";
+          defaultMpToken = raffleConfig.mpAccessToken || "";
+          defaultMpSecret = raffleConfig.mpWebhookSecret || "";
         }
       }
     } catch (err) {
@@ -828,6 +876,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     setModalPixReceiver(defaultReceiver);
     setModalPixBank(defaultBank);
     setModalPixPhone(defaultPhone);
+    setModalMpAccessToken(defaultMpToken);
+    setModalMpWebhookSecret(defaultMpSecret);
     setModalPromoEnabled(false);
     setModalPromoBuy("5");
     setModalPromoBonus("1");
@@ -915,6 +965,76 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     }
   };
 
+  const handleOpenMercadoPagoModal = async () => {
+    let tokenVal = "";
+    let secretVal = "";
+
+    try {
+      if (selectedRaffleId) {
+        const snap = await getDoc(doc(db, "raffles", selectedRaffleId));
+        if (snap.exists()) {
+          const d = snap.data();
+          tokenVal = d.mpAccessToken || "";
+          secretVal = d.mpWebhookSecret || "";
+        }
+      }
+      if (!tokenVal && raffleConfig?.mpAccessToken) {
+        tokenVal = raffleConfig.mpAccessToken;
+        secretVal = raffleConfig.mpWebhookSecret || "";
+      }
+    } catch (err) {
+      console.warn("Could not load existing Mercado Pago token:", err);
+    }
+
+    setMpAccessTokenInput(tokenVal);
+    setMpWebhookSecretInput(secretVal);
+    setShowMercadoPagoModal(true);
+  };
+
+  const handleSaveMercadoPagoConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mpAccessTokenInput.trim()) {
+      alert("Por favor, insira o Token de Acesso (Access Token) do Mercado Pago.");
+      return;
+    }
+
+    setIsSubmittingMpConfig(true);
+    try {
+      const token = getAdminToken();
+      const payload: Partial<RaffleConfig> = {
+        mpAccessToken: mpAccessTokenInput.trim(),
+        mpWebhookSecret: mpWebhookSecretInput.trim(),
+        paymentGateway: "mercadopago",
+        paymentMode: "automatic"
+      };
+
+      if (applyMpGlobally && raffles && raffles.length > 0) {
+        let count = 0;
+        for (const r of raffles) {
+          if (r.id && r.id !== "global_pix") {
+            await adminService.saveConfig(token, { ...r, ...payload } as RaffleConfig, r.isActive !== false, r.id);
+            count++;
+          }
+        }
+        alert(`Credenciais do Mercado Pago salvas e propagadas para ${count} rifas ativas!`);
+      } else {
+        const targetId = selectedRaffleId || raffleConfig?.id || "current";
+        await adminService.saveConfig(token, { ...raffleConfig, ...payload, id: targetId } as RaffleConfig, raffleConfig?.isActive !== false, targetId);
+        alert("Credenciais do Mercado Pago salvas com sucesso!");
+      }
+
+      setShowMercadoPagoModal(false);
+      if (fetchRaffles) {
+        await fetchRaffles();
+      }
+    } catch (err: any) {
+      console.error("Erro ao salvar credenciais do Mercado Pago:", err);
+      alert("Erro ao salvar: " + (err.message || err));
+    } finally {
+      setIsSubmittingMpConfig(false);
+    }
+  };
+
   const handleOpenEditModal = (raffle: RaffleConfig) => {
     setEditingRaffleItem(raffle);
     setModalTitle(raffle.title || "");
@@ -934,6 +1054,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     const normalizedGw: PaymentGateway = rawGw === "manual" ? "manual" : "mercadopago";
     setModalPaymentGateway(normalizedGw);
     setModalPaymentMode(normalizedGw === "manual" ? "manual" : (raffle.paymentMode || "automatic"));
+    setModalMpAccessToken(raffle.mpAccessToken || "");
+    setModalMpWebhookSecret(raffle.mpWebhookSecret || "");
     setModalDrawMode(raffle.drawMode || "automatico");
     setModalFederalConcurso(raffle.federalConcurso || "");
     setModalFederalData(raffle.federalData || "");
@@ -955,19 +1077,21 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         title: modalTitle.trim(),
         slug: slugify(modalTitle.trim()),
         description: modalDescription.trim(),
-        price: parseFloat(modalPrice.replace(",", ".")) || 10,
-        totalNumbers: parseInt(modalTotalNumbers) || 100,
+        price: parseLocalizedNumber(modalPrice, false) || 10,
+        totalNumbers: parseLocalizedNumber(modalTotalNumbers, true) || 100,
         imageUrl: modalImageUrl.trim(),
         pixKey: modalPixKey.trim(),
         pixReceiver: modalPixReceiver.trim(),
         pixBank: modalPixBank.trim(),
         pixPhone: modalPixPhone.trim(),
         promotionEnabled: modalPromoEnabled,
-        promotionBuy: parseInt(modalPromoBuy) || 5,
-        promotionBonus: parseInt(modalPromoBonus) || 1,
+        promotionBuy: parseLocalizedNumber(modalPromoBuy, true) || 5,
+        promotionBonus: parseLocalizedNumber(modalPromoBonus, true) || 1,
         purchaseMode: modalPurchaseMode,
         paymentGateway: modalPaymentGateway,
         paymentMode: modalPaymentGateway === "manual" ? "manual" : (modalPaymentMode || "automatic"),
+        mpAccessToken: modalMpAccessToken.trim(),
+        mpWebhookSecret: modalMpWebhookSecret.trim(),
         drawMode: modalDrawMode,
         federalConcurso: modalFederalConcurso.trim(),
         federalData: modalFederalData.trim(),
@@ -1554,8 +1678,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
       const finalConfig = {
         ...editedConfig,
         title: editedConfig.title?.trim() || "Nova Rifa",
-        price: parseFloat(priceInput.replace(",", ".")) || 10,
-        totalNumbers: parseInt(totalNumbersInput) || 100,
+        price: parseLocalizedNumber(priceInput, false) || 10,
+        totalNumbers: parseLocalizedNumber(totalNumbersInput, true) || 100,
       };
 
       await adminService.saveConfig(getAdminToken(), finalConfig, finalConfig.isActive, selectedRaffleId);
@@ -1574,14 +1698,14 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
       setIsSaving(true);
       const finalConfig = {
         ...raffleConfig,
-        price: parseFloat(valorCotaPlanejadoInput.replace(",", ".")) || 10,
-        totalNumbers: parseInt(totalNumbersInput) || 1000,
-        custoPremio: parseFloat(custoPremioInput.replace(",", ".")) || 0,
-        lucroDesejado: parseFloat(lucroDesejadoInput.replace(",", ".")) || 0,
-        taxaMP: parseFloat(taxaMPInput.replace(",", ".")) || 0,
+        price: parseLocalizedNumber(valorCotaPlanejadoInput, false) || 10,
+        totalNumbers: parseLocalizedNumber(totalNumbersInput, true) || 1000,
+        custoPremio: parseLocalizedNumber(custoPremioInput, false) || 0,
+        lucroDesejado: parseLocalizedNumber(lucroDesejadoInput, false) || 0,
+        taxaMP: parseLocalizedNumber(taxaMPInput, false) || 0,
         promotionEnabled: promoAtivaInput,
-        promotionBuy: parseInt(promoBuyInput) || 5,
-        promotionBonus: parseInt(promoBonusInput) || 1
+        promotionBuy: parseLocalizedNumber(promoBuyInput, true) || 5,
+        promotionBonus: parseLocalizedNumber(promoBonusInput, true) || 1
       };
 
       await adminService.saveConfig(getAdminToken(), finalConfig, finalConfig.isActive !== false, selectedRaffleId);
@@ -3969,6 +4093,15 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
               </button>
 
               <button
+                onClick={handleOpenMercadoPagoModal}
+                className="flex-1 sm:flex-none px-4 sm:px-5 py-3 sm:py-3.5 bg-sky-950/40 hover:bg-sky-900/50 border border-sky-800/60 text-sky-300 hover:text-white rounded-2xl text-[11px] sm:text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 cursor-pointer transition-all transform active:scale-98 min-h-[44px]"
+                title="Configurar Mercado Pago"
+              >
+                <CreditCard className="w-4 h-4 text-sky-400 shrink-0" />
+                <span>Mercado Pago</span>
+              </button>
+
+              <button
                 onClick={handleOpenCreateModal}
                 className="flex-1 sm:flex-none px-4 sm:px-6 py-3 sm:py-3.5 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-2xl text-[11px] sm:text-xs font-black uppercase tracking-widest shadow-lg shadow-violet-600/20 flex items-center justify-center gap-2 cursor-pointer transition-all transform active:scale-98 min-h-[44px]"
               >
@@ -4505,6 +4638,53 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                       </div>
                     </button>
                   </div>
+
+                  {modalPaymentGateway === "mercadopago" && (
+                    <div className="p-4 bg-sky-950/20 border border-sky-850/40 rounded-2xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
+                          <CreditCard className="w-3.5 h-3.5" />
+                          Credenciais do Mercado Pago (Pix Automático)
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleOpenMercadoPagoModal}
+                          className="text-[10px] text-sky-300 hover:text-white underline cursor-pointer"
+                        >
+                          Ajuda / Instruções
+                        </button>
+                      </div>
+                      <div className="space-y-2">
+                        <div>
+                          <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block mb-1">
+                            Access Token (Produção)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="APP_USR-0000000000000000-000000-..."
+                            value={modalMpAccessToken}
+                            onChange={(e) => setModalMpAccessToken(e.target.value)}
+                            className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-sky-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block mb-1">
+                            Webhook Secret (Opcional)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Secret para validação do Webhook"
+                            value={modalMpWebhookSecret}
+                            onChange={(e) => setModalMpWebhookSecret(e.target.value)}
+                            className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-sky-500"
+                          />
+                        </div>
+                        <p className="text-[10px] text-zinc-500">
+                          Se deixado em branco nesta rifa, será utilizado o token cadastrado globalmente ou nas variáveis de ambiente.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* MODO DE APROVAÇÃO DAS COMPRAS */}
@@ -4859,6 +5039,127 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                     </>
                   )}
                 </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* MERCADO PAGO CREDENTIALS MODAL */}
+        {showMercadoPagoModal && (
+          <div id="mercado-pago-modal" className="fixed inset-0 bg-black/85 backdrop-blur-md z-[200] overflow-y-auto p-3 sm:p-4 md:p-6 flex justify-center items-start sm:items-center min-h-screen">
+            <div className="bg-zinc-950 border border-sky-900/40 w-full max-w-lg rounded-2xl sm:rounded-[2.5rem] p-4 sm:p-6 md:p-8 space-y-5 sm:space-y-6 my-3 sm:my-8 shadow-2xl relative">
+              <div className="flex justify-between items-start border-b border-zinc-900 pb-4 gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 bg-sky-500/10 border border-sky-500/20 rounded-xl text-sky-400 shrink-0">
+                      <CreditCard className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-black text-white text-base uppercase tracking-tight">
+                        Mercado Pago (Pix Automático)
+                      </h3>
+                      <p className="text-xs text-zinc-500">
+                        Configurar credenciais da sua conta Mercado Pago
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowMercadoPagoModal(false)}
+                  className="p-2.5 text-zinc-400 hover:text-white bg-zinc-900 hover:bg-zinc-800 rounded-xl cursor-pointer shrink-0 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="bg-sky-950/20 border border-sky-850/40 p-4 rounded-2xl text-xs text-sky-200 space-y-2">
+                <p className="font-bold flex items-center gap-1.5 text-sky-300">
+                  <Key className="w-4 h-4 text-sky-400" />
+                  Como obter seu Access Token?
+                </p>
+                <ol className="list-decimal list-inside text-zinc-400 space-y-1 text-[11px] leading-relaxed">
+                  <li>Acesse o painel do <strong>Mercado Pago Developers</strong>.</li>
+                  <li>Vá em <strong>Suas integrações</strong> &gt; Selecione sua aplicação.</li>
+                  <li>No menu lateral, clique em <strong>Credenciais de produção</strong>.</li>
+                  <li>Copie o <strong>Access Token</strong> (inicia com <code className="text-sky-300 bg-sky-950/80 px-1 py-0.5 rounded">APP_USR-...</code>).</li>
+                </ol>
+              </div>
+
+              <form onSubmit={handleSaveMercadoPagoConfig} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-zinc-400 flex items-center justify-between">
+                    <span>Access Token (Token de Produção) *</span>
+                    <span className="text-sky-400 font-normal normal-case">Obrigatório</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="APP_USR-0000000000000000-000000-..."
+                    value={mpAccessTokenInput}
+                    onChange={(e) => setMpAccessTokenInput(e.target.value)}
+                    className="w-full bg-black border border-zinc-850 focus:border-sky-500 rounded-2xl px-4 py-3 text-xs font-mono text-white outline-none transition-all placeholder:text-zinc-700"
+                  />
+                  <p className="text-[10px] text-zinc-600">
+                    Utilizado para gerar o QR Code Pix automático e receber pagamentos instantaneamente.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black uppercase tracking-wider text-zinc-400 flex items-center justify-between">
+                    <span>Webhook Secret (Chave de Notificação)</span>
+                    <span className="text-zinc-600 font-normal normal-case">Opcional</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: a1b2c3d4e5f6..."
+                    value={mpWebhookSecretInput}
+                    onChange={(e) => setMpWebhookSecretInput(e.target.value)}
+                    className="w-full bg-black border border-zinc-850 focus:border-sky-500 rounded-2xl px-4 py-3 text-xs font-mono text-white outline-none transition-all placeholder:text-zinc-700"
+                  />
+                  <p className="text-[10px] text-zinc-600">
+                    Secret para validação da assinatura HMAC do Webhook de confirmação automática.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-zinc-900/60 border border-zinc-850 rounded-2xl flex items-center justify-between gap-3">
+                  <div className="flex-1">
+                    <p className="text-xs font-bold text-white">Aplicar a todas as rifas ativas</p>
+                    <p className="text-[10px] text-zinc-500">Propaga as credenciais para todas as campanhas em andamento.</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={applyMpGlobally}
+                    onChange={(e) => setApplyMpGlobally(e.target.checked)}
+                    className="w-4 h-4 accent-sky-500 rounded cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowMercadoPagoModal(false)}
+                    className="flex-1 py-3.5 bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-zinc-400 hover:text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSubmittingMpConfig}
+                    className="flex-1 py-3.5 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest shadow-lg shadow-sky-500/20 cursor-pointer flex items-center justify-center gap-2 transition-all min-h-[44px]"
+                  >
+                    {isSubmittingMpConfig ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>SALVANDO...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-4 h-4" />
+                        <span>SALVAR CREDENCIAIS</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </form>
             </div>
           </div>
@@ -6317,6 +6618,36 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                       </div>
                     </div>
                   )}
+                  <div className="space-y-4 pt-4 border-t border-zinc-900">
+                    <div className="flex items-center gap-2 text-violet-400">
+                      <span className="text-[10px] font-black uppercase tracking-wider">🔒 Credenciais do Mercado Pago (Automático)</span>
+                    </div>
+                    <p className="text-[10px] text-zinc-500 leading-tight">
+                      Se você deseja usar sua própria conta do Mercado Pago para esta rifa, insira seu Token de Acesso (Access Token) abaixo. Se deixado em branco, o sistema utilizará as variáveis de ambiente padrões do servidor.
+                    </p>
+                    
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase text-zinc-500">Access Token (Token de Acesso)</label>
+                      <input
+                        type="password"
+                        placeholder="Ex: APP_USR-..."
+                        value={editedConfig.mpAccessToken || ""}
+                        onChange={(e) => setEditedConfig((prev) => ({ ...prev, mpAccessToken: e.target.value }))}
+                        className="w-full bg-black border border-zinc-900 rounded-2xl px-4 py-3 text-sm font-bold text-white font-mono"
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-black uppercase text-zinc-500">Webhook Secret (Opcional)</label>
+                      <input
+                        type="password"
+                        placeholder="Deixe em branco se não configurado"
+                        value={editedConfig.mpWebhookSecret || ""}
+                        onChange={(e) => setEditedConfig((prev) => ({ ...prev, mpWebhookSecret: e.target.value }))}
+                        className="w-full bg-black border border-zinc-900 rounded-2xl px-4 py-3 text-sm font-bold text-white font-mono"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <button

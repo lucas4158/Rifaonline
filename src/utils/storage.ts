@@ -3,16 +3,49 @@ const memoryStorage: Record<string, string> = {};
 export const safeLocalStorage = {
   getItem: (key: string): string | null => {
     try {
-      return window.localStorage.getItem(key);
+      let val = window.localStorage.getItem(key);
+      if (key === "raffle_admin_token" && val) {
+        val = val.trim();
+        if (val.startsWith('"') && val.endsWith('"')) {
+          val = val.substring(1, val.length - 1).trim();
+        }
+        // Strictly sanitize token to contain only safe header-compliant characters
+        val = val.replace(/[^A-Za-z0-9\-_./+=]/g, "");
+      }
+      return val;
     } catch (e) {
-      return memoryStorage[key] || null;
+      let val = memoryStorage[key] || null;
+      if (key === "raffle_admin_token" && val) {
+        val = val.trim();
+        if (val.startsWith('"') && val.endsWith('"')) {
+          val = val.substring(1, val.length - 1).trim();
+        }
+        val = val.replace(/[^A-Za-z0-9\-_./+=]/g, "");
+      }
+      return val;
     }
   },
   setItem: (key: string, value: string): void => {
     try {
-      window.localStorage.setItem(key, value);
+      let val = value;
+      if (key === "raffle_admin_token" && val) {
+        val = val.trim();
+        if (val.startsWith('"') && val.endsWith('"')) {
+          val = val.substring(1, val.length - 1).trim();
+        }
+        val = val.replace(/[^A-Za-z0-9\-_./+=]/g, "");
+      }
+      window.localStorage.setItem(key, val);
     } catch (e) {
-      memoryStorage[key] = value;
+      let val = value;
+      if (key === "raffle_admin_token" && val) {
+        val = val.trim();
+        if (val.startsWith('"') && val.endsWith('"')) {
+          val = val.substring(1, val.length - 1).trim();
+        }
+        val = val.replace(/[^A-Za-z0-9\-_./+=]/g, "");
+      }
+      memoryStorage[key] = val;
     }
   },
   removeItem: (key: string): void => {
@@ -25,3 +58,4 @@ export const safeLocalStorage = {
 };
 
 export const localStorage = safeLocalStorage;
+

@@ -27,14 +27,14 @@ export const activityService = {
       const { error } = await supabase.from("activity_logs").insert(payload);
 
       if (error) {
-        console.error("[SUPABASE_SYNC] activity_logs failed:", error.message);
+        console.debug("[SUPABASE_SYNC] activity_logs skipped:", error.message);
         return false;
       }
 
-      console.log(`[SUPABASE_SYNC] activity_logs: success (${item.activity_type})`);
+      console.debug(`[SUPABASE_SYNC] activity_logs: success (${item.activity_type})`);
       return true;
     } catch (err: any) {
-      console.error("[SUPABASE_SYNC] activity_logs exception:", err?.message || err);
+      console.debug("[SUPABASE_SYNC] activity_logs bypassed (Firestore unaffected):", err?.message || err);
       return false;
     }
   }

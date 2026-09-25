@@ -2734,7 +2734,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
 
   // Random selection logic natively using local state
   const selectRandomNumbers = useCallback(
-    async (count: number) => {
+    async (count: number, clearFirst: boolean = false) => {
       if (!raffleConfig.isActive || raffleConfig.isRaffleActive === false) return;
 
       const totalRaffleNumbers = Number(raffleConfig.totalNumbers || 150);
@@ -2749,7 +2749,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       }).length;
 
       const capacityRemaining = Math.max(0, totalRaffleNumbers - busyByOthersCount);
-      const currentSelectedCount = selectedNumbers.length;
+      const currentSelectedCount = clearFirst ? 0 : selectedNumbers.length;
       const maxAllowedAddition = Math.max(0, capacityRemaining - currentSelectedCount);
 
       if (maxAllowedAddition <= 0) {
@@ -2764,7 +2764,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       }
 
       const available: string[] = numbers
-        .filter((n) => n.status === "available" && !selectedNumbersSet.has(n.id) && !n.isGhost)
+        .filter((n) => n.status === "available" && (clearFirst || !selectedNumbersSet.has(n.id)) && !n.isGhost)
         .map((n) => n.id);
 
       if (available.length === 0) {
@@ -2791,7 +2791,21 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       toSelect.forEach((numId) => {
         recentlyToggledRef.current[numId] = Date.now();
       });
-      setSelectedNumbers((prev) => [...prev, ...toSelect]);
+
+      if (clearFirst) {
+        if (selectedNumbers.length > 0) {
+          pixService.lockCota({
+            numbers: selectedNumbers,
+            sessionId,
+            action: "unlock",
+            raffleId: selectedCustomerRaffleId || raffleConfig.id || "current",
+            phone: userData?.phone
+          }).catch((err) => console.warn("Failed to release old locks on replace:", err));
+        }
+        setSelectedNumbers(toSelect);
+      } else {
+        setSelectedNumbers((prev) => [...prev, ...toSelect]);
+      }
 
       // Save temporary locks through the secure backend API using BATCH mode
       try {
@@ -2804,8 +2818,12 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
          // Rollback failures
          toSelect.forEach((numId: string) => {
             recentlyToggledRef.current[numId] = 0;
-            setSelectedNumbers((prev) => prev.filter((n) => n !== numId));
          });
+         if (clearFirst) {
+            setSelectedNumbers([]);
+         } else {
+            setSelectedNumbers((prev) => prev.filter((n) => !toSelect.includes(n)));
+         }
 
          const isConflict =
            err?.status === 409 ||
@@ -2840,6 +2858,9 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
       selectedNumbersSet,
       paymentStep,
       sessionId,
+      selectedNumbers,
+      selectedCustomerRaffleId,
+      userData,
     ],
   );
 
@@ -4071,8 +4092,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                 key={qty}
                                 type="button"
                                 onClick={async () => {
-                                  setSelectedNumbers([]);
-                                  await selectRandomNumbers(qty);
+                                  await selectRandomNumbers(qty, true);
                                 }}
                                 className={`p-6 rounded-3xl border text-center transition-all cursor-pointer flex flex-col items-center justify-center gap-2 active:scale-95 ${
                                   isSelectedPreset
@@ -4112,8 +4132,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                                   alert("Por favor, digite uma quantidade válida maior que zero.");
                                   return;
                                 }
-                                setSelectedNumbers([]);
-                                await selectRandomNumbers(parsed);
+                                await selectRandomNumbers(parsed, true);
                               }}
                               className="px-6 bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded-2xl text-xs font-black uppercase tracking-wider cursor-pointer active:scale-95 transition-all"
                             >

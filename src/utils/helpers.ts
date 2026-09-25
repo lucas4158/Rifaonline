@@ -310,8 +310,15 @@ export async function safeFetch(input: RequestInfo | URL, init?: RequestInit, re
     const res = await fetch(input, init);
     return res;
   } catch (err: any) {
-    if (retries > 0 && (err instanceof TypeError || String(err.message || "").toLowerCase().includes("load failed"))) {
-      console.warn(`⚠️ [SafeFetch] Network load failed. Retrying in ${delayMs}ms... (${retries} retries left)`);
+    const msg = String(err?.message || "").toLowerCase();
+    const isNetworkOrPatternErr =
+      err instanceof TypeError ||
+      msg.includes("load failed") ||
+      msg.includes("failed to fetch") ||
+      msg.includes("pattern");
+
+    if (retries > 0 && isNetworkOrPatternErr) {
+      console.warn(`⚠️ [SafeFetch] Network exception ("${err?.message}"). Retrying in ${delayMs}ms... (${retries} retries left)`);
       await new Promise((resolve) => setTimeout(resolve, delayMs));
       return safeFetch(input, init, retries - 1, delayMs * 2);
     }

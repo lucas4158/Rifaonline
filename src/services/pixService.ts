@@ -42,10 +42,14 @@ export const pixService = {
 
       let resData: any = {};
       if (responseText) {
+        const trimmed = responseText.trim();
+        if (trimmed.startsWith("<") || trimmed.includes("<html") || trimmed.includes("<!doctype")) {
+          throw new Error("O servidor está iniciando. Por favor, aguarde alguns instantes e tente novamente.");
+        }
         try {
           resData = JSON.parse(responseText);
         } catch (e) {
-          console.error("Failed to parse JSON response from server:", responseText);
+          console.error("Failed to parse JSON response from server:", responseText.slice(0, 200));
         }
       }
 
@@ -88,13 +92,26 @@ export const pixService = {
           phone: params.phone,
         }),
       });
-      const data = await response.json();
+      let responseText = "";
+      try {
+        responseText = await response.text();
+      } catch (readErr) {
+        console.warn("Could not read lock-cota response text:", readErr);
+      }
+      let data: any = {};
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseErr) {
+          console.warn("Non-JSON response from lock-cota:", responseText.slice(0, 100));
+        }
+      }
       if (!response.ok) {
         throw new Error(data.error || "Erro ao bloquear cotas.");
       }
       return data;
     } catch (err: any) {
-      console.error("❌ [PixService lockCota Error]:", err);
+      console.warn("⚠️ [PixService lockCota Warning]:", err?.message || err);
       throw err;
     }
   },
@@ -110,6 +127,10 @@ export const pixService = {
         orderId = orderIdOrParams;
       }
 
+      if (!orderId) {
+        return { success: false, error: "Missing orderId" };
+      }
+
       const cancellationToken = localStorage.getItem(`cancel_token_${orderId}`) || "";
 
       const response = await fetch("/api/cancel-order", {
@@ -117,30 +138,74 @@ export const pixService = {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId, cancellationToken, raffleId: rId }),
       });
-      const data = await response.json();
+      let responseText = "";
+      try {
+        responseText = await response.text();
+      } catch (readErr) {
+        console.warn("Could not read cancel-order response text:", readErr);
+      }
+      let data: any = {};
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseErr) {
+          console.warn("Non-JSON response from cancel-order:", responseText.slice(0, 100));
+        }
+      }
       return data;
     } catch (err: any) {
-      console.error("❌ [PixService cancelOrder Error]:", err);
-      return { success: false, error: err.message };
+      console.warn("⚠️ [PixService cancelOrder Warning]:", err?.message || err);
+      return { success: false, error: err?.message };
     }
   },
 
   async checkPaymentStatus(orderId?: string, paymentId?: string, raffleId?: string): Promise<any> {
+    const cleanOrderId = String(orderId || "").trim();
+    const cleanPaymentId = String(paymentId || "").trim();
+    if (!cleanOrderId && !cleanPaymentId) {
+      return { approved: false, status: "pending" };
+    }
+
     try {
       const response = await fetch("/api/check-payment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, paymentId, raffleId: raffleId || "current" }),
+        body: JSON.stringify({
+          orderId: cleanOrderId || undefined,
+          paymentId: cleanPaymentId || undefined,
+          raffleId: raffleId || "current",
+        }),
       });
-      const data = await response.json();
+
+      let responseText = "";
+      try {
+        responseText = await response.text();
+      } catch (readErr) {
+        console.warn("Could not read check-payment response text:", readErr);
+      }
+
+      let data: any = {};
+      if (responseText) {
+        try {
+          data = JSON.parse(responseText);
+        } catch (parseErr) {
+          console.warn("Non-JSON response from check-payment:", responseText.slice(0, 100));
+          return { approved: false, status: "pending" };
+        }
+      }
+
+      if (!response.ok) {
+        return { approved: false, status: "pending", error: data.error };
+      }
+
       return data;
     } catch (err: any) {
-      console.error("❌ [PixService checkPaymentStatus Error]:", err);
-      return { success: false, error: err.message };
+      console.warn("⚠️ [PixService checkPaymentStatus Warning]:", err?.message || err);
+      return { approved: false, status: "pending", error: err?.message };
     }
   },
 
   async checkPayment(params: { paymentId?: string; orderId?: string; raffleId?: string }): Promise<any> {
-    return this.checkPaymentStatus(params.orderId, params.paymentId, params.raffleId);
+    return this.checkPaymentStatus(params?.orderId, params?.paymentId, params?.raffleId);
   }
 };

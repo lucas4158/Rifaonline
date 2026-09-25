@@ -36,14 +36,14 @@ export const auditService = {
       const { error } = await supabase.from("audit_logs").insert(payload);
 
       if (error) {
-        console.error("[SUPABASE_SYNC] audit_logs failed:", error.message);
+        console.debug("[SUPABASE_SYNC] audit_logs skipped:", error.message);
         return false;
       }
 
-      console.log(`[SUPABASE_SYNC] audit_logs: success (event: ${item.event_type})`);
+      console.debug(`[SUPABASE_SYNC] audit_logs: success (event: ${item.event_type})`);
       return true;
     } catch (err: any) {
-      console.error("[SUPABASE_SYNC] audit_logs exception:", err?.message || err);
+      console.debug("[SUPABASE_SYNC] audit_logs bypassed (Firestore unaffected):", err?.message || err);
       return false;
     }
   },

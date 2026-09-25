@@ -4,18 +4,7 @@ import { allocatePromotionalBonus } from "./_promoHelper.js";
 import { serverSupabaseSync } from "./_supabaseSync.js";
 import admin from "firebase-admin";
 import { getAdminFirestore } from "./_firebaseAdmin.js";
-import { MercadoPagoConfig, Payment } from "mercadopago";
-
-// Initialize Mercado Pago
-let mpPayment: any = null;
-if (process.env.MP_ACCESS_TOKEN) {
-  try {
-    const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
-    mpPayment = new Payment(mpClient);
-  } catch (err) {
-    console.error("❌ [Webhook] Mercado Pago init error:", err);
-  }
-}
+import { getDynamicMercadoPagoClient } from "./_paymentGateways.js";
 
 export default async function handler(req: any, res: any) {
   // CORS configuration
@@ -156,15 +145,57 @@ export default async function handler(req: any, res: any) {
         logDiagnostic("BYPASSED_NO_SECRET_CONFIGURED", 200);
       }
 
-      // 3. Consult payment status directly from Mercado Pago API using Access Token
-      const hasMP = !!process.env.MP_ACCESS_TOKEN && mpPayment;
+      // 3. Find order first (to resolve raffleId for dynamic client)
+      const db = getAdminFirestore();
+      let orderId = "";
+      let orderDocSnap: any = null;
+
+      // Step A: Check payments collection direct doc lookup
+      try {
+        const paymentDocSnap = await db.collection("payments").doc(String(paymentId)).get();
+        if (paymentDocSnap.exists) {
+          const pData = paymentDocSnap.data();
+          if (pData && pData.orderId) {
+            orderId = pData.orderId;
+            const oSnap = await db.collection("orders").doc(orderId).get();
+            if (oSnap.exists) {
+              orderDocSnap = oSnap;
+            }
+          }
+        }
+      } catch (payLookErr: any) {
+        console.warn(`⚠️ [WEBHOOK_PAYMENT_FLOW] Direct payment doc lookup warning for paymentId=${paymentId}:`, payLookErr?.message || payLookErr);
+      }
+
+      // Step C: Fallback to orders collection query limit 1
+      if (!orderDocSnap) {
+        try {
+          const q = db.collection("orders").where("paymentId", "==", String(paymentId)).limit(1);
+          const querySnapshot = await q.get();
+          if (!querySnapshot.empty) {
+            orderDocSnap = querySnapshot.docs[0];
+            orderId = orderDocSnap.id;
+          }
+        } catch (qErr: any) {
+          console.error(`❌ [WEBHOOK_PAYMENT_FLOW] Firestore query error for paymentId=${paymentId}:`, qErr?.message || qErr);
+          return res.status(500).json({ error: "Firestore query failed" });
+        }
+      }
+
+      let orderRaffleId = "current";
+      if (orderDocSnap && orderDocSnap.exists) {
+        const orderData = orderDocSnap.data();
+        orderRaffleId = orderData.raffleId || "current";
+      }
+
+      const dynamicPayment = await getDynamicMercadoPagoClient(orderRaffleId);
 
       if (String(paymentId).startsWith("SIM_")) {
         console.warn(`⚠️ [WEBHOOK_PAYMENT_FLOW] Rejected simulated payment ID: ${paymentId}`);
         paymentIsApproved = false;
-      } else if (hasMP) {
+      } else if (dynamicPayment) {
         try {
-          mpPaymentInfo = await mpPayment.get({ id: Number(paymentId) });
+          mpPaymentInfo = await dynamicPayment.get({ id: Number(paymentId) });
           mpStatus = mpPaymentInfo?.status || "unknown";
           console.log(`[WEBHOOK_PAYMENT_FLOW] Mercado Pago API status check: paymentId=${paymentId}, mpStatus=${mpStatus}`);
           if (mpPaymentInfo && mpPaymentInfo.status === "approved") {
@@ -178,70 +209,34 @@ export default async function handler(req: any, res: any) {
         console.warn(`⚠️ [WEBHOOK_PAYMENT_FLOW] No MP_ACCESS_TOKEN configured to verify payment ID: ${paymentId}`);
       }
 
-    if (!paymentIsApproved) {
-      console.log(`ℹ️ [WEBHOOK_PAYMENT_FLOW] Payment paymentId=${paymentId} is not approved (status=${mpStatus}). No database changes made.`);
-      return res.status(200).json({ status: "ignored", message: `Payment status is ${mpStatus}.` });
-    }
+      if (!paymentIsApproved) {
+        console.log(`ℹ️ [WEBHOOK_PAYMENT_FLOW] Payment paymentId=${paymentId} is not approved (status=${mpStatus}). No database changes made.`);
+        return res.status(200).json({ status: "ignored", message: `Payment status is ${mpStatus}.` });
+      }
 
-    // 4. Efficient direct lookup: paymentId -> orderId
-    const db = getAdminFirestore();
-    let orderId = "";
-    let orderDocSnap: any = null;
-
-    // Step A: Check payments collection direct doc lookup
-    try {
-      const paymentDocSnap = await db.collection("payments").doc(String(paymentId)).get();
-      if (paymentDocSnap.exists) {
-        const pData = paymentDocSnap.data();
-        if (pData && pData.orderId) {
-          orderId = pData.orderId;
-          const oSnap = await db.collection("orders").doc(orderId).get();
-          if (oSnap.exists) {
-            orderDocSnap = oSnap;
+      // Step B: Fallback to MP payment info metadata
+      if (!orderDocSnap && mpPaymentInfo && mpPaymentInfo.metadata) {
+        const metaOrderId = mpPaymentInfo.metadata.order_id || mpPaymentInfo.metadata.orderId;
+        if (metaOrderId) {
+          try {
+            const oSnap = await db.collection("orders").doc(metaOrderId).get();
+            if (oSnap.exists) {
+              orderDocSnap = oSnap;
+              orderId = metaOrderId;
+              orderRaffleId = oSnap.data().raffleId || "current";
+            }
+          } catch (metaLookErr: any) {
+            console.warn(`⚠️ [WEBHOOK_PAYMENT_FLOW] Metadata order lookup warning for metaOrderId=${metaOrderId}:`, metaLookErr?.message || metaLookErr);
           }
         }
       }
-    } catch (payLookErr: any) {
-      console.warn(`⚠️ [WEBHOOK_PAYMENT_FLOW] Direct payment doc lookup warning for paymentId=${paymentId}:`, payLookErr?.message || payLookErr);
-    }
 
-    // Step B: Fallback to MP payment info metadata
-    if (!orderDocSnap && mpPaymentInfo && mpPaymentInfo.metadata) {
-      const metaOrderId = mpPaymentInfo.metadata.order_id || mpPaymentInfo.metadata.orderId;
-      if (metaOrderId) {
-        try {
-          const oSnap = await db.collection("orders").doc(metaOrderId).get();
-          if (oSnap.exists) {
-            orderDocSnap = oSnap;
-            orderId = metaOrderId;
-          }
-        } catch (metaLookErr: any) {
-          console.warn(`⚠️ [WEBHOOK_PAYMENT_FLOW] Metadata order lookup warning for metaOrderId=${metaOrderId}:`, metaLookErr?.message || metaLookErr);
-        }
+      if (!orderDocSnap || !orderDocSnap.exists) {
+        console.warn(`⚠️ [WEBHOOK_PAYMENT_FLOW] No order found matching paymentId=${paymentId}`);
+        return res.status(200).json({ status: "ignored", message: "Order not found." });
       }
-    }
 
-    // Step C: Fallback to orders collection query limit 1
-    if (!orderDocSnap) {
-      try {
-        const q = db.collection("orders").where("paymentId", "==", String(paymentId)).limit(1);
-        const querySnapshot = await q.get();
-        if (!querySnapshot.empty) {
-          orderDocSnap = querySnapshot.docs[0];
-          orderId = orderDocSnap.id;
-        }
-      } catch (qErr: any) {
-        console.error(`❌ [WEBHOOK_PAYMENT_FLOW] Firestore query error for paymentId=${paymentId}:`, qErr?.message || qErr);
-        return res.status(500).json({ error: "Firestore query failed" });
-      }
-    }
-
-    if (!orderDocSnap || !orderDocSnap.exists) {
-      console.warn(`⚠️ [WEBHOOK_PAYMENT_FLOW] No order found matching paymentId=${paymentId}`);
-      return res.status(200).json({ status: "ignored", message: "Order not found." });
-    }
-
-    const orderDataForVal = orderDocSnap.data();
+      const orderDataForVal = orderDocSnap.data();
 
     if (orderDataForVal.isManual || orderDataForVal.paymentMode === "manual" || orderDataForVal.paymentGateway === "manual" || orderDataForVal.gateway === "manual" || String(orderDataForVal.paymentId).startsWith("MANUAL_")) {
       console.log(`[Webhook] Order ${orderId} is manual. Ignoring automated webhook.`);
@@ -250,7 +245,7 @@ export default async function handler(req: any, res: any) {
 
     const metaOrderId = mpPaymentInfo?.metadata?.order_id || mpPaymentInfo?.metadata?.orderId;
     const metaRaffleId = mpPaymentInfo?.metadata?.raffle_id || mpPaymentInfo?.metadata?.raffleId;
-    const orderRaffleId = orderDataForVal.raffleId || "current";
+    orderRaffleId = orderDataForVal.raffleId || "current";
 
     if (!metaOrderId || metaOrderId !== orderId) {
       console.error(`❌ [Webhook] CRITICAL SECURITY: Payment metadata order_id (${metaOrderId}) missing or does not match located orderId (${orderId})!`);

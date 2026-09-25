@@ -2,19 +2,7 @@ import "dotenv/config";
 import crypto from "crypto";
 import { getAdminFirestore } from "./_firebaseAdmin.js";
 import { serverSupabaseSync } from "./_supabaseSync.js";
-import { MercadoPagoConfig, Payment } from "mercadopago";
-import { normalizePaymentGateway } from "./_paymentGateways.js";
-
-// Initialize Mercado Pago
-let mpPayment: any = null;
-if (process.env.MP_ACCESS_TOKEN) {
-  try {
-    const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
-    mpPayment = new Payment(mpClient);
-  } catch (err) {
-    console.error("❌ [Mercado Pago Serverless] Init error:", err);
-  }
-}
+import { normalizePaymentGateway, getDynamicMercadoPagoClient } from "./_paymentGateways.js";
 
 // Memory rate-limiter map for anti-flood / security protection
 const requestTimestamps = new Map<string, number>();
@@ -470,26 +458,14 @@ export default async function handler(req: any, res: any) {
   }
 
   // Generate Pix via Mercado Pago
-  const hasMP = !!process.env.MP_ACCESS_TOKEN && mpPayment;
+  const dynamicPayment = await getDynamicMercadoPagoClient(targetRaffleId);
 
-  if (!hasMP) {
+  if (!dynamicPayment) {
     console.error("❌ [Mercado Pago Error] MP_ACCESS_TOKEN is missing or MercadoPago client is uninitialized.");
     return res.status(502).json({
-      error: "O sistema de pagamento por PIX não está configurado corretamente (MP_ACCESS_TOKEN ausente).",
+      error: "O sistema de pagamento por PIX não está configurado corretamente (MP_ACCESS_TOKEN ausente). Configure a credencial do Mercado Pago no painel de configurações ou no servidor.",
     });
   }
-
-  const generateValidCPF = (): string => {
-    const rnt = (max: number) => crypto.randomInt(0, max);
-    const n = Array.from({ length: 9 }, () => rnt(10));
-    let d1 = n.reduce((acc, curr, idx) => acc + curr * (10 - idx), 0);
-    d1 = 11 - (d1 % 11);
-    if (d1 >= 10) d1 = 0;
-    let d2 = n.reduce((acc, curr, idx) => acc + curr * (11 - idx), 0) + d1 * 2;
-    d2 = 11 - (d2 % 11);
-    if (d2 >= 10) d2 = 0;
-    return [...n, d1, d2].join("");
-  };
 
   try {
     const tMPStart = Date.now();
@@ -525,60 +501,88 @@ export default async function handler(req: any, res: any) {
       req.body.orderId ||
       `pix_${targetRaffleId}_${orderId}_${dNormPhone}_${nums.slice().sort().join("-")}`;
 
-    const mpResponse = await mpPayment.create({
-      body: {
-        transaction_amount: finalAmount,
-        description: `Rifa: ${raffleTitle || "Venda"} - Cotas: ${nums.join(", ")}${
-          bonusNums.length > 0 ? ` + Bônus: ${bonusNums.join(", ")}` : ""
-        }`,
-        payment_method_id: "pix",
-        date_of_expiration: expirationDateStr,
-        ...(isValidWebhookUrl ? { notification_url: webhookUrl } : {}),
-        external_reference: targetRaffleId,
-        metadata: {
-          raffle_id: targetRaffleId,
-          raffleId: targetRaffleId,
-          order_id: orderId,
-          orderId: orderId,
-          raffle_name: raffleTitle,
-          raffleName: raffleTitle,
-        },
-        payer: {
-          email: mpPayerEmail,
-          first_name: mpPayerFirstName,
-          last_name: mpPayerLastName,
-          identification: {
-            type: "CPF",
-            number: generateValidCPF(),
+    let mpResponse: any = null;
+    try {
+      mpResponse = await dynamicPayment.create({
+        body: {
+          transaction_amount: finalAmount,
+          description: `Rifa: ${raffleTitle || "Venda"} - Cotas: ${nums.join(", ")}${
+            bonusNums.length > 0 ? ` + Bônus: ${bonusNums.join(", ")}` : ""
+          }`,
+          payment_method_id: "pix",
+          date_of_expiration: expirationDateStr,
+          ...(isValidWebhookUrl ? { notification_url: webhookUrl } : {}),
+          external_reference: targetRaffleId,
+          metadata: {
+            raffle_id: targetRaffleId,
+            raffleId: targetRaffleId,
+            order_id: orderId,
+            orderId: orderId,
+            raffle_name: raffleTitle,
+            raffleName: raffleTitle,
           },
-          phone: {
-            area_code: areaCode,
-            number: phoneNumber,
+          payer: {
+            email: mpPayerEmail,
+            first_name: mpPayerFirstName,
+            last_name: mpPayerLastName,
+            phone: {
+              area_code: areaCode,
+              number: phoneNumber,
+            },
           },
         },
-      },
-      requestOptions: {
-        idempotencyKey,
-      },
-    });
+        requestOptions: {
+          idempotencyKey,
+        },
+      });
+      tMercadoPago = Date.now() - tMPStart;
 
-    tMercadoPago = Date.now() - tMPStart;
+      console.log(`[PIX_FLOW_LOG] [MERCADO_PAGO_RESPONSE] Success. Payment creation accepted by Mercado Pago. ID: ${mpResponse?.id}`);
+    } catch (mpError: any) {
+      const status = mpError?.status || mpError?.statusCode;
+      const errorMsg = String(mpError?.message || JSON.stringify(mpError) || "");
+      const isInvalidToken = errorMsg.toLowerCase().includes("invalid access token") || errorMsg.toLowerCase().includes("unauthorized") || status === 401;
 
-    paymentId = String(mpResponse.id);
+      if (isInvalidToken) {
+        console.error(`❌ [PIX_FLOW_LOG] [MERCADO_PAGO_INVALID_TOKEN] MP_ACCESS_TOKEN is invalid or expired.`);
+        return res.status(401).json({
+          error_type: "MERCADO_PAGO_INVALID_TOKEN",
+          error: "O Token de Acesso do Mercado Pago configurado é inválido ou expirou. Por favor, atualize o Access Token nas configurações do Painel Administrativo ou configure a rifa para o modo Pix Manual."
+        });
+      }
+
+      if (status) {
+        console.error(`❌ [PIX_FLOW_LOG] [MERCADO_PAGO_API_ERROR] HTTP Status: ${status}. Message: ${errorMsg}`);
+        return res.status(status).json({
+          error_type: "MERCADO_PAGO_API_ERROR",
+          error: `Erro oficial da API do Mercado Pago (Status ${status}): ${mpError.message || "Erro de validação ou processamento no gateway de pagamento."}`
+        });
+      } else {
+        console.error(`❌ [PIX_FLOW_LOG] [MERCADO_PAGO_COMMUNICATION_ERROR] Message: ${errorMsg}`);
+        return res.status(503).json({
+          error_type: "MERCADO_PAGO_COMMUNICATION_ERROR",
+          error: `Falha de comunicação ou conexão com o Mercado Pago: ${mpError.message || "O serviço de pagamento encontra-se temporariamente indisponível. Por favor, tente novamente em alguns instantes."}`
+        });
+      }
+    }
+
+    paymentId = String(mpResponse.id || "");
     qrCode = mpResponse.point_of_interaction?.transaction_data?.qr_code || "";
     qrCodeBase64 = mpResponse.point_of_interaction?.transaction_data?.qr_code_base64 || "";
 
-    if (!qrCode) {
-      throw new Error("Mercado Pago não retornou o código QR Pix (qr_code).");
+    console.log(`[PIX_FLOW_LOG] [MERCADO_PAGO_DATA] Checked keys in response: id_received: ${!!paymentId}, qr_code_received: ${!!qrCode} (${qrCode ? qrCode.substring(0, 15) + "..." : "empty"}), qr_code_base64_received: ${!!qrCodeBase64}`);
+
+    if (!paymentId || !qrCode) {
+      console.error("❌ [PIX_FLOW_LOG] [MERCADO_PAGO_INVALID_RESPONSE] Mercado Pago did not return required Pix keys.");
+      return res.status(502).json({
+        error_type: "MERCADO_PAGO_INVALID_RESPONSE",
+        error: "O Mercado Pago processou o pedido mas retornou uma resposta sem as chaves Pix (id ou qr_code) necessárias. Por favor, tente novamente."
+      });
     }
 
-    console.log(`✅ [MercadoPago Serverless] Real payment generated! ID: ${paymentId} (Amount: R$${finalAmount})`);
-  } catch (mpError: any) {
-    console.error("❌ [MercadoPago Serverless] API creation failed:", mpError?.message || mpError);
-    const errDetail = mpError?.message || mpError?.toString() || "Erro desconhecido do Mercado Pago";
-    return res.status(502).json({
-      error: `Erro ao gerar Pix no Mercado Pago: ${errDetail}`,
-    });
+  } catch (err: any) {
+    console.error("❌ [PIX_FLOW_LOG] [SYSTEM_PRE_CHECK_FAILURE] Error preparing payload before MP creation:", err);
+    return res.status(500).json({ error: "Erro interno de sistema ao preparar a requisição do pagamento." });
   }
 
   // ETAPA 4 — Persistir paymentId no pedido já criado e registrar payments/{paymentId}
@@ -587,7 +591,7 @@ export default async function handler(req: any, res: any) {
     const batch = getAdminFirestore().batch();
 
     const orderRef = getAdminFirestore().collection("orders").doc(orderId);
-    batch.update(orderRef, {
+    batch.set(orderRef, {
       status: "pending_payment",
       paymentStatus: "created",
       paymentId,
@@ -598,7 +602,7 @@ export default async function handler(req: any, res: any) {
       qrCode,
       qrCodeBase64,
       isSimulated: false,
-    });
+    }, { merge: true });
 
     const reservationRef = getAdminFirestore().collection("reservations").doc(orderId);
     batch.set(reservationRef, {
@@ -629,7 +633,8 @@ export default async function handler(req: any, res: any) {
     await batch.commit();
     tFinalSave = Date.now() - tSaveStart;
 
-    console.log(`[PAYMENT_CREATED] orderId: ${orderId}, paymentId: ${paymentId}, sessionId: ${sessionId}, raffleId: ${targetRaffleId}, amount: ${finalAmount}`);
+    console.log(`[PIX_FLOW_LOG] [FIRESTORE_PERSISTED] Order successfully updated and payments doc set: true. ID: ${orderId}`);
+    console.log(`[PIX_FLOW_LOG] [FRONTEND_RESPONSE] Sending payload containing paymentId: ${!!paymentId}, orderId: ${!!orderId}, qrCode: ${!!qrCode}`);
 
     return res.status(200).json({
       success: true,
@@ -653,10 +658,18 @@ export default async function handler(req: any, res: any) {
         saveMs: tFinalSave,
       },
     });
-  } catch (err: any) {
-    console.error("❌ [Serverless] Error committing batch in database after MP payment creation:", err);
-    // Order was already created in Etapa 1, so it remains in database for recovery/reconciliation
-    return res.status(500).json({ error: "Pagamento criado no gateway, mas houve erro ao atualizar o pedido no banco de dados. O pedido encontra-se registrado." });
+  } catch (dbErr: any) {
+    console.error("❌ [PIX_FLOW_LOG] [CONCILIATION_FAILURE] Payment was successfully created on Mercado Pago but database write failed:", dbErr);
+    // Return structured reconciliation error instead of a generic one
+    return res.status(500).json({
+      error_type: "CONCILIATION_FAILURE",
+      error: "Falha de conciliação: O Pix foi gerado com sucesso no Mercado Pago, mas houve um erro temporário ao registrar as cotas no banco de dados do sistema. O pedido foi pré-registrado e será verificado pelo administrador. Por favor, não efetue um novo pagamento.",
+      paymentId,
+      orderId,
+      qrCode,
+      qrCodeBase64,
+      expiresAt,
+    });
   }
 }
 

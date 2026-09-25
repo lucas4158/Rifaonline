@@ -7,17 +7,7 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getFirestore, doc, collection, getDocs, deleteDoc, writeBatch, setLogLevel } from "firebase/firestore";
 import { MercadoPagoConfig, Payment } from "mercadopago";
 import { serverSupabaseSync } from "./api/_supabaseSync.js";
-
-// Initialize Mercado Pago
-let mpPayment: any = null;
-if (process.env.MP_ACCESS_TOKEN) {
-  try {
-    const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
-    mpPayment = new Payment(mpClient);
-  } catch (err) {
-    console.error("❌ [Mercado Pago Server Cleanup] Init error:", err);
-  }
-}
+import { getDynamicMercadoPagoClient } from "./api/_paymentGateways.js";
 
 setLogLevel("silent");
 
@@ -66,6 +56,7 @@ import lockCotaHandler from "./api/lock-cota";
 import cancelOrderHandler from "./api/cancel-order";
 import adminSessionHandler from "./api/admin-session";
 import customerHistoryHandler from "./api/customer-history";
+import checkPaymentHandler from "./api/check-payment";
 
 // Initialize Server App
 const app = express();
@@ -135,9 +126,10 @@ async function runBackgroundCleanup() {
         const batch = adminDb.batch();
 
         // Cancel Mercado Pago payment if exists and config is valid
-        if (order.paymentId && mpPayment && !String(order.paymentId).startsWith("SIM_")) {
+        const dynamicPayment = await getDynamicMercadoPagoClient(raffleId);
+        if (order.paymentId && dynamicPayment && !String(order.paymentId).startsWith("SIM_")) {
           try {
-            await mpPayment.cancel({ id: Number(order.paymentId) });
+            await dynamicPayment.cancel({ id: Number(order.paymentId) });
             console.log(`[Mercado Pago Server Cleanup] Successfully cancelled MP payment ${order.paymentId} for order ${orderId}`);
           } catch (mpErr: any) {
             if (mpErr.status !== 400 && mpErr.status !== 404) {
@@ -171,15 +163,15 @@ async function runBackgroundCleanup() {
         }
 
         // B) Update status to Cancelado in orders & reservations
-        batch.update(adminDb.collection("reservations").doc(orderId), {
+        batch.set(adminDb.collection("reservations").doc(orderId), {
           status: "Cancelado",
           canceledAt: new Date().toISOString()
-        });
+        }, { merge: true });
 
-        batch.update(adminDb.collection("orders").doc(orderId), {
+        batch.set(adminDb.collection("orders").doc(orderId), {
           status: "Cancelado",
           canceledAt: new Date().toISOString()
-        });
+        }, { merge: true });
 
         try {
           await batch.commit();
@@ -238,6 +230,7 @@ app.use("/api/admin-logout", (req, res) => {
 });
 app.use("/api/admin-session", adminSessionHandler);
 app.use("/api/customer-history", customerHistoryHandler);
+app.post("/api/check-payment", checkPaymentHandler);
 
 // VITE OR STATIC SERVING MIDDLEWARE (Only run if NOT on Vercel serverless)
 if (process.env.VERCEL !== "1") {

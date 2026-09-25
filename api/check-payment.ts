@@ -1,19 +1,9 @@
 import "dotenv/config";
 import { getAdminFirestore } from "./_firebaseAdmin.js";
-import { MercadoPagoConfig, Payment } from "mercadopago";
 import { allocatePromotionalBonus } from "./_promoHelper.js";
 import { serverSupabaseSync } from "./_supabaseSync.js";
 import admin from "firebase-admin";
-
-let mpPayment: any = null;
-if (process.env.MP_ACCESS_TOKEN) {
-  try {
-    const mpClient = new MercadoPagoConfig({ accessToken: process.env.MP_ACCESS_TOKEN });
-    mpPayment = new Payment(mpClient);
-  } catch (err) {
-    console.error("❌ [CheckPayment API] MercadoPago Init error:", err);
-  }
-}
+import { getDynamicMercadoPagoClient } from "./_paymentGateways.js";
 
 export default async function handler(req: any, res: any) {
   const origin = req.headers.origin;
@@ -125,16 +115,18 @@ export default async function handler(req: any, res: any) {
     let isApprovedOnGateway = false;
     let gatewayStatus = "pending";
 
+    const dynamicPayment = await getDynamicMercadoPagoClient(targetRaffleId);
+
     if (String(effectivePaymentId).startsWith("SIM_")) {
       console.warn(`⚠️ [CheckPayment] Rejected simulated payment ID: ${effectivePaymentId}`);
       isApprovedOnGateway = false;
-    } else if (effectivePaymentId && mpPayment) {
+    } else if (effectivePaymentId && dynamicPayment) {
       try {
         const numericId = Number(effectivePaymentId);
         if (isNaN(numericId) || numericId <= 0 || String(effectivePaymentId).startsWith("PAY_") || String(effectivePaymentId).startsWith("MANUAL")) {
           console.log(`[CheckPayment] Skipping Mercado Pago check for non-numeric or manual paymentId: ${effectivePaymentId}`);
         } else {
-          const mpInfo = await mpPayment.get({ id: numericId });
+          const mpInfo = await dynamicPayment.get({ id: numericId });
           gatewayStatus = mpInfo?.status || "pending";
 
           if (mpInfo?.id && String(mpInfo.id) !== String(effectivePaymentId)) {

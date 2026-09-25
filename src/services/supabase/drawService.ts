@@ -50,14 +50,14 @@ export const drawService = {
         .upsert(payload, { onConflict: "firestore_draw_id" });
 
       if (error) {
-        console.error("[SUPABASE_SYNC] draws failed:", error.message);
+        console.debug("[SUPABASE_SYNC] draws skipped:", error.message);
         return false;
       }
 
-      console.log(`[SUPABASE_SYNC] draws: success (raffleId: ${item.raffle_id}, winner: ${item.winner_number})`);
+      console.debug(`[SUPABASE_SYNC] draws: success (raffleId: ${item.raffle_id}, winner: ${item.winner_number})`);
       return true;
     } catch (err: any) {
-      console.error("[SUPABASE_SYNC] draws exception:", err?.message || err);
+      console.debug("[SUPABASE_SYNC] draws bypassed (Firestore unaffected):", err?.message || err);
       return false;
     }
   },

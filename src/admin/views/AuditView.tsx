@@ -34,7 +34,12 @@ export function AuditView({ selectedRaffleId }: { selectedRaffleId: string | nul
       
       const { data, error, count } = await query;
       
-      if (error) throw error;
+      if (error) {
+        console.debug("[AUDIT_VIEW] Auxiliary Supabase query bypassed:", error.message || error);
+        setLogs([]);
+        setHasMore(false);
+        return;
+      }
       
       if (reset) {
         setLogs(data || []);

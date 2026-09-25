@@ -79,6 +79,8 @@ export interface RaffleConfig {
   purchaseMode?: "manual" | "aleatorio";
   paymentMode?: "automatic" | "manual";
   paymentGateway?: PaymentGateway;
+  mpAccessToken?: string;
+  mpWebhookSecret?: string;
   drawMode?: "automatico" | "federal";
   federalConcurso?: string;
   federalData?: string;

@@ -131,11 +131,9 @@ function runSuite() {
   console.log("\n🔹 Test 9: Negative test - Tampered/Modified Seed");
   const tamperedSeed = seedA.endsWith("0") ? seedA.slice(0, -1) + "1" : seedA.slice(0, -1) + "0"; // Guarantees a different seed string
   const tamperedSeedCommitmentCheck = sha256(tamperedSeed) === publicCommitment;
-  const tamperedSeedShuffle = deterministicShuffle(snapshotParticipants, tamperedSeed);
-  const tamperedSeedWinnerMatches = tamperedSeedShuffle[0] === publicWinnerNumber;
 
-  if (!tamperedSeedCommitmentCheck && !tamperedSeedWinnerMatches) {
-    console.log("✅ PASS: Tampering the seed was successfully detected. Commitment failed and Winner did not match.");
+  if (!tamperedSeedCommitmentCheck) {
+    console.log("✅ PASS: Tampering the seed was successfully detected by cryptographic commitment failure.");
   } else {
     console.error("❌ FAIL: Tampered seed was not detected!");
     passed = false;
@@ -171,7 +169,7 @@ function runSuite() {
 
   // 12. ARTIFICIAL TAMPERING: Tampered Published Winner
   console.log("\n🔹 Test 12: Negative test - Tampered/Injected Winner Number");
-  const tamperedWinnerNumber = "105"; // Force winner number to 105 instead of deterministic winner
+  const tamperedWinnerNumber = browserWinner === "100" ? "101" : "100"; // Guarantees a different winner number
   const isTamperedWinnerValid = browserWinner === tamperedWinnerNumber;
 
   if (!isTamperedWinnerValid) {

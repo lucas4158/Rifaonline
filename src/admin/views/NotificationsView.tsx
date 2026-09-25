@@ -29,7 +29,12 @@ export function NotificationsView() {
       
       const { data, error, count } = await query;
       
-      if (error) throw error;
+      if (error) {
+        console.debug("[NOTIFICATIONS_VIEW] Auxiliary Supabase query bypassed:", error.message || error);
+        setNotifications([]);
+        setHasMore(false);
+        return;
+      }
       
       if (reset) {
         setNotifications(data || []);
