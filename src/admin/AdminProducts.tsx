@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { Product, ProductCategory, RaffleConfig } from "../types";
 import { storeService, StoreConfig } from "../services/storeService";
+import { adminService } from "../services/adminService";
 import { performRobustImageUpload } from "../services/uploadService";
 import { useRaffleConfig } from "./RaffleConfigContext";
 
@@ -142,12 +143,9 @@ export const AdminProducts: React.FC<AdminProductsProps> = () => {
     if (!formAffiliateLink.trim()) return;
     try {
       setFetchingAffiliate(true);
-      const res = await fetch("/api/admin-action", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "fetch-ml-product", url: formAffiliateLink.trim() })
-      });
-      const data = await res.json();
+      const token = localStorage.getItem("raffle_admin_token") || "";
+      const data = await adminService.fetchMLProduct(token, formAffiliateLink.trim());
+      
       if (data.success) {
         const p = data.productData;
         setFormName(p.name);

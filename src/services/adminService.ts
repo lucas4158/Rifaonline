@@ -726,4 +726,22 @@ export const adminService = {
       throw err;
     }
   },
+
+  async fetchMLProduct(token: string, url: string): Promise<any> {
+    console.log(`[ADMIN_ACTION_START] Action: fetch-ml-product for: ${url}`);
+    try {
+      const res = await fetch("/api/admin-action", {
+        method: "POST",
+        headers: await getActiveHeaders(token),
+        body: JSON.stringify({ action: "fetch-ml-product", url }),
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao importar produto do ML.");
+      return data;
+    } catch (err: any) {
+      console.error("[ADMIN_ACTION_ERROR] Action: fetch-ml-product failed:", err);
+      throw err;
+    }
+  },
 };

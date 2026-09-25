@@ -1458,10 +1458,35 @@ export default async function handler(req: any, res: any) {
             response = await fetch(url, { method: 'GET', redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0' } });
           }
           finalUrl = response.url;
-          const idMatch = finalUrl.match(/(ML[A-Z]\d+)/);
-          if (!idMatch) throw new Error("Não foi possível extrair o ID do produto da URL final.");
-          itemId = idMatch[1];
-          console.log(`[STAGE 1] Success. ID: ${itemId}`);
+          console.log(`[STAGE 1] Resolved final URL: ${finalUrl}`);
+
+          // Extract Item ID - Look for patterns like /MLB-123..., /MLB123..., or ?item_id=MLB123...
+          let idMatch = finalUrl.match(/(ML[A-Z][-]?\d+)/) || finalUrl.match(/item_id=(ML[A-Z]\d+)/);
+          
+          if (!idMatch) {
+            console.log(`[STAGE 1] ID not in URL, trying to fetch HTML for canonical link...`);
+            const htmlResponse = await fetch(finalUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+            const html = await htmlResponse.text();
+            // Try canonical link first
+            const canonicalMatch = html.match(/<link rel="canonical" href="([^"]*)"/);
+            if (canonicalMatch) {
+              console.log(`[STAGE 1] Found canonical URL: ${canonicalMatch[1]}`);
+              idMatch = canonicalMatch[1].match(/(ML[A-Z][-]?\d+)/) || canonicalMatch[1].match(/item_id=(ML[A-Z]\d+)/);
+            }
+            // If still not found, search the whole HTML for any product link
+            if (!idMatch) {
+              console.log(`[STAGE 1] Canonical URL not found, searching HTML for product ID patterns...`);
+              const allLinksMatch = html.match(/(ML[A-Z][-]?\d+)/);
+              if (allLinksMatch) {
+                console.log(`[STAGE 1] Found ID in HTML body: ${allLinksMatch[0]}`);
+                idMatch = allLinksMatch;
+              }
+            }
+          }
+
+          if (!idMatch) throw new Error(`Não foi possível extrair o ID do produto da URL final: ${finalUrl}`);
+          itemId = idMatch[1].replace('-', ''); // Normalize by removing dash if present
+          console.log(`[STAGE 1] Success. Extracted ID: ${itemId}`);
         } catch (e: any) {
           return res.status(500).json({ error: `Falha na resolução do link: ${e.message}` });
         }
