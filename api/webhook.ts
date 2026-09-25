@@ -243,7 +243,7 @@ export default async function handler(req: any, res: any) {
 
     const orderDataForVal = orderDocSnap.data();
 
-    if (orderDataForVal.isManual || orderDataForVal.paymentMode === "manual" || String(orderDataForVal.paymentId).startsWith("MANUAL_")) {
+    if (orderDataForVal.isManual || orderDataForVal.paymentMode === "manual" || orderDataForVal.paymentGateway === "manual" || orderDataForVal.gateway === "manual" || String(orderDataForVal.paymentId).startsWith("MANUAL_")) {
       console.log(`[Webhook] Order ${orderId} is manual. Ignoring automated webhook.`);
       return res.status(200).json({ status: "ignored", message: "Manual order ignored by webhook." });
     }

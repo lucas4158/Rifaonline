@@ -9,7 +9,7 @@ export type Status =
   | "bonus_reserved"
   | "bonus_paid";
 
-export type PaymentGateway = "mercadopago";
+export type PaymentGateway = "mercadopago" | "manual";
 
 export interface NumberItem {
   id: string;

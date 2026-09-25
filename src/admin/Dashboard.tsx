@@ -930,10 +930,10 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     setModalPromoBuy(String(raffle.promotionBuy || 5));
     setModalPromoBonus(String(raffle.promotionBonus || 1));
     setModalPurchaseMode(raffle.purchaseMode || "manual");
-    setModalPaymentMode(raffle.paymentMode || "automatic");
-    const legacyGw = (raffle.paymentGateway as string) || (raffle.paymentMode === "manual" ? "manual" : "mercadopago");
-    const normalizedGw: PaymentGateway = legacyGw === "asaas" ? "mercadopago" : "mercadopago";
+    const rawGw = (raffle.paymentGateway as string) || (raffle.paymentMode === "manual" ? "manual" : "mercadopago");
+    const normalizedGw: PaymentGateway = rawGw === "manual" ? "manual" : "mercadopago";
     setModalPaymentGateway(normalizedGw);
+    setModalPaymentMode(normalizedGw === "manual" ? "manual" : (raffle.paymentMode || "automatic"));
     setModalDrawMode(raffle.drawMode || "automatico");
     setModalFederalConcurso(raffle.federalConcurso || "");
     setModalFederalData(raffle.federalData || "");
@@ -967,7 +967,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         promotionBonus: parseInt(modalPromoBonus) || 1,
         purchaseMode: modalPurchaseMode,
         paymentGateway: modalPaymentGateway,
-        paymentMode: modalPaymentGateway === "manual" ? "manual" : "automatic",
+        paymentMode: modalPaymentGateway === "manual" ? "manual" : (modalPaymentMode || "automatic"),
         drawMode: modalDrawMode,
         federalConcurso: modalFederalConcurso.trim(),
         federalData: modalFederalData.trim(),
@@ -4284,7 +4284,10 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                           setModalPromoBuy(String(targetRaffle.promotionBuy || 5));
                           setModalPromoBonus(String(targetRaffle.promotionBonus || 1));
                           setModalPurchaseMode(targetRaffle.purchaseMode || "manual");
-                          setModalPaymentMode(targetRaffle.paymentMode || "automatic");
+                          const rawGw = (targetRaffle.paymentGateway as string) || (targetRaffle.paymentMode === "manual" ? "manual" : "mercadopago");
+                          const normGw: PaymentGateway = rawGw === "manual" ? "manual" : "mercadopago";
+                          setModalPaymentGateway(normGw);
+                          setModalPaymentMode(normGw === "manual" ? "manual" : (targetRaffle.paymentMode || "automatic"));
                           setModalDrawMode(targetRaffle.drawMode || "automatico");
                           setModalFederalConcurso(targetRaffle.federalConcurso || "");
                           setModalFederalData(targetRaffle.federalData || "");
@@ -4310,6 +4313,7 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                           setModalPromoBonus("1");
                           setModalPurchaseMode("manual");
                           setModalPaymentMode("automatic");
+                          setModalPaymentGateway("mercadopago");
                           setModalDrawMode("automatico");
                         }
                       }}
@@ -4473,8 +4477,31 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
                         {modalPaymentGateway === "mercadopago" && <div className="w-2 h-2 rounded-full bg-black" />}
                       </div>
                       <div className="space-y-0.5">
-                        <div className="text-xs font-black uppercase tracking-wide text-white">Mercado Pago</div>
-                        <div className="text-[9px] text-zinc-400 leading-tight">Pix automático</div>
+                        <div className="text-xs font-black uppercase tracking-wide text-white">Mercado Pago — Pix automático</div>
+                        <div className="text-[9px] text-zinc-400 leading-tight">Geração automática • Webhook • Reserva de 10 minutos</div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModalPaymentGateway("manual");
+                        setModalPaymentMode("manual");
+                      }}
+                      className={`p-3.5 rounded-2xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                        modalPaymentGateway === "manual"
+                          ? "bg-amber-500/10 border-amber-500 text-white shadow-md shadow-amber-500/10"
+                          : "bg-zinc-900/50 border-zinc-850 text-zinc-400 hover:border-zinc-700"
+                      }`}
+                    >
+                      <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
+                        modalPaymentGateway === "manual" ? "border-amber-400 bg-amber-500 text-black" : "border-zinc-700 bg-zinc-900"
+                      }`}>
+                        {modalPaymentGateway === "manual" && <div className="w-2 h-2 rounded-full bg-black" />}
+                      </div>
+                      <div className="space-y-0.5">
+                        <div className="text-xs font-black uppercase tracking-wide text-white">Pix manual — Aprovação pelo administrador</div>
+                        <div className="text-[9px] text-zinc-400 leading-tight">Chave Pix própria • Sem chamadas ao MP • Reserva de 20 minutos</div>
                       </div>
                     </button>
                   </div>

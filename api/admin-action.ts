@@ -529,23 +529,43 @@ export default async function handler(req: any, res: any) {
         const targetRaffleId = req.body.raffleId || config.id || "current";
         cleanedConfig.id = targetRaffleId;
 
+        const rawGateway = String(config.paymentGateway || config.gateway || "").toLowerCase().trim();
+        const rawPaymentMode = String(config.paymentMode || "").toLowerCase().trim();
+        if (rawGateway === "manual" || rawPaymentMode === "manual") {
+          cleanedConfig.paymentGateway = "manual";
+          cleanedConfig.paymentMode = "manual";
+        } else if (rawGateway === "mercadopago") {
+          cleanedConfig.paymentGateway = "mercadopago";
+          cleanedConfig.paymentMode = rawPaymentMode === "manual" ? "manual" : "automatic";
+        }
+
         // Fetch existing doc to preserve status and active flags if not explicitly provided
         let existingStatus = "ativa";
         let existingIsActive = true;
         let existingIsRaffleActive = true;
+        let existingGateway = "mercadopago";
+        let existingPaymentMode = "automatic";
         try {
           const existingSnap = await getAdminFirestore().collection("raffles").doc(targetRaffleId).get();
           if (existingSnap.exists) {
-            const ed = existingSnap.data();
+            const ed = existingSnap.data() || {};
             if (ed.status) existingStatus = ed.status;
             if (ed.isActive !== undefined) existingIsActive = ed.isActive;
             if (ed.isRaffleActive !== undefined) existingIsRaffleActive = ed.isRaffleActive;
+            if (ed.paymentGateway) existingGateway = ed.paymentGateway;
+            if (ed.paymentMode) existingPaymentMode = ed.paymentMode;
           }
         } catch (e) {}
 
         cleanedConfig.status = cleanedConfig.status || existingStatus;
         cleanedConfig.isActive = cleanedConfig.isActive !== undefined ? cleanedConfig.isActive : existingIsActive;
         cleanedConfig.isRaffleActive = cleanedConfig.isRaffleActive !== undefined ? cleanedConfig.isRaffleActive : existingIsRaffleActive;
+        if (!cleanedConfig.paymentGateway) {
+          cleanedConfig.paymentGateway = existingGateway;
+        }
+        if (!cleanedConfig.paymentMode) {
+          cleanedConfig.paymentMode = existingPaymentMode;
+        }
 
         console.log("[CONFIG_SAVE_START] Began processing save-config action.");
         const payload = {
@@ -1665,6 +1685,52 @@ export default async function handler(req: any, res: any) {
               return;
             }
 
+            // 1.2. Cancelled or Expired status check
+            const isCancelledOrExplicitlyExpired = 
+              currentStatus === "cancelado" || 
+              currentStatus === "cancelled" || 
+              currentStatus === "expirado" || 
+              currentStatus === "expired" ||
+              currentStatus === "conflict_cancelled" ||
+              String(orderData.paymentStatus || "").toLowerCase() === "cancelled" ||
+              String(orderData.paymentStatus || "").toLowerCase() === "expired";
+
+            if (isCancelledOrExplicitlyExpired) {
+              conflictError = "Este pedido foi cancelado ou expirado previamente. Não é possível aprová-lo.";
+              return;
+            }
+
+            // 1.3. Valid Manual Order Verification
+            const isManualOrder = !!(
+              orderData.isManual ||
+              orderData.paymentMode === "manual" ||
+              orderData.paymentGateway === "manual" ||
+              orderData.gateway === "manual" ||
+              String(orderData.paymentId || "").startsWith("MANUAL_") ||
+              orderData.paymentType === "ManualPix"
+            );
+
+            if (!isManualOrder) {
+              conflictError = "Este pedido pertence ao fluxo automatizado do Mercado Pago e deve ser confirmado pelo gateway.";
+              return;
+            }
+
+            // 1.4. Valid Pending Status Verification
+            const isPending = 
+              currentStatus === "aguardando" || 
+              currentStatus === "pending" || 
+              currentStatus === "reserved" || 
+              currentStatus === "pending_payment" ||
+              currentStatus === "manual_pending" ||
+              String(orderData.paymentStatus || "").toLowerCase() === "manual_pending" ||
+              String(orderData.paymentStatus || "").toLowerCase() === "created" ||
+              String(orderData.paymentStatus || "").toLowerCase() === "pending";
+
+            if (!isPending) {
+              conflictError = `O pedido está com status "${orderData.status || "desconhecido"}" e não está pendente para aprovação.`;
+              return;
+            }
+
             // 1.5. Expiration Check inside transaction
             const expiresAtValue = Number(orderData.expiresAt || 0);
             if (expiresAtValue > 0 && Date.now() > expiresAtValue) {
@@ -1694,6 +1760,7 @@ export default async function handler(req: any, res: any) {
             // 3. Perform transactional writes
             transaction.update(orderRef, {
               status: "Pago",
+              paymentStatus: "paid",
               approvedAt: nowIso,
               approvedBy: adminUid,
               manuallyApproved: true,
@@ -1703,6 +1770,7 @@ export default async function handler(req: any, res: any) {
             const resRef = adminDb.collection("reservations").doc(orderId);
             transaction.set(resRef, {
               status: "Pago",
+              paymentStatus: "paid",
               approvedAt: nowIso,
               manuallyApproved: true,
               updatedAt: nowIso
@@ -1803,6 +1871,22 @@ export default async function handler(req: any, res: any) {
           adminUid: adminUid,
           previousStatus: orderData.status || "Aguardando"
         }).catch((syncErr) => console.error("Non-critical error syncing manual approval to Supabase:", syncErr));
+
+        if (orderNums.length > 0) {
+          const bonusSet = new Set<string>(orderData.bonusNums || []);
+          serverSupabaseSync.syncNumberStates(
+            targetRaffleId,
+            orderNums.map((num: string) => ({
+              number: num,
+              status: "paid",
+              order_id: orderId,
+              customer_name: orderData.name,
+              customer_phone: orderData.phone,
+              is_bonus: bonusSet.has(num),
+              reserved_until: null,
+            }))
+          ).catch((syncErr) => console.error("Non-critical error syncing numbers to Supabase:", syncErr));
+        }
 
         return res.status(200).json({
           success: true,
@@ -2446,6 +2530,8 @@ export default async function handler(req: any, res: any) {
           totalNumbers: Number(baseConfig.totalNumbers) || 100,
           soldCount: Number(baseConfig.soldCount) || 0,
           purchaseMode: baseConfig.purchaseMode || "manual",
+          paymentGateway: baseConfig.paymentGateway === "manual" ? "manual" : "mercadopago",
+          paymentMode: (baseConfig.paymentGateway === "manual" || baseConfig.paymentMode === "manual") ? "manual" : "automatic",
           drawMode: baseConfig.drawMode || "automatico",
           federalConcurso: String(baseConfig.federalConcurso || "").trim(),
           federalData: String(baseConfig.federalData || "").trim(),

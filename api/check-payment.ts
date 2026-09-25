@@ -90,18 +90,7 @@ export default async function handler(req: any, res: any) {
     const orderData = targetOrderSnap.data();
     const currentOrderStatus = (orderData?.status || "").toLowerCase();
 
-    if (orderData.isManual || orderData.paymentMode === "manual" || String(orderData.paymentId).startsWith("MANUAL_")) {
-      console.log(`[CheckPayment] Order ${targetOrderId} is manual. Skipping Mercado Pago verification.`);
-      return res.status(200).json({
-        approved: false,
-        status: orderData.status,
-        orderStatus: orderData.status,
-        orderId: targetOrderId,
-        isManual: true,
-      });
-    }
-
-    // If already paid, return early
+    // If already paid (whether automated or manual approved), return early with success
     if (currentOrderStatus === "pago" || currentOrderStatus === "paid" || currentOrderStatus === "approved") {
       console.log(`[PAYMENT_STATUS_CHECKED] Order ${targetOrderId} is already PAID. Returning confirmed status.`);
       return res.status(200).json({
@@ -112,6 +101,18 @@ export default async function handler(req: any, res: any) {
         nums: orderData.nums || [],
         bonusNums: orderData.bonusNums || [],
         val: Number(orderData.val || 0),
+        isManual: !!(orderData.isManual || orderData.paymentMode === "manual" || orderData.paymentGateway === "manual"),
+      });
+    }
+
+    if (orderData.isManual || orderData.paymentMode === "manual" || orderData.paymentGateway === "manual" || String(orderData.paymentId).startsWith("MANUAL_")) {
+      console.log(`[CheckPayment] Order ${targetOrderId} is manual. Skipping Mercado Pago verification.`);
+      return res.status(200).json({
+        approved: false,
+        status: orderData.status,
+        orderStatus: orderData.status,
+        orderId: targetOrderId,
+        isManual: true,
       });
     }
 

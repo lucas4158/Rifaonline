@@ -4412,7 +4412,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                               <div className="bg-zinc-850/60 border border-zinc-800 rounded-2xl p-3 text-left flex flex-col justify-center">
                                 <p className="text-[10px] uppercase font-bold text-zinc-500">Recebedor</p>
                                 <p className="text-xs sm:text-sm font-bold text-zinc-200 truncate">
-                                  {raffleConfig.pixReceiver || mpPaymentInfo.manualPixReceiver || "Lucas Gomes Silva"}
+                                  {mpPaymentInfo.manualPixReceiver || raffleConfig.pixReceiver || "Administrador"}
                                 </p>
                               </div>
                             </div>

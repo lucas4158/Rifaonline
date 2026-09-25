@@ -148,12 +148,36 @@ export default async function handler(req: any, res: any) {
         configRef.update({ paymentGateway: "mercadopago" }).catch(() => {});
       }
     }
-    paymentGateway = rawGateway === "manual" ? "manual" : normalizePaymentGateway(rawGateway);
+    paymentGateway = rawGateway === "manual" || paymentMode === "manual" ? "manual" : normalizePaymentGateway(rawGateway);
+    if (paymentGateway === "manual") {
+      paymentMode = "manual";
+    }
     manualPixKey = configData.manualPixKey || configData.pixKey || "";
     manualPixReceiver = configData.manualPixReceiver || configData.pixReceiver || "";
     manualInstructions = configData.manualInstructions || "Realize o pagamento Pix utilizando a chave acima e aguarde a conferência do administrador.";
 
-    expiresAt = currentNow + (paymentMode === "manual" || paymentGateway === "manual" ? 20 * 60 * 1000 : 10 * 60 * 1000);
+    if (paymentGateway === "manual") {
+      if (!manualPixKey && configData.pixKey === undefined) {
+        try {
+          const globalPixSnap = await getAdminFirestore().collection("raffles").doc("global_pix").get();
+          if (globalPixSnap.exists) {
+            const gData = globalPixSnap.data() || {};
+            manualPixKey = (gData.pixKey || "").trim();
+            manualPixReceiver = manualPixReceiver || (gData.pixReceiver || "").trim();
+          }
+        } catch (gErr) {
+          console.warn("Could not fetch global_pix in create-pix:", gErr);
+        }
+      }
+
+      if (!manualPixKey || !manualPixKey.trim()) {
+        return res.status(400).json({
+          error: "A chave Pix para recebimento manual não está configurada nesta rifa. O administrador precisa cadastrar a chave Pix no painel antes de liberar pagamentos manuais."
+        });
+      }
+    }
+
+    expiresAt = currentNow + (paymentGateway === "manual" ? 20 * 60 * 1000 : 10 * 60 * 1000);
 
     const promotionEnabled = !!configData.promotionEnabled;
     const buy = Number(configData.promotionBuy || 5);
@@ -207,6 +231,8 @@ export default async function handler(req: any, res: any) {
       createdAt: new Date().toISOString(),
       expiresAt: expiresAt,
       paymentMode,
+      paymentGateway,
+      gateway: paymentGateway,
       isManual: paymentMode === "manual" || paymentGateway === "manual",
       sessionId,
     });
@@ -391,6 +417,9 @@ export default async function handler(req: any, res: any) {
         status: "Aguardando",
         paymentStatus: "manual_pending",
         isManual: true,
+        paymentMode: "manual",
+        paymentGateway: "manual",
+        gateway: "manual",
         paymentId,
         paymentType: "ManualPix",
         qrCode,
@@ -411,6 +440,10 @@ export default async function handler(req: any, res: any) {
         bonusNums: bonusNums,
         val: finalAmount,
         status: "Aguardando",
+        paymentMode: "manual",
+        paymentGateway: "manual",
+        gateway: "manual",
+        isManual: true,
         createdAt: new Date().toISOString(),
         expiresAt: expiresAt,
       }, { merge: true });
@@ -558,7 +591,9 @@ export default async function handler(req: any, res: any) {
       status: "pending_payment",
       paymentStatus: "created",
       paymentId,
-      gateway: paymentGateway,
+      gateway: "mercadopago",
+      paymentGateway: "mercadopago",
+      paymentMode: "automatic",
       paymentType: "MercadoPagoPix",
       qrCode,
       qrCodeBase64,
