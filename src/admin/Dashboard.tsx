@@ -5,7 +5,7 @@ import {
   DollarSign, Check, Calendar, Phone, ArrowLeft, LogOut, MessageCircle, CheckCircle2,
   Image as ImageIcon, Loader2, Play, LayoutDashboard, ClipboardList, PlusCircle, Award, Settings,
   Copy, Edit3, Archive, Power, Sparkles, Eye, CheckCircle, Pause, ShoppingBag, ShoppingCart, Ticket, Save, FolderOpen,
-  Calculator, Users, Grid, Star, BarChart3, TrendingUp, PieChart as PieChartIcon, Clock, Key, CreditCard
+  Calculator, Users, Grid, Star, BarChart3, TrendingUp, PieChart as PieChartIcon, Clock, Key, CreditCard, Plus
 } from "lucide-react";
 
 import { db } from "../services/firebase";
@@ -194,6 +194,8 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
   const [modalPaymentGateway, setModalPaymentGateway] = useState<PaymentGateway>("mercadopago");
   const [modalMpAccessToken, setModalMpAccessToken] = useState<string>("");
   const [modalMpWebhookSecret, setModalMpWebhookSecret] = useState<string>("");
+  const [showCustomMpFields, setShowCustomMpFields] = useState<boolean>(false);
+  const [modalPrizesList, setModalPrizesList] = useState<Array<{ position: number; title: string; winnerNumber?: string; winnerName?: string; winnerPhone?: string }>>([]);
   const [modalDrawMode, setModalDrawMode] = useState<"automatico" | "federal">("automatico");
   const [modalFederalConcurso, setModalFederalConcurso] = useState<string>("");
   const [modalFederalData, setModalFederalData] = useState<string>("");
@@ -878,6 +880,12 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     setModalPixPhone(defaultPhone);
     setModalMpAccessToken(defaultMpToken);
     setModalMpWebhookSecret(defaultMpSecret);
+    setShowCustomMpFields(false);
+    setModalPrizesList([
+      { position: 1, title: "1º Prêmio (Principal)" },
+      { position: 2, title: "2º Prêmio" },
+      { position: 3, title: "3º Prêmio" },
+    ]);
     setModalPromoEnabled(false);
     setModalPromoBuy("5");
     setModalPromoBonus("1");
@@ -1056,6 +1064,18 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
     setModalPaymentMode(normalizedGw === "manual" ? "manual" : (raffle.paymentMode || "automatic"));
     setModalMpAccessToken(raffle.mpAccessToken || "");
     setModalMpWebhookSecret(raffle.mpWebhookSecret || "");
+    setShowCustomMpFields(Boolean(raffle.mpAccessToken && raffle.mpAccessToken.trim() !== ""));
+    
+    if (Array.isArray(raffle.prizesList) && raffle.prizesList.length > 0) {
+      setModalPrizesList(raffle.prizesList);
+    } else {
+      setModalPrizesList([
+        { position: 1, title: raffle.title || "1º Prêmio (Principal)", winnerNumber: raffle.winnerNumber, winnerName: raffle.winnerName },
+        { position: 2, title: "2º Prêmio" },
+        { position: 3, title: "3º Prêmio" },
+      ]);
+    }
+
     setModalDrawMode(raffle.drawMode || "automatico");
     setModalFederalConcurso(raffle.federalConcurso || "");
     setModalFederalData(raffle.federalData || "");
@@ -1092,6 +1112,9 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
         paymentMode: modalPaymentGateway === "manual" ? "manual" : (modalPaymentMode || "automatic"),
         mpAccessToken: modalMpAccessToken.trim(),
         mpWebhookSecret: modalMpWebhookSecret.trim(),
+        prizesList: modalPrizesList.filter(p => p.title.trim() !== ""),
+        winnerNumber: modalPrizesList.find(p => p.position === 1)?.winnerNumber || editingRaffleItem?.winnerNumber || "",
+        winnerName: modalPrizesList.find(p => p.position === 1)?.winnerName || editingRaffleItem?.winnerName || "",
         drawMode: modalDrawMode,
         federalConcurso: modalFederalConcurso.trim(),
         federalData: modalFederalData.trim(),
@@ -4641,50 +4664,135 @@ export default function Dashboard({ currentPath = "/dashboard", setCurrentPath }
 
                   {modalPaymentGateway === "mercadopago" && (
                     <div className="p-4 bg-sky-950/20 border border-sky-850/40 rounded-2xl space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-sky-400 flex items-center gap-1.5">
-                          <CreditCard className="w-3.5 h-3.5" />
-                          Credenciais do Mercado Pago (Pix Automático)
-                        </span>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <div>
+                            <span className="text-xs font-bold text-white block">
+                              Mercado Pago Ativo (Pix Automático)
+                            </span>
+                            <span className="text-[10px] text-zinc-400 block">
+                              Pagamentos cairão diretamente na conta configurada no painel.
+                            </span>
+                          </div>
+                        </div>
                         <button
                           type="button"
-                          onClick={handleOpenMercadoPagoModal}
-                          className="text-[10px] text-sky-300 hover:text-white underline cursor-pointer"
+                          onClick={() => setShowCustomMpFields(!showCustomMpFields)}
+                          className="text-[10px] text-sky-400 hover:text-sky-300 font-semibold underline cursor-pointer shrink-0"
                         >
-                          Ajuda / Instruções
+                          {showCustomMpFields ? "Ocultar personalização" : "Personalizar para esta rifa"}
                         </button>
                       </div>
-                      <div className="space-y-2">
-                        <div>
-                          <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block mb-1">
-                            Access Token (Produção)
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="APP_USR-0000000000000000-000000-..."
-                            value={modalMpAccessToken}
-                            onChange={(e) => setModalMpAccessToken(e.target.value)}
-                            className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-sky-500"
-                          />
+
+                      {showCustomMpFields && (
+                        <div className="space-y-2.5 pt-3 border-t border-sky-900/40">
+                          <div>
+                            <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block mb-1">
+                              Access Token Personalizado (Opcional)
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="APP_USR-0000000000000000-000000-..."
+                              value={modalMpAccessToken}
+                              onChange={(e) => setModalMpAccessToken(e.target.value)}
+                              className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-sky-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block mb-1">
+                              Webhook Secret Personalizado (Opcional)
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="Secret para validação do Webhook"
+                              value={modalMpWebhookSecret}
+                              onChange={(e) => setModalMpWebhookSecret(e.target.value)}
+                              className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-sky-500"
+                            />
+                          </div>
+                          <p className="text-[10px] text-zinc-500">
+                            Deixe em branco para utilizar as credenciais globais salvas no painel administrativo.
+                          </p>
                         </div>
-                        <div>
-                          <label className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider block mb-1">
-                            Webhook Secret (Opcional)
-                          </label>
-                          <input
-                            type="text"
-                            placeholder="Secret para validação do Webhook"
-                            value={modalMpWebhookSecret}
-                            onChange={(e) => setModalMpWebhookSecret(e.target.value)}
-                            className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-sky-500"
-                          />
-                        </div>
-                        <p className="text-[10px] text-zinc-500">
-                          Se deixado em branco nesta rifa, será utilizado o token cadastrado globalmente ou nas variáveis de ambiente.
-                        </p>
-                      </div>
+                      )}
                     </div>
                   )}
+                </div>
+
+                {/* PREMIAÇÃO E GANHADORES MÚLTIPLOS */}
+                <div className="space-y-3 pt-2 border-t border-zinc-900">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 block font-bebas flex items-center gap-1.5">
+                        <Trophy className="w-3.5 h-3.5" />
+                        Prêmios e Ganhadores da Rifa
+                      </span>
+                      <span className="text-[10px] text-zinc-500">
+                        Adicione os prêmios da rifa (1º Prêmio, 2º Prêmio...). Os ganhadores serão apurados automaticamente no sorteio.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextPos = modalPrizesList.length + 1;
+                        setModalPrizesList([
+                          ...modalPrizesList,
+                          { position: nextPos, title: `${nextPos}º Prêmio` }
+                        ]);
+                      }}
+                      className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1 cursor-pointer transition-all shrink-0"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Adicionar Prêmio
+                    </button>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {modalPrizesList.map((prize, idx) => (
+                      <div key={idx} className="p-3 bg-zinc-900/60 border border-zinc-800 rounded-2xl flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                        <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0 min-w-[110px]">
+                          <span className="px-2.5 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-400 rounded-lg text-xs font-black uppercase font-bebas tracking-wide flex items-center gap-1">
+                            <Trophy className="w-3 h-3" />
+                            #{prize.position}º Lugar
+                          </span>
+                          {prize.winnerNumber && (
+                            <span className="px-2 py-0.5 bg-emerald-950/60 border border-emerald-500/30 text-emerald-400 rounded-md text-[9px] font-mono">
+                              Cota #{prize.winnerNumber}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex-1 space-y-1">
+                          <input
+                            type="text"
+                            required
+                            placeholder={idx === 0 ? "Ex: iPhone 15 Pro Max 256GB" : idx === 1 ? "Ex: R$ 2.000,00 no Pix" : `Ex: ${idx + 1}º Prêmio`}
+                            value={prize.title}
+                            onChange={(e) => {
+                              const updated = [...modalPrizesList];
+                              updated[idx].title = e.target.value;
+                              setModalPrizesList(updated);
+                            }}
+                            className="w-full bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500"
+                          />
+                        </div>
+
+                        {modalPrizesList.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModalPrizesList(modalPrizesList.filter((_, i) => i !== idx).map((p, newIdx) => ({ ...p, position: newIdx + 1 })));
+                            }}
+                            className="text-zinc-500 hover:text-red-400 text-[10px] font-bold uppercase p-2 rounded-lg hover:bg-red-500/10 transition-colors shrink-0 cursor-pointer text-center sm:self-center"
+                            title="Remover este prêmio"
+                          >
+                            Remover
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 {/* MODO DE APROVAÇÃO DAS COMPRAS */}

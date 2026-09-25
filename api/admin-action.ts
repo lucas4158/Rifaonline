@@ -150,6 +150,16 @@ function validateAndCleanRaffleConfig(config: any) {
   if (cleaned.winnerNumber !== undefined) cleaned.winnerNumber = String(cleaned.winnerNumber || "").trim();
   if (cleaned.winnerName !== undefined) cleaned.winnerName = String(cleaned.winnerName || "").trim();
   if (cleaned.videoLink !== undefined) cleaned.videoLink = String(cleaned.videoLink || "").trim();
+  if (Array.isArray(cleaned.prizesList)) {
+    cleaned.prizesList = cleaned.prizesList.map((p: any, idx: number) => ({
+      position: Number(p.position || idx + 1),
+      title: String(p.title || "").trim(),
+      description: String(p.description || "").trim(),
+      winnerNumber: String(p.winnerNumber || "").trim(),
+      winnerName: String(p.winnerName || "").trim(),
+      winnerPhone: String(p.winnerPhone || "").trim(),
+    }));
+  }
 
   // 8. Custom Mercado Pago settings saved on the raffle config
   if (cleaned.mpAccessToken !== undefined) cleaned.mpAccessToken = String(cleaned.mpAccessToken || "").trim();
@@ -923,6 +933,7 @@ export default async function handler(req: any, res: any) {
         let isNotSold = false;
         let drawMethod = req.body.drawMethod || "CSPRNG_FISHER_YATES_DOUBLE_SHUFFLE";
         const drawAudit = req.body.drawAudit || null;
+        let shuffledCandidates: string[] = [];
 
         if (customWinnerNumber !== null) {
           // Administrator manually specified the winning number (e.g. from Loteria Federal results)
@@ -1002,7 +1013,7 @@ export default async function handler(req: any, res: any) {
           }
 
           // Fully deterministic shuffle using seed and canonical sorting of participants
-          const shuffledCandidates = deterministicShuffle(paidNumsUnique, seed);
+          shuffledCandidates = deterministicShuffle(paidNumsUnique, seed);
           winnerNum = shuffledCandidates[0];
 
           const normalizeQuota = (q: string): string => {
@@ -1011,16 +1022,73 @@ export default async function handler(req: any, res: any) {
           };
           const normalizedWinner = normalizeQuota(winnerNum);
           const matchingOrder = orders.find((o) => 
-            (o.status === "Pago" || o.status === "paid" || o.status === "approved") && 
+            (o.status === "Pago" || o.status === "paid" || o.status === "approved" || o.status === "confirmed") && 
             (o.nums || []).map(normalizeQuota).includes(normalizedWinner)
           );
-          winnerName = matchingOrder ? matchingOrder.name : "Vencedor Elegível";
+          winnerName = matchingOrder ? (matchingOrder.name || matchingOrder.customerName || "Vencedor Elegível") : "Vencedor Elegível";
+        }
+
+        const normalizeQuota = (q: string): string => {
+          const cleaned = String(q).replace(/^0+/, "");
+          return cleaned === "" ? "0" : cleaned;
+        };
+
+        const findWinnerForQuota = (targetQuota: string) => {
+          const norm = normalizeQuota(targetQuota);
+          const match = orders.find((o) => {
+            const matchesRaffle = !targetRaffleId || targetRaffleId === "all" || o.raffleId === targetRaffleId || o.raffleId === "current" || !o.raffleId;
+            const isPaid = o.status === "Pago" || o.status === "paid" || o.status === "approved" || o.status === "confirmed";
+            if (!matchesRaffle || !isPaid) return false;
+            const allNums = [
+              ...(Array.isArray(o.nums) ? o.nums : []),
+              ...(Array.isArray(o.purchasedNums) ? o.purchasedNums : []),
+              ...(Array.isArray(o.bonusNums) ? o.bonusNums : []),
+              ...(Array.isArray(o.numbers) ? o.numbers : [])
+            ];
+            return allNums.map(normalizeQuota).includes(norm);
+          });
+          return {
+            winnerName: match ? (match.name || match.customerName || "Ganhador Registrado") : "Ganhador Registrado",
+            winnerPhone: match ? (match.phone || match.customerPhone || "") : ""
+          };
+        };
+
+        let updatedPrizesList: any[] = [];
+        if (Array.isArray(raffleConfig.prizesList) && raffleConfig.prizesList.length > 0) {
+          updatedPrizesList = raffleConfig.prizesList.map((prize: any, pIdx: number) => {
+            let pWinnerNum = String(prize.winnerNumber || "").trim();
+            if (!pWinnerNum) {
+              if (Array.isArray(shuffledCandidates) && shuffledCandidates.length > pIdx) {
+                pWinnerNum = shuffledCandidates[pIdx];
+              } else {
+                pWinnerNum = winnerNum;
+              }
+            }
+            const info = findWinnerForQuota(pWinnerNum);
+            return {
+              ...prize,
+              position: prize.position || pIdx + 1,
+              title: prize.title || `${pIdx + 1}º Prêmio`,
+              winnerNumber: pWinnerNum,
+              winnerName: prize.winnerName || info.winnerName,
+              winnerPhone: prize.winnerPhone || info.winnerPhone
+            };
+          });
+        } else {
+          updatedPrizesList = [{
+            position: 1,
+            title: raffleConfig.title || "1º Prêmio",
+            winnerNumber: winnerNum,
+            winnerName: winnerName,
+            winnerPhone: req.body.winnerPhone || ""
+          }];
         }
 
         const pendingConfig = {
           ...raffleConfig,
           winnerNumber: winnerNum,
           winnerName: winnerName,
+          prizesList: updatedPrizesList,
           drawTimestamp: new Date().toISOString(),
           drawTotalParticipants: paidNumsUnique.length,
           drawMethod: drawMethod,
@@ -1071,6 +1139,7 @@ export default async function handler(req: any, res: any) {
           prize: raffleConfig.title || "Prêmio da Rifa",
           winnerNumber: winnerNum,
           winnerName: winnerName,
+          prizesList: updatedPrizesList,
           totalParticipants: paidNumsUnique.length,
           method: drawMethod,
           status: "pending",
@@ -1114,6 +1183,7 @@ export default async function handler(req: any, res: any) {
           metadata: {
             drawId,
             drawMethod,
+            prizesList: updatedPrizesList,
             seed, // Revealed seed for public audit post-draw
             participants: paidNumsUnique, // Official canonical list of candidates
             participantsHash, // Instant integrity verification code
@@ -1126,8 +1196,10 @@ export default async function handler(req: any, res: any) {
           drawId: drawId,
           winnerNumber: winnerNum, 
           winnerName: winnerName,
+          prizesList: updatedPrizesList,
           isNotSold: isNotSold,
-          updatedConfig: pendingConfig
+          updatedConfig: pendingConfig,
+          pendingConfig: pendingConfig
         });
       }
 

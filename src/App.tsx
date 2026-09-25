@@ -3712,20 +3712,20 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
               </div>
             </div>
 
-            {raffleConfig.winnerNumber ? (
+            {(raffleConfig.winnerNumber || (raffleConfig.prizesList && raffleConfig.prizesList.some(p => p.winnerNumber))) ? (
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: -20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 transition={{ duration: 0.6, type: "spring" }}
-                className="max-w-7xl mx-auto px-4 py-16 sm:py-24"
+                className="max-w-7xl mx-auto px-4 py-10 sm:py-16"
               >
-                <div className="bg-gradient-to-br from-amber-500/10 via-zinc-900 to-amber-500/5 border-2 border-amber-500/30 rounded-[2.5rem] p-5 sm:p-10 md:p-14 relative overflow-hidden shadow-[0_0_50px_-12px_rgba(245,158,11,0.25)] flex flex-col md:flex-row items-center justify-between gap-8 min-h-[400px]">
+                <div className="bg-gradient-to-br from-amber-500/10 via-zinc-900 to-amber-500/5 border-2 border-amber-500/30 rounded-[2.5rem] p-5 sm:p-8 md:p-12 relative overflow-hidden shadow-[0_0_50px_-12px_rgba(245,158,11,0.25)] flex flex-col gap-8">
                   <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none animate-pulse">
                     <PartyPopper className="w-64 h-64 text-amber-400" />
                   </div>
                   <div className="absolute -bottom-16 -left-16 w-80 h-80 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
 
-                  <div className="flex items-center gap-8 flex-col sm:flex-row text-center sm:text-left relative z-10">
+                  <div className="flex items-center gap-6 flex-col sm:flex-row text-center sm:text-left relative z-10">
                     <motion.div
                       animate={{
                         rotate: [0, -10, 10, -10, 10, 0],
@@ -3736,47 +3736,78 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
                         duration: 4,
                         repeatDelay: 2,
                       }}
-                      className="bg-amber-500/20 text-amber-400 w-20 h-20 sm:w-24 sm:h-24 rounded-full flex items-center justify-center shrink-0 border border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.1)]"
+                      className="bg-amber-500/20 text-amber-400 w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center shrink-0 border border-amber-500/30 shadow-[0_0_20px_rgba(245,158,11,0.1)]"
                     >
-                      <Trophy className="w-10 h-10 sm:w-12 sm:h-12" />
+                      <Trophy className="w-8 h-8 sm:w-10 sm:h-10" />
                     </motion.div>
                     <div>
                       <span className="bg-amber-500/15 text-amber-400 text-xs font-black uppercase tracking-widest px-4 py-1.5 rounded-full border border-amber-500/20">
                         Sorteio Realizado 🏆
                       </span>
-                      <h3 className="text-3xl sm:text-4xl md:text-5xl font-black text-white mt-4 tracking-tighter leading-none">
-                        Parabéns ao Ganhador! 🎉
+                      <h3 className="text-2xl sm:text-3xl md:text-4xl font-black text-white mt-3 tracking-tighter leading-none">
+                        Parabéns aos Ganhadores! 🎉
                       </h3>
-                      <p className="text-zinc-400 text-sm sm:text-base mt-3 max-w-xl leading-relaxed">
-                        Nossos sinceros parabéns para o grande felizardo(a)
-                        deste sorteio especial! Entraremos em contato
-                        diretamente com o proprietário(a) do bilhete premiado
-                        para realizar a entrega oficial do prêmio:{" "}
-                        <strong className="text-amber-400">
-                          {raffleConfig.title}
-                        </strong>
-                        .
+                      <p className="text-zinc-400 text-xs sm:text-sm mt-2 max-w-xl leading-relaxed">
+                        Confira abaixo os bilhetes premiados desta campanha: <strong className="text-amber-400">{raffleConfig.title}</strong>.
                       </p>
                     </div>
                   </div>
 
-                  <div className="bg-zinc-950/50 border border-zinc-800/80 rounded-3xl p-6 sm:p-8 flex flex-col items-center sm:items-start w-full sm:w-auto min-w-0 max-w-full sm:min-w-[280px] text-center sm:text-left gap-4 relative z-10 shadow-inner">
-                    <div>
-                      <p className="text-zinc-500 text-[10px] uppercase font-black tracking-widest mb-1">
-                        Número Sorteado
-                      </p>
-                      <span className="text-5xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-amber-200">
-                        {raffleConfig.winnerNumber}
-                      </span>
-                    </div>
-                    {raffleConfig.winnerName && (
-                      <div className="border-t border-zinc-800/50 pt-3 w-full">
-                        <p className="text-zinc-500 text-[10px] uppercase font-black tracking-widest mb-1">
-                          Ganhador(a)
-                        </p>
-                        <span className="text-white font-black text-xl leading-tight block truncate">
-                          {raffleConfig.winnerName}
-                        </span>
+                  {/* WINNERS LIST (MULTIPLE OR SINGLE) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 relative z-10">
+                    {(raffleConfig.prizesList && raffleConfig.prizesList.length > 0) ? (
+                      raffleConfig.prizesList.map((prize, pIdx) => (
+                        <div key={pIdx} className="bg-zinc-950/70 border border-amber-500/30 rounded-3xl p-5 flex flex-col justify-between gap-3 shadow-inner">
+                          <div className="flex items-center justify-between border-b border-zinc-800/60 pb-2">
+                            <span className="bg-amber-500/20 text-amber-300 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-lg border border-amber-500/30">
+                              #{prize.position}º Lugar
+                            </span>
+                            <span className="text-xs font-bold text-zinc-300 truncate max-w-[150px]">
+                              {prize.title}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-3 pt-1">
+                            <div>
+                              <p className="text-zinc-500 text-[9px] uppercase font-black tracking-widest">
+                                Cota Premiada
+                              </p>
+                              <span className="text-3xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-amber-200">
+                                {prize.winnerNumber || raffleConfig.winnerNumber || "---"}
+                              </span>
+                            </div>
+
+                            <div className="text-right">
+                              <p className="text-zinc-500 text-[9px] uppercase font-black tracking-widest">
+                                Ganhador(a)
+                              </p>
+                              <span className="text-white font-black text-sm block truncate max-w-[140px]">
+                                {prize.winnerName || raffleConfig.winnerName || "Ganhador"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="bg-zinc-950/70 border border-zinc-800/80 rounded-3xl p-6 flex flex-col justify-between gap-4 shadow-inner col-span-full max-w-md mx-auto w-full text-center">
+                        <div>
+                          <p className="text-zinc-500 text-[10px] uppercase font-black tracking-widest mb-1">
+                            Número Sorteado
+                          </p>
+                          <span className="text-5xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-amber-200">
+                            {raffleConfig.winnerNumber}
+                          </span>
+                        </div>
+                        {raffleConfig.winnerName && (
+                          <div className="border-t border-zinc-800/50 pt-3 w-full">
+                            <p className="text-zinc-500 text-[10px] uppercase font-black tracking-widest mb-1">
+                              Ganhador(a)
+                            </p>
+                            <span className="text-white font-black text-xl leading-tight block truncate">
+                              {raffleConfig.winnerName}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

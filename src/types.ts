@@ -49,6 +49,15 @@ export interface UploadCallbacks {
   onError?: (err: Error) => void;
 }
 
+export interface RafflePrize {
+  position: number;
+  title: string;
+  description?: string;
+  winnerNumber?: string;
+  winnerName?: string;
+  winnerPhone?: string;
+}
+
 export interface RaffleConfig {
   soldCount?: number;
   id?: string;
@@ -81,6 +90,7 @@ export interface RaffleConfig {
   paymentGateway?: PaymentGateway;
   mpAccessToken?: string;
   mpWebhookSecret?: string;
+  prizesList?: RafflePrize[];
   drawMode?: "automatico" | "federal";
   federalConcurso?: string;
   federalData?: string;

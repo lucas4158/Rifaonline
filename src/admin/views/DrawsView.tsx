@@ -303,6 +303,8 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
       const winnerNum = drawResult.winnerNumber || winnerNumParam || "---";
       const winnerName = drawResult.winnerName || "Ganhador Identificado";
 
+      const prizesListToUse = drawResult.prizesList || drawResult.pendingConfig?.prizesList || currentRaffle.prizesList || [];
+
       // Step 2: Publish Draw, update status to "encerrada", and publish to Hall da Fama
       const nowIsoDate = new Date().toLocaleDateString("pt-BR");
       const nowIsoTime = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -314,6 +316,7 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
         winnerNumber: winnerNum,
         winnerName: winnerName,
         winnerPhone: drawResult.winnerPhone || "",
+        prizesList: prizesListToUse,
         drawDate: nowIsoDate,
         drawTime: nowIsoTime,
         drawMethod: methodLabel,
@@ -340,6 +343,7 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
         raffleTitle: currentRaffle.title,
         winnerNumber: winnerNum,
         winnerName: winnerName,
+        prizesList: prizesListToUse,
         drawMode: methodLabel === "AUTOMATIC_RIFAMASTER" ? "Sorteio Eletrônico Automático" : (methodLabel === "LOTERIA_FEDERAL" ? "Extração Loteria Federal" : "Sorteio Manual"),
         drawDate: `${nowIsoDate} às ${nowIsoTime}`,
         paidCount: quotaStats.paidCount,
@@ -798,16 +802,38 @@ export function DrawsView({ selectedRaffleId: propSelectedRaffleId, raffleConfig
               <p className="text-xs text-zinc-400">{latestWinnerModal.drawDate} • {latestWinnerModal.drawMode}</p>
             </div>
 
-            {/* Winning Number Highlight Card */}
-            <div className="p-6 bg-gradient-to-b from-[#232924] to-zinc-950 border border-zinc-700/80 rounded-2xl space-y-2">
-              <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">Número Vencedor</span>
-              <div className="text-5xl font-black text-[#A3E635] font-mono tracking-widest drop-shadow-md">
-                #{latestWinnerModal.winnerNumber}
+            {/* Winning Number Highlight Cards (Multiple or Single) */}
+            {Array.isArray(latestWinnerModal.prizesList) && latestWinnerModal.prizesList.length > 1 ? (
+              <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                {latestWinnerModal.prizesList.map((prize: any, pIdx: number) => (
+                  <div key={pIdx} className="p-3.5 bg-gradient-to-b from-[#232924] to-zinc-950 border border-zinc-700/80 rounded-2xl flex items-center justify-between gap-3 text-left">
+                    <div className="space-y-0.5">
+                      <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 text-[9px] font-black uppercase rounded border border-amber-500/30">
+                        #{prize.position || pIdx + 1}º Lugar
+                      </span>
+                      <p className="text-xs font-bold text-white truncate max-w-[170px]">{prize.title}</p>
+                      <p className="text-[10px] text-zinc-400">👤 {prize.winnerName || "Ganhador"}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-[8px] uppercase font-black text-zinc-500 block">Cota Sorteada</span>
+                      <span className="text-xl font-black text-[#A3E635] font-mono">
+                        #{prize.winnerNumber || latestWinnerModal.winnerNumber}
+                      </span>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <p className="text-base font-black text-white pt-2">
-                👤 Ganhador: {latestWinnerModal.winnerName}
-              </p>
-            </div>
+            ) : (
+              <div className="p-6 bg-gradient-to-b from-[#232924] to-zinc-950 border border-zinc-700/80 rounded-2xl space-y-2">
+                <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400 block">Número Vencedor</span>
+                <div className="text-5xl font-black text-[#A3E635] font-mono tracking-widest drop-shadow-md">
+                  #{latestWinnerModal.winnerNumber}
+                </div>
+                <p className="text-base font-black text-white pt-2">
+                  👤 Ganhador: {latestWinnerModal.winnerName}
+                </p>
+              </div>
+            )}
 
             <div className="p-3 bg-zinc-900/80 border border-zinc-800 rounded-xl text-xs text-zinc-400">
               ✅ A rifa foi automaticamente marcada como <strong className="text-white">Encerrada</strong> e publicada no <strong className="text-[#A3E635]">Hall da Fama (Ganhadores)</strong>.
