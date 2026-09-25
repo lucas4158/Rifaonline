@@ -708,4 +708,22 @@ export const adminService = {
       throw err;
     }
   },
+
+  async syncWinnersHistory(token: string): Promise<any> {
+    console.log(`[ADMIN_ACTION_START] Action: sync-winners-history`);
+    try {
+      const res = await fetch("/api/admin-action", {
+        method: "POST",
+        headers: await getActiveHeaders(token),
+        body: JSON.stringify({ action: "sync-winners-history" }),
+        credentials: "include",
+      });
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.error || "Erro ao sincronizar ganhadores.");
+      return resData;
+    } catch (err: any) {
+      console.error("[ADMIN_ACTION_ERROR] Action: sync-winners-history failed:", err);
+      throw err;
+    }
+  },
 };

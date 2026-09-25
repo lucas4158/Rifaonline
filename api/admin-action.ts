@@ -281,7 +281,73 @@ async function logAuditEvent(
 
 // Server-side robust bootstrap
 async function ensureDefaultConfig() {
-  return;
+  try {
+    await syncMultiWinnerHistoryForRaffles();
+  } catch (err) {
+    console.error("[BOOTSTRAP] Error in syncMultiWinnerHistoryForRaffles:", err);
+  }
+}
+
+async function syncMultiWinnerHistoryForRaffles() {
+  try {
+    const firestore = getAdminFirestore();
+    const rafflesSnap = await firestore.collection("raffles").get();
+    
+    for (const rDoc of rafflesSnap.docs) {
+      const rData = rDoc.data();
+      if (!rData) continue;
+      
+      const isDrawn = rData.status === "encerrada" || rData.status === "sorteada" || Boolean(rData.winnerNumber);
+      if (!isDrawn) continue;
+
+      const raffleId = rDoc.id;
+      const prizesList = Array.isArray(rData.prizesList) && rData.prizesList.length > 0 ? rData.prizesList : null;
+
+      if (prizesList && prizesList.length > 0) {
+        for (let pIdx = 0; pIdx < prizesList.length; pIdx++) {
+          const prize = prizesList[pIdx];
+          const pPosition = Number(prize.position || (pIdx + 1));
+          const pDocId = pIdx === 0 ? ("WIN_" + raffleId) : ("WIN_" + raffleId + "_p" + pPosition);
+          
+          let titleStr = String(prize.title || rData.title || "Prêmio da Rifa").trim();
+          if (prizesList.length > 1 && !titleStr.match(/^[0-9]+º/i)) {
+            titleStr = `${pPosition}º Lugar: ${titleStr}`;
+          }
+
+          const existingDoc = await firestore.collection("winners_history").doc(pDocId).get();
+          if (!existingDoc.exists) {
+            console.log(`[WINNERS_SYNC] Backfilling winner record ${pDocId} for raffle ${raffleId} (Prize #${pPosition})...`);
+            const record = {
+              id: pDocId,
+              position: pPosition,
+              winnerName: String(prize.winnerName || (pIdx === 0 ? rData.winnerName : "") || "Ganhador").trim(),
+              winnerPhone: String(prize.winnerPhone || (pIdx === 0 ? (rData.winnerPhone || rData.phone) : "") || "").trim(),
+              winnerNumber: String(prize.winnerNumber || (pIdx === 0 ? rData.winnerNumber : "") || "000").trim(),
+              prizeTitle: titleStr,
+              prizeImageUrl: String(prize.imageUrl || rData.imageUrl || rData.prizeImageUrl || "").trim(),
+              prizeDescription: String(prize.description || rData.description || "Sorteio realizado com sucesso!").trim(),
+              prizeValue: prize.prizeValue || (pIdx === 0 ? rData.prizeValue : "") || "",
+              drawDate: rData.drawDate || new Date().toLocaleDateString("pt-BR"),
+              drawTime: rData.drawTime || new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+              city: prize.city || rData.city || "",
+              state: prize.state || rData.state || "",
+              status: prize.status || rData.status || "Normal",
+              raffleId: raffleId,
+              videoLink: rData.videoLink || "",
+              instagram: prize.instagram || (pIdx === 0 ? rData.instagram : "") || "",
+              winnerImageUrl: String(prize.winnerImageUrl || (pIdx === 0 ? rData.winnerImageUrl : "") || "").trim(),
+              raffleTitle: String(rData.raffleTitle || rData.title || "Prêmio da Rifa").trim(),
+              drawMethod: rData.drawAudit?.drawMethod || rData.drawMethod || "Loteria Federal",
+              createdAt: rData.updatedAt || rData.createdAt || new Date().toISOString()
+            };
+            await firestore.collection("winners_history").doc(pDocId).set(record);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[WINNERS_SYNC_ERROR] Error in syncMultiWinnerHistoryForRaffles:", err);
+  }
 }
 
 if (isAdminInitialized()) {
@@ -1249,28 +1315,50 @@ export default async function handler(req: any, res: any) {
 
         const drawMethodLabel = configToPublish.drawAudit?.drawMethod || configToPublish.drawMethod || "Loteria Federal";
 
-        const winnerHistoryRecord = {
-          id: winnerHistoryId,
-          winnerName: String(configToPublish.winnerName || "Ganhador").trim(),
-          winnerPhone: String(configToPublish.winnerPhone || configToPublish.phone || "").trim(),
-          winnerNumber: String(configToPublish.winnerNumber || "000").trim(),
-          prizeTitle: String(configToPublish.title || "Prêmio da Rifa").trim(),
-          prizeImageUrl: String(configToPublish.imageUrl || configToPublish.prizeImageUrl || "").trim(),
-          prizeDescription: String(configToPublish.description || "Sorteio realizado com sucesso!").trim(),
-          prizeValue: configToPublish.prizeValue || "",
-          drawDate: rafflePayload.drawDate,
-          drawTime: rafflePayload.drawTime,
-          city: configToPublish.city || "",
-          state: configToPublish.state || "",
-          status: configToPublish.status || "Normal", // "Destaque" ou "Normal"
-          raffleId: targetRaffleId,
-          videoLink: configToPublish.videoLink || "",
-          instagram: configToPublish.instagram || "",
-          winnerImageUrl: String(configToPublish.winnerImageUrl || "").trim(),
-          raffleTitle: String(configToPublish.raffleTitle || configToPublish.title || "Prêmio da Rifa").trim(),
-          drawMethod: drawMethodLabel,
-          createdAt: nowObj.toISOString()
-        };
+        // Generate winner records for ALL prizes in prizesList (or single fallback)
+        const prizesListToProcess = (Array.isArray(configToPublish.prizesList) && configToPublish.prizesList.length > 0)
+          ? configToPublish.prizesList
+          : [{
+              position: 1,
+              title: configToPublish.title || "Prêmio da Rifa",
+              winnerNumber: configToPublish.winnerNumber || "000",
+              winnerName: configToPublish.winnerName || "Ganhador",
+              winnerPhone: configToPublish.winnerPhone || configToPublish.phone || "",
+            }];
+
+        const winnerHistoryRecords = prizesListToProcess.map((prize: any, pIdx: number) => {
+          const pPosition = Number(prize.position || (pIdx + 1));
+          const pId = pIdx === 0 ? ("WIN_" + targetRaffleId) : ("WIN_" + targetRaffleId + "_p" + pPosition);
+          
+          let titleStr = String(prize.title || configToPublish.title || "Prêmio da Rifa").trim();
+          if (prizesListToProcess.length > 1 && !titleStr.match(/^[0-9]+º/i)) {
+            titleStr = `${pPosition}º Lugar: ${titleStr}`;
+          }
+
+          return {
+            id: pId,
+            position: pPosition,
+            winnerName: String(prize.winnerName || (pIdx === 0 ? configToPublish.winnerName : "") || "Ganhador").trim(),
+            winnerPhone: String(prize.winnerPhone || (pIdx === 0 ? (configToPublish.winnerPhone || configToPublish.phone) : "") || "").trim(),
+            winnerNumber: String(prize.winnerNumber || (pIdx === 0 ? configToPublish.winnerNumber : "") || "000").trim(),
+            prizeTitle: titleStr,
+            prizeImageUrl: String(prize.imageUrl || configToPublish.imageUrl || configToPublish.prizeImageUrl || "").trim(),
+            prizeDescription: String(prize.description || configToPublish.description || "Sorteio realizado com sucesso!").trim(),
+            prizeValue: prize.prizeValue || (pIdx === 0 ? configToPublish.prizeValue : "") || "",
+            drawDate: rafflePayload.drawDate,
+            drawTime: rafflePayload.drawTime,
+            city: prize.city || configToPublish.city || "",
+            state: prize.state || configToPublish.state || "",
+            status: prize.status || configToPublish.status || "Normal", // "Destaque" ou "Normal"
+            raffleId: targetRaffleId,
+            videoLink: configToPublish.videoLink || "",
+            instagram: prize.instagram || (pIdx === 0 ? configToPublish.instagram : "") || "",
+            winnerImageUrl: String(prize.winnerImageUrl || (pIdx === 0 ? configToPublish.winnerImageUrl : "") || "").trim(),
+            raffleTitle: String(configToPublish.raffleTitle || configToPublish.title || "Prêmio da Rifa").trim(),
+            drawMethod: drawMethodLabel,
+            createdAt: nowObj.toISOString()
+          };
+        });
 
         const drawPayload = drawId ? {
           id: drawId,
@@ -1284,34 +1372,36 @@ export default async function handler(req: any, res: any) {
           raffleTitle: String(configToPublish.title || "Prêmio da Rifa").substring(0, 300),
           winningNumber: String(configToPublish.winnerNumber || "000").substring(0, 10),
           drawDate: rafflePayload.drawDate,
-          drawTimestamp: nowObj.toISOString()
+          drawTimestamp: nowObj.toISOString(),
+          prizesList: prizesListToProcess
         } : null;
 
         try {
-          console.log(`[DRAW_PUBLISH_FLOW] Executando transação atômica do sorteio via runTransaction para a Rifa: ${targetRaffleId}...`);
+          console.log(`[DRAW_PUBLISH_FLOW] Executando transação atômica do sorteio via runTransaction para a Rifa: ${targetRaffleId} com ${winnerHistoryRecords.length} ganhadores...`);
           const raffleRef = getAdminFirestore().collection("raffles").doc(targetRaffleId);
-          const winnerHistoryRef = getAdminFirestore().collection("winners_history").doc(winnerHistoryId);
-          const drawRef = drawId ? getAdminFirestore().collection("draws").doc(winnerHistoryId) : null;
+          const drawRef = drawId ? getAdminFirestore().collection("draws").doc(drawId) : null;
 
           await getAdminFirestore().runTransaction(async (transaction) => {
             const raffleSnap = await transaction.get(raffleRef);
             if (raffleSnap.exists) {
               const raffleData = raffleSnap.data();
-              if (raffleData && raffleData.status === "encerrada" && raffleData.winnerNumber) {
-                console.log(`[DRAW_PUBLISH_FLOW] [IDEMPOTENCY] Raffle ${targetRaffleId} is already closed/drawn with winner #${raffleData.winnerNumber}. Aborting duplicate transaction commit.`);
-                throw new Error("ALREADY_PROCESSED");
+              if (raffleData && raffleData.status === "encerrada" && raffleData.winnerNumber && !req.body.forceUpdate) {
+                console.log(`[DRAW_PUBLISH_FLOW] [IDEMPOTENCY] Raffle ${targetRaffleId} is already closed/drawn with winner #${raffleData.winnerNumber}. Updating records.`);
               }
             }
 
             // Perform atomic writes within transaction
             transaction.set(raffleRef, rafflePayload);
-            transaction.set(winnerHistoryRef, winnerHistoryRecord);
+            for (const winRecord of winnerHistoryRecords) {
+              const winnerHistoryRef = getAdminFirestore().collection("winners_history").doc(winRecord.id);
+              transaction.set(winnerHistoryRef, winRecord);
+            }
             if (drawRef && drawPayload) {
               transaction.set(drawRef, drawPayload, { merge: true });
             }
           });
 
-          console.log(`[FIRESTORE_TRANSACTION_SUCCESS] runTransaction atomic commit succeeded! Raffle is closed, and winner is published in winners_history.`);
+          console.log(`[FIRESTORE_TRANSACTION_SUCCESS] runTransaction atomic commit succeeded! Raffle is closed, and ${winnerHistoryRecords.length} winners are published in winners_history.`);
 
           serverSupabaseSync.syncDrawCompleted({
             drawId: drawId || winnerHistoryId,
@@ -1333,6 +1423,15 @@ export default async function handler(req: any, res: any) {
             error: `Erro ao processar transação atômica do sorteio via runTransaction: ${txnErr.message}`,
             stack: txnErr.stack || ""
           });
+        }
+      }
+
+      case "sync-winners-history": {
+        try {
+          await syncMultiWinnerHistoryForRaffles();
+          return res.status(200).json({ success: true, message: "Histórico de ganhadores sincronizado com sucesso." });
+        } catch (syncErr: any) {
+          return res.status(500).json({ error: syncErr.message || "Erro ao sincronizar histórico de ganhadores." });
         }
       }
 

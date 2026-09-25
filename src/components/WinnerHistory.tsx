@@ -30,7 +30,7 @@ export default function WinnerHistory({ setCurrentPath }: WinnerHistoryProps) {
     const q = query(
       collection(db, "winners_history"),
       orderBy("createdAt", "desc"),
-      limit(20)
+      limit(100)
     );
     const unsub = onSnapshot(
       q,
@@ -107,12 +107,24 @@ export default function WinnerHistory({ setCurrentPath }: WinnerHistoryProps) {
                         <Trophy className="w-2.5 h-2.5" /> Destaque
                       </span>
                     )}
+                    {w.position && w.position > 1 && !isDestaque && (
+                      <span className="absolute top-3 right-3 bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full flex items-center gap-1 shadow-md z-10">
+                        #{w.position}º Lugar
+                      </span>
+                    )}
                     {w.prizeImageUrl ? (
                       <img src={w.prizeImageUrl} alt={w.prizeTitle} className="w-full h-48 object-cover rounded-2xl mb-4" referrerPolicy="no-referrer" />
                     ) : (
                       <div className="w-full h-48 bg-zinc-900 rounded-2xl mb-4 flex items-center justify-center text-zinc-700 font-bold">Sem imagem</div>
                     )}
-                    <h3 className="font-black text-lg text-white mb-1 line-clamp-1">{w.prizeTitle}</h3>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      {w.position && (
+                        <span className="px-2 py-0.5 bg-zinc-800 text-amber-400 border border-zinc-700 text-[10px] font-black uppercase rounded">
+                          {w.position}º
+                        </span>
+                      )}
+                      <h3 className="font-black text-lg text-white truncate">{w.prizeTitle}</h3>
+                    </div>
                     <div className="flex items-center gap-2 mb-2">
                       {w.winnerImageUrl ? (
                         <img src={w.winnerImageUrl} alt={w.winnerName} className="w-6 h-6 rounded-full object-cover border border-orange-500" referrerPolicy="no-referrer" />

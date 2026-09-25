@@ -799,7 +799,7 @@ function RifaOnlineMain({ setCurrentPath }: { setCurrentPath: (path: string) => 
   useEffect(() => {
     const q = query(
       collection(db, "winners_history"),
-      limit(10)
+      limit(50)
     );
     const unsub = onSnapshot(
       q,
