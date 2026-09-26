@@ -1,15 +1,11 @@
 import {
   collection,
   doc,
-  setDoc,
-  addDoc,
-  deleteDoc,
-  updateDoc,
-  getDocs,
   onSnapshot,
 } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, auth } from "./firebase";
 import { Product } from "../types";
+import { adminService } from "./adminService";
 
 export interface StoreConfig {
   isEnabled: boolean;
@@ -232,31 +228,23 @@ class StoreService {
     if (this.isStoreInitialized()) return;
     try {
       this.setStoreInitialized(true);
-      const colRef = collection(db, COLLECTION_NAME);
-      const snap = await getDocs(colRef);
-      if (snap.empty) {
+      const token = auth.currentUser ? await auth.currentUser.getIdToken() : (localStorage.getItem("raffle_admin_token") || "");
+      if (token) {
         for (const prod of DEFAULT_PRODUCTS) {
-          const { id, ...data } = prod;
-          await setDoc(doc(db, COLLECTION_NAME, id), {
-            ...data,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
+          await adminService.saveProduct(token, prod);
         }
       }
     } catch (e) {
-      console.warn("Error seeding initial products to Firestore:", e);
+      console.warn("Error seeding initial products:", e);
       this.setLocalProducts(DEFAULT_PRODUCTS);
     }
   }
 
   public async saveProduct(productData: Partial<Product>): Promise<string> {
-    const isEdit = Boolean(productData.id);
     const id = productData.id || `prod_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
     const now = new Date().toISOString();
-    const finalProduct = {
-      adminToken: localStorage.getItem("raffle_admin_token") || "",
+
+    const cleanProduct: Product = {
       id,
       name: productData.name?.trim() || "Produto sem nome",
       category: productData.category || "Carretilhas",
@@ -284,62 +272,59 @@ class StoreService {
       updatedAt: now,
     };
 
-    // Update local cache
+    // Obtain authenticated admin token from Firebase Auth or fallback
+    const token = auth.currentUser ? await auth.currentUser.getIdToken() : (localStorage.getItem("raffle_admin_token") || "");
+    if (!token) {
+      throw new Error("Não autorizado: Faça login no painel para salvar produtos.");
+    }
+
+    // Persist via server Admin SDK action
+    const serverResult = await adminService.saveProduct(token, cleanProduct);
+    const persisted = serverResult?.product || cleanProduct;
+
+    // Only update local cache after confirmed server write
     const current = this.getLocalProducts();
     const existingIndex = current.findIndex((p) => p.id === id);
     let updatedList: Product[];
     if (existingIndex >= 0) {
       updatedList = [...current];
-      updatedList[existingIndex] = finalProduct;
+      updatedList[existingIndex] = persisted;
     } else {
-      updatedList = [finalProduct, ...current];
+      updatedList = [persisted, ...current];
     }
     this.setLocalProducts(updatedList);
-
-    // Sync to Firestore
-    try {
-      const docRef = doc(db, COLLECTION_NAME, id);
-      const { id: _, ...payload } = finalProduct;
-      
-      // Firestore does not allow undefined values
-      const cleanPayload = Object.fromEntries(
-        Object.entries(payload).filter(([_, v]) => v !== undefined)
-      );
-      
-      await setDoc(docRef, cleanPayload, { merge: true });
-    } catch (e) {
-      console.warn("Error saving product to Firestore:", e);
-    }
 
     return id;
   }
 
   public async deleteProduct(id: string): Promise<void> {
+    const token = auth.currentUser ? await auth.currentUser.getIdToken() : (localStorage.getItem("raffle_admin_token") || "");
+    if (!token) {
+      throw new Error("Não autorizado: Faça login no painel para excluir produtos.");
+    }
+
+    // Persist deletion on server via Admin SDK
+    await adminService.deleteProduct(token, id);
+
+    // Update local cache after server confirmation
     const current = this.getLocalProducts();
     const updated = current.filter((p) => p.id !== id);
     this.setLocalProducts(updated);
-
-    try {
-      await deleteDoc(doc(db, COLLECTION_NAME, id));
-    } catch (e) {
-      console.warn("Error deleting product from Firestore:", e);
-    }
   }
 
   public async toggleProductStatus(id: string, isActive: boolean): Promise<void> {
+    const token = auth.currentUser ? await auth.currentUser.getIdToken() : (localStorage.getItem("raffle_admin_token") || "");
+    if (!token) {
+      throw new Error("Não autorizado: Faça login no painel para alterar status.");
+    }
+
+    // Persist status toggle on server via Admin SDK
+    await adminService.toggleProductStatus(token, id, isActive);
+
+    // Update local cache after server confirmation
     const current = this.getLocalProducts();
     const updated = current.map((p) => (p.id === id ? { ...p, isActive } : p));
     this.setLocalProducts(updated);
-
-    try {
-      await updateDoc(doc(db, COLLECTION_NAME, id), {
-        adminToken: localStorage.getItem("raffle_admin_token") || "",
-        isActive,
-        updatedAt: new Date().toISOString(),
-      });
-    } catch (e) {
-      console.warn("Error toggling product status in Firestore:", e);
-    }
   }
 
   public async duplicateProduct(id: string): Promise<string> {
@@ -409,19 +394,20 @@ class StoreService {
   }
 
   public async setStoreEnabled(isEnabled: boolean): Promise<void> {
-    const newConfig: StoreConfig & { adminToken?: string } = {
-      adminToken: localStorage.getItem("raffle_admin_token") || "",
+    const token = auth.currentUser ? await auth.currentUser.getIdToken() : (localStorage.getItem("raffle_admin_token") || "");
+    if (!token) {
+      throw new Error("Não autorizado: Faça login no painel para alterar configuração da loja.");
+    }
+
+    // Persist store configuration via Admin SDK action
+    await adminService.setStoreEnabled(token, isEnabled);
+
+    // Update local cache after server confirmation
+    const newConfig: StoreConfig = {
       isEnabled,
       updatedAt: new Date().toISOString(),
     };
     this.setLocalStoreConfig(newConfig);
-
-    try {
-      const docRef = doc(db, SETTINGS_COLLECTION, SETTINGS_DOC_ID);
-      await setDoc(docRef, newConfig, { merge: true });
-    } catch (e) {
-      console.warn("Error syncing store configuration to Firestore:", e);
-    }
   }
 }
 

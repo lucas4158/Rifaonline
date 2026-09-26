@@ -26,6 +26,7 @@ import { storeService, StoreConfig } from "../services/storeService";
 import { adminService } from "../services/adminService";
 import { performRobustImageUpload } from "../services/uploadService";
 import { useRaffleConfig } from "./RaffleConfigContext";
+import { auth } from "../services/firebase";
 
 interface AdminProductsProps {
   raffles?: RaffleConfig[];
@@ -77,7 +78,7 @@ export const AdminProducts: React.FC<AdminProductsProps> = () => {
   const [formSku, setFormSku] = useState<string>("");
   const [formWeight, setFormWeight] = useState<string>("");
   const [formLinkedRaffleId, setFormLinkedRaffleId] = useState<string>("");
-  const [formIsAffiliate, setFormIsAffiliate] = useState<boolean>(false);
+  const [formIsAffiliate, setFormIsAffiliate] = useState<boolean>(true);
   const [formAffiliateLink, setFormAffiliateLink] = useState<string>("");
   const [fetchingAffiliate, setFetchingAffiliate] = useState<boolean>(false);
 
@@ -85,7 +86,23 @@ export const AdminProducts: React.FC<AdminProductsProps> = () => {
   const [storeConfig, setStoreConfig] = useState<StoreConfig>({ isEnabled: false });
   const [togglingStore, setTogglingStore] = useState<boolean>(false);
 
-  // ... (existing useEffects)
+  // Real-time synchronization of store products and store configuration
+  useEffect(() => {
+    setLoading(true);
+    const unsubProducts = storeService.subscribeProducts((loadedProducts) => {
+      setProducts(loadedProducts);
+      setLoading(false);
+    });
+
+    const unsubConfig = storeService.subscribeStoreConfig((loadedConfig) => {
+      setStoreConfig(loadedConfig);
+    });
+
+    return () => {
+      unsubProducts();
+      unsubConfig();
+    };
+  }, []);
 
   const handleOpenCreateModal = () => {
     setEditingProduct(null);
@@ -140,23 +157,52 @@ export const AdminProducts: React.FC<AdminProductsProps> = () => {
   };
 
   const handleFetchAffiliateProduct = async () => {
-    if (!formAffiliateLink.trim()) return;
+    const rawLink = formAffiliateLink.trim();
+    if (!rawLink) {
+      alert("Por favor, informe o link do produto no Mercado Livre (completo ou encurtado meli.la).");
+      return;
+    }
+
     try {
       setFetchingAffiliate(true);
-      const token = localStorage.getItem("raffle_admin_token") || "";
-      const data = await adminService.fetchMLProduct(token, formAffiliateLink.trim());
+      // Prioritize fresh Firebase Auth token from current authenticated admin
+      let token = "";
+      if (auth.currentUser) {
+        token = await auth.currentUser.getIdToken(false);
+      }
+      if (!token && typeof window !== "undefined") {
+        token = localStorage.getItem("raffle_admin_token") || "";
+      }
+
+      if (!token) {
+        alert("Sessão administrativa ausente ou expirada. Faça login novamente no painel.");
+        return;
+      }
+
+      const data = await adminService.fetchMLProduct(token, rawLink);
       
-      if (data.success) {
+      if (data && data.success && data.productData) {
         const p = data.productData;
-        setFormName(p.name);
-        setFormDescription(p.description);
-        setFormPrice(String(p.price));
+        setFormName(p.name || "");
+        setFormDescription(p.description || "");
+        setFormPrice(p.price ? String(p.price) : "");
+        setFormPromoPrice(p.promoPrice ? String(p.promoPrice) : "");
+        if (Array.isArray(p.images) && p.images.length > 0) {
+          setFormImages(p.images);
+        }
+        if (p.category) {
+          setFormCategory(p.category);
+        }
+        if (p.brand) {
+          setFormBrand(p.brand);
+        }
         setFormIsAffiliate(true);
+        setFormAffiliateLink(p.affiliateLink || rawLink);
       } else {
-        alert(data.error || "Erro ao buscar produto.");
+        alert(data?.error || "Não foi possível extrair dados automáticos deste link. Você pode preencher os campos manualmente.");
       }
     } catch (err: any) {
-      alert("Erro na conexão: " + err.message);
+      alert(err.message || "Erro na conexão ao buscar produto.");
     } finally {
       setFetchingAffiliate(false);
     }
@@ -197,6 +243,12 @@ export const AdminProducts: React.FC<AdminProductsProps> = () => {
       return;
     }
 
+    const parsedPrice = parseFloat(formPrice.replace(",", ".")) || 0;
+    if (parsedPrice <= 0) {
+      alert("Informe um preço válido para o produto.");
+      return;
+    }
+
     try {
       setSubmitting(true);
       await storeService.saveProduct({
@@ -205,10 +257,10 @@ export const AdminProducts: React.FC<AdminProductsProps> = () => {
         category: formCategory,
         brand: formBrand.trim(),
         description: formDescription.trim(),
-        price: parseFloat(formPrice.replace(",", ".")) || 0,
+        price: parsedPrice,
         promoPrice: formPromoPrice ? (parseFloat(formPromoPrice.replace(",", ".")) || null) : null,
         stock: parseInt(formStock, 10) || 0,
-        images: formImages,
+        images: formImages.length > 0 ? formImages : ["https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800&q=80"],
         isHighlight: formIsHighlight,
         isBestSeller: formIsBestSeller,
         isNew: formIsNew,
@@ -605,7 +657,7 @@ export const AdminProducts: React.FC<AdminProductsProps> = () => {
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto pr-1">
                 {/* NAME */}
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-black uppercase text-zinc-300 mb-1">
@@ -621,7 +673,256 @@ export const AdminProducts: React.FC<AdminProductsProps> = () => {
                   />
                 </div>
 
-                {/* CATEGORY, BRAND, PRICE, etc - Keep original content ... */}
+                {/* CATEGORY */}
+                <div>
+                  <label className="block text-xs font-black uppercase text-zinc-300 mb-1">
+                    Categoria *
+                  </label>
+                  <select
+                    value={formCategory}
+                    onChange={(e) => setFormCategory(e.target.value)}
+                    className="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#FF8A00]"
+                  >
+                    {CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat} className="bg-zinc-950 text-white">
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* BRAND */}
+                <div>
+                  <label className="block text-xs font-black uppercase text-zinc-300 mb-1">
+                    Marca / Fabricante
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: Maruri, Shimano, Daiwa"
+                    value={formBrand}
+                    onChange={(e) => setFormBrand(e.target.value)}
+                    className="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#FF8A00]"
+                  />
+                </div>
+
+                {/* PRICE */}
+                <div>
+                  <label className="block text-xs font-black uppercase text-zinc-300 mb-1">
+                    Preço (R$) *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 299.90"
+                    value={formPrice}
+                    onChange={(e) => setFormPrice(e.target.value)}
+                    required
+                    className="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#FF8A00]"
+                  />
+                </div>
+
+                {/* PROMO PRICE */}
+                <div>
+                  <label className="block text-xs font-black uppercase text-zinc-300 mb-1">
+                    Preço Promocional (R$) <span className="text-zinc-500 font-normal">(opcional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: 249.90"
+                    value={formPromoPrice}
+                    onChange={(e) => setFormPromoPrice(e.target.value)}
+                    className="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#FF8A00]"
+                  />
+                </div>
+
+                {/* STOCK */}
+                <div>
+                  <label className="block text-xs font-black uppercase text-zinc-300 mb-1">
+                    Estoque Disponível
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={formStock}
+                    onChange={(e) => setFormStock(e.target.value)}
+                    className="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#FF8A00]"
+                  />
+                </div>
+
+                {/* CONDITION */}
+                <div>
+                  <label className="block text-xs font-black uppercase text-zinc-300 mb-1">
+                    Condição
+                  </label>
+                  <select
+                    value={formCondition}
+                    onChange={(e) => setFormCondition(e.target.value as "novo" | "usado")}
+                    className="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#FF8A00]"
+                  >
+                    <option value="novo" className="bg-zinc-950 text-white">Novo (Lacrado)</option>
+                    <option value="usado" className="bg-zinc-950 text-white">Seminovo / Usado</option>
+                  </select>
+                </div>
+
+                {/* DESCRIPTION */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-black uppercase text-zinc-300 mb-1">
+                    Descrição do Produto
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="Detalhes técnicos, especificações, rolamentos, capacidade de linha..."
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
+                    className="w-full bg-black border border-zinc-800 rounded-xl p-3 text-xs text-white outline-none focus:border-[#FF8A00] resize-none"
+                  />
+                </div>
+
+                {/* IMAGES SECTION */}
+                <div className="sm:col-span-2 space-y-2">
+                  <label className="block text-xs font-black uppercase text-zinc-300">
+                    Fotos do Produto ({formImages.length})
+                  </label>
+
+                  {/* Image previews */}
+                  {formImages.length > 0 && (
+                    <div className="flex gap-2 overflow-x-auto py-2">
+                      {formImages.map((imgUrl, idx) => (
+                        <div key={idx} className="relative group shrink-0 w-16 h-16 rounded-xl border border-zinc-800 overflow-hidden bg-zinc-900">
+                          <img
+                            src={imgUrl}
+                            alt=""
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=400&q=80";
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveImage(idx)}
+                            className="absolute top-1 right-1 p-1 bg-black/80 hover:bg-red-600 text-white rounded-md transition-colors"
+                            title="Remover foto"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add Image by URL or File */}
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="flex-1 flex gap-2">
+                      <input
+                        type="url"
+                        placeholder="https://exemplo.com/foto.jpg"
+                        value={formNewImageUrl}
+                        onChange={(e) => setFormNewImageUrl(e.target.value)}
+                        className="flex-1 bg-black border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-[#FF8A00]"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddImageUrl}
+                        className="px-3 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-white rounded-xl text-xs font-bold shrink-0 flex items-center gap-1"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Adicionar
+                      </button>
+                    </div>
+
+                    <label className="px-3 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-300 rounded-xl text-xs font-bold cursor-pointer shrink-0 flex items-center justify-center gap-1">
+                      {uploadingImage ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                      <span>{uploadingImage ? "Enviando..." : "Upload"}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleUploadImageFile}
+                        disabled={uploadingImage}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                {/* LINKED RAFFLE */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-black uppercase text-zinc-300 mb-1">
+                    Vincular a uma Rifa Ativa <span className="text-zinc-500 font-normal">(opcional)</span>
+                  </label>
+                  <select
+                    value={formLinkedRaffleId}
+                    onChange={(e) => setFormLinkedRaffleId(e.target.value)}
+                    className="w-full bg-black border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#FF8A00]"
+                  >
+                    <option value="" className="bg-zinc-950 text-zinc-400">Nenhuma rifa vinculada</option>
+                    {raffles?.map((r) => (
+                      <option key={r.id} value={r.id} className="bg-zinc-950 text-white">
+                        {r.title} ({r.id})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* TOGGLES / BADGES */}
+                <div className="sm:col-span-2 grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-zinc-900">
+                  <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formIsHighlight}
+                      onChange={(e) => setFormIsHighlight(e.target.checked)}
+                      className="rounded accent-[#FF8A00]"
+                    />
+                    <span>⭐ Destaque</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formIsBestSeller}
+                      onChange={(e) => setFormIsBestSeller(e.target.checked)}
+                      className="rounded accent-[#FF8A00]"
+                    />
+                    <span>🔥 Mais Vendido</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formIsNew}
+                      onChange={(e) => setFormIsNew(e.target.checked)}
+                      className="rounded accent-[#FF8A00]"
+                    />
+                    <span>✨ Lançamento</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formIsPromotion}
+                      onChange={(e) => setFormIsPromotion(e.target.checked)}
+                      className="rounded accent-[#FF8A00]"
+                    />
+                    <span>🏷️ Em Promoção</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formIsUnavailable}
+                      onChange={(e) => setFormIsUnavailable(e.target.checked)}
+                      className="rounded accent-[#FF8A00]"
+                    />
+                    <span>🚫 Esgotado</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formIsActive}
+                      onChange={(e) => setFormIsActive(e.target.checked)}
+                      className="rounded accent-[#FF8A00]"
+                    />
+                    <span>🟢 Ativo na Loja</span>
+                  </label>
+                </div>
               </div>
 
               <div className="pt-3 border-t border-zinc-800 flex justify-end gap-3">

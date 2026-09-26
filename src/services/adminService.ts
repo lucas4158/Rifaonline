@@ -6,22 +6,33 @@ import { safeFetch } from "../utils/helpers";
 const fetch = safeFetch;
 
 
-const getActiveToken = async (token: string): Promise<string> => {
-  if (token && token.trim() !== "") return token;
+const getActiveToken = async (token?: string): Promise<string> => {
+  // 1. Highest priority: Fresh Firebase Auth ID token from the authenticated user
   if (auth.currentUser) {
     try {
-      return await auth.currentUser.getIdToken();
+      const idToken = await auth.currentUser.getIdToken(false);
+      if (idToken && idToken.trim() !== "") {
+        return idToken.trim();
+      }
     } catch (e) {
-      console.warn("Failed to get Firebase Auth ID token", e);
+      console.warn("Failed to get fresh Firebase Auth ID token:", e);
     }
   }
+
+  // 2. Explicitly passed token (if provided and valid)
+  if (token && token.trim() !== "") {
+    return token.trim();
+  }
+
+  // 3. Fallback to localStorage session token
   if (typeof window !== "undefined") {
-    return localStorage.getItem("raffle_admin_token") || "";
+    const local = localStorage.getItem("raffle_admin_token");
+    if (local && local.trim()) return local.trim();
   }
   return "";
 };
 
-const getActiveHeaders = async (token: string, contentType: string = "application/json"): Promise<Record<string, string>> => {
+const getActiveHeaders = async (token?: string, contentType: string = "application/json"): Promise<Record<string, string>> => {
   const headers: Record<string, string> = {
     "Content-Type": contentType,
   };
@@ -730,17 +741,128 @@ export const adminService = {
   async fetchMLProduct(token: string, url: string): Promise<any> {
     console.log(`[ADMIN_ACTION_START] Action: fetch-ml-product for: ${url}`);
     try {
+      const headers = await getActiveHeaders(token);
       const res = await fetch("/api/admin-action", {
         method: "POST",
-        headers: await getActiveHeaders(token),
+        headers,
         body: JSON.stringify({ action: "fetch-ml-product", url }),
         credentials: "include",
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erro ao importar produto do ML.");
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        throw new Error("Não autorizado: Sessão administrativa ausente ou expirada. Faça login novamente no painel.");
+      }
+      if (res.status === 403) {
+        throw new Error("Acesso negado: Você não tem permissão para importar produtos.");
+      }
+      if (!res.ok) {
+        throw new Error(data.error || `Erro ao importar produto do Mercado Livre (HTTP ${res.status}).`);
+      }
       return data;
     } catch (err: any) {
       console.error("[ADMIN_ACTION_ERROR] Action: fetch-ml-product failed:", err);
+      throw err;
+    }
+  },
+
+  async saveProduct(token: string, productData: any): Promise<any> {
+    console.log(`[ADMIN_ACTION_START] Action: save-product for ID: ${productData?.id}`);
+    try {
+      const headers = await getActiveHeaders(token);
+      const res = await fetch("/api/admin-action", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ action: "save-product", productData }),
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        throw new Error("Não autorizado: Sessão administrativa expirada. Faça login novamente.");
+      }
+      if (res.status === 403) {
+        throw new Error("Acesso negado: Você não possui permissões administrativas para salvar produtos.");
+      }
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao salvar produto no servidor.");
+      }
+      return data;
+    } catch (err: any) {
+      console.error("[ADMIN_ACTION_ERROR] Action: save-product failed:", err);
+      throw err;
+    }
+  },
+
+  async deleteProduct(token: string, productId: string): Promise<any> {
+    console.log(`[ADMIN_ACTION_START] Action: delete-product for ID: ${productId}`);
+    try {
+      const headers = await getActiveHeaders(token);
+      const res = await fetch("/api/admin-action", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ action: "delete-product", id: productId }),
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        throw new Error("Não autorizado: Sessão administrativa expirada. Faça login novamente.");
+      }
+      if (res.status === 403) {
+        throw new Error("Acesso negado: Sem permissão para excluir produtos.");
+      }
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao excluir produto no servidor.");
+      }
+      return data;
+    } catch (err: any) {
+      console.error("[ADMIN_ACTION_ERROR] Action: delete-product failed:", err);
+      throw err;
+    }
+  },
+
+  async toggleProductStatus(token: string, productId: string, isActive: boolean): Promise<any> {
+    console.log(`[ADMIN_ACTION_START] Action: toggle-product-status for ID: ${productId}, isActive: ${isActive}`);
+    try {
+      const headers = await getActiveHeaders(token);
+      const res = await fetch("/api/admin-action", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ action: "toggle-product-status", id: productId, isActive }),
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        throw new Error("Não autorizado: Sessão expirada.");
+      }
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao alterar status do produto no servidor.");
+      }
+      return data;
+    } catch (err: any) {
+      console.error("[ADMIN_ACTION_ERROR] Action: toggle-product-status failed:", err);
+      throw err;
+    }
+  },
+
+  async setStoreEnabled(token: string, isEnabled: boolean): Promise<any> {
+    console.log(`[ADMIN_ACTION_START] Action: set-store-enabled isEnabled: ${isEnabled}`);
+    try {
+      const headers = await getActiveHeaders(token);
+      const res = await fetch("/api/admin-action", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ action: "set-store-enabled", isEnabled }),
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401) {
+        throw new Error("Não autorizado: Sessão administrativa expirada.");
+      }
+      if (!res.ok) {
+        throw new Error(data.error || "Erro ao atualizar configuração da loja no servidor.");
+      }
+      return data;
+    } catch (err: any) {
+      console.error("[ADMIN_ACTION_ERROR] Action: set-store-enabled failed:", err);
       throw err;
     }
   },

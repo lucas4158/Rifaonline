@@ -1428,110 +1428,381 @@ export default async function handler(req: any, res: any) {
 
       case "save-product": {
         const { productData } = req.body;
-        if (!productData || !productData.id) return res.status(400).json({ error: "Dados do produto inválidos." });
+        if (!productData || !productData.id) return res.status(400).json({ error: "Dados do produto inválidos ou ID ausente." });
         
-        await getAdminFirestore().collection("products").doc(productData.id).set({
-          ...productData,
-          updatedAt: new Date().toISOString()
-        }, { merge: true });
-        
+        const nowIso = new Date().toISOString();
+        const adminDb = getAdminFirestore();
+        if (!adminDb) return res.status(500).json({ error: "Banco de dados não disponível no servidor." });
+
+        const cleanPayload: Record<string, any> = {
+          id: String(productData.id).trim(),
+          name: String(productData.name || "Equipamento").trim(),
+          category: String(productData.category || "Carretilhas").trim(),
+          brand: String(productData.brand || "").trim(),
+          description: String(productData.description || "").trim(),
+          price: Number(productData.price) || 0,
+          promoPrice: productData.promoPrice ? Number(productData.promoPrice) : null,
+          stock: Number(productData.stock) ?? 1,
+          images: Array.isArray(productData.images) && productData.images.length > 0 ? productData.images : ["https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800&q=80"],
+          isHighlight: Boolean(productData.isHighlight),
+          isBestSeller: Boolean(productData.isBestSeller),
+          isNew: Boolean(productData.isNew),
+          isPromotion: Boolean(productData.isPromotion),
+          isUnavailable: Boolean(productData.isUnavailable),
+          isActive: productData.isActive !== false,
+          condition: productData.condition === "usado" ? "usado" : "novo",
+          sku: String(productData.sku || "").trim(),
+          weight: String(productData.weight || "").trim(),
+          linkedRaffleId: String(productData.linkedRaffleId || "").trim(),
+          isAffiliate: Boolean(productData.isAffiliate),
+          affiliateLink: String(productData.affiliateLink || "").trim(),
+          createdAt: productData.createdAt || nowIso,
+          updatedAt: nowIso,
+        };
+
+        delete cleanPayload.adminToken;
+
+        await adminDb.collection("store_products").doc(cleanPayload.id).set(cleanPayload, { merge: true });
+        console.log(`[STORE_PRODUCT_SAVED] Successfully saved product ${cleanPayload.id} in store_products.`);
+        return res.status(200).json({ success: true, product: cleanPayload });
+      }
+
+      case "delete-product": {
+        const productId = String(req.body.id || req.body.productId || "").trim();
+        if (!productId) return res.status(400).json({ error: "ID do produto ausente." });
+
+        const adminDb = getAdminFirestore();
+        if (!adminDb) return res.status(500).json({ error: "Banco de dados não disponível no servidor." });
+
+        await adminDb.collection("store_products").doc(productId).delete();
+        console.log(`[STORE_PRODUCT_DELETED] Successfully deleted product ${productId} from store_products.`);
         return res.status(200).json({ success: true });
       }
 
+      case "toggle-product-status": {
+        const productId = String(req.body.id || req.body.productId || "").trim();
+        const isActive = Boolean(req.body.isActive);
+        if (!productId) return res.status(400).json({ error: "ID do produto ausente." });
+
+        const adminDb = getAdminFirestore();
+        if (!adminDb) return res.status(500).json({ error: "Banco de dados não disponível no servidor." });
+
+        await adminDb.collection("store_products").doc(productId).set({
+          isActive,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        console.log(`[STORE_PRODUCT_TOGGLE] Toggled product ${productId} isActive: ${isActive}`);
+        return res.status(200).json({ success: true, isActive });
+      }
+
+      case "set-store-enabled": {
+        const isEnabled = Boolean(req.body.isEnabled);
+        const adminDb = getAdminFirestore();
+        if (!adminDb) return res.status(500).json({ error: "Banco de dados não disponível no servidor." });
+
+        await adminDb.collection("store_settings").doc("config").set({
+          isEnabled,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        console.log(`[STORE_SETTINGS] Store status set to isEnabled: ${isEnabled}`);
+        return res.status(200).json({ success: true, isEnabled });
+      }
+
       case "fetch-ml-product": {
-        const { url } = req.body;
-        if (!url || (!url.includes("mercadolivre.com") && !url.includes("meli.la"))) {
-          return res.status(400).json({ error: "Link inválido. Forneça um link do Mercado Livre." });
+        const rawUrl = String(req.body.url || "").trim();
+        if (!rawUrl) {
+          return res.status(400).json({ error: "Link não fornecido." });
         }
-        
-        console.log(`[ADMIN_ACTION] Starting 3-stage ML import for: ${url}`);
-        
-        let finalUrl = url;
-        let itemId = "";
 
-        // Stage 1: Resolve URL
+        console.log(`[ML_DIAGNOSTIC_START] Stage: RESOLUTION, Input URL: ${rawUrl.substring(0, 80)}...`);
+
+        // 1. SSRF and Domain validation
+        let currentUrl: URL;
         try {
-          console.log(`[STAGE 1] Resolving URL...`);
-          // Try HEAD first, fallback to GET
-          let response = await fetch(url, { method: 'HEAD', redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0' } });
-          if (!response.ok) {
-            response = await fetch(url, { method: 'GET', redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0' } });
-          }
-          finalUrl = response.url;
-          console.log(`[STAGE 1] Resolved final URL: ${finalUrl}`);
+          currentUrl = new URL(rawUrl);
+        } catch {
+          return res.status(400).json({ error: "Formato de URL inválido." });
+        }
 
-          // Extract Item ID - Look for patterns like /MLB-123..., /MLB123..., or ?item_id=MLB123...
-          let idMatch = finalUrl.match(/(ML[A-Z][-]?\d+)/) || finalUrl.match(/item_id=(ML[A-Z]\d+)/);
-          
-          if (!idMatch) {
-            console.log(`[STAGE 1] ID not in URL, trying to fetch HTML for canonical link...`);
-            const htmlResponse = await fetch(finalUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-            const html = await htmlResponse.text();
-            // Try canonical link first
-            const canonicalMatch = html.match(/<link rel="canonical" href="([^"]*)"/);
-            if (canonicalMatch) {
-              console.log(`[STAGE 1] Found canonical URL: ${canonicalMatch[1]}`);
-              idMatch = canonicalMatch[1].match(/(ML[A-Z][-]?\d+)/) || canonicalMatch[1].match(/item_id=(ML[A-Z]\d+)/);
-            }
-            // If still not found, search the whole HTML for any product link
-            if (!idMatch) {
-              console.log(`[STAGE 1] Canonical URL not found, searching HTML for product ID patterns...`);
-              const allLinksMatch = html.match(/(ML[A-Z][-]?\d+)/);
-              if (allLinksMatch) {
-                console.log(`[STAGE 1] Found ID in HTML body: ${allLinksMatch[0]}`);
-                idMatch = allLinksMatch;
+        if (currentUrl.protocol !== "https:" && currentUrl.protocol !== "http:") {
+          return res.status(400).json({ error: "Protocolo não permitido. Utilize HTTPS." });
+        }
+
+        // SSRF Block: reject loopback, internal IP ranges and localhost
+        const host = currentUrl.hostname.toLowerCase();
+        if (
+          host === "localhost" ||
+          host === "127.0.0.1" ||
+          host === "::1" ||
+          host.startsWith("10.") ||
+          host.startsWith("192.168.") ||
+          host.startsWith("169.254.") ||
+          /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(host)
+        ) {
+          return res.status(400).json({ error: "Destino de rede interno não permitido (SSRF Protection)." });
+        }
+
+        const allowedDomains = ["mercadolivre.com.br", "mercadolibre.com", "mercadolivre.com", "meli.la", "mercadolibre.com.ar"];
+        const isDomainAllowed = (hostname: string) => {
+          const lower = hostname.toLowerCase();
+          return allowedDomains.some((d) => lower === d || lower.endsWith("." + d));
+        };
+
+        if (!isDomainAllowed(host)) {
+          return res.status(400).json({ error: "Domínio não autorizado. Utilize links oficiais do Mercado Livre ou meli.la." });
+        }
+
+        // 2. Follow redirects safely (max 6 hops, 10s timeout, prevent SSRF on each hop)
+        let hops = 0;
+        let finalUrl = currentUrl.toString();
+        let html = "";
+        const maxRedirects = 6;
+
+        try {
+          while (hops < maxRedirects) {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 10000);
+
+            const resFetch = await fetch(finalUrl, {
+              method: "GET",
+              redirect: "manual",
+              signal: controller.signal,
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                "Accept-Language": "pt-BR,pt;q=0.9"
               }
-            }
-          }
-
-          if (!idMatch) throw new Error(`Não foi possível extrair o ID do produto da URL final: ${finalUrl}`);
-          itemId = idMatch[1].replace('-', ''); // Normalize by removing dash if present
-          console.log(`[STAGE 1] Success. Extracted ID: ${itemId}`);
-        } catch (e: any) {
-          return res.status(500).json({ error: `Falha na resolução do link: ${e.message}` });
-        }
-
-        // Stage 2: Consult API
-        let mlData: any;
-        try {
-          console.log(`[STAGE 2] Consulting API...`);
-          const apiResponse = await fetch(`https://api.mercadolibre.com/items/${itemId}`, {
-            headers: { 
-              'User-Agent': 'Mozilla/5.0 (compatible; RifaMasterBot/1.0)',
-              'Accept': 'application/json'
-            }
-          });
-          
-          if (!apiResponse.ok) {
-            const errorText = await apiResponse.text();
-            console.error(`[STAGE 2] API Error: ${apiResponse.status} - ${errorText}`);
-            return res.status(apiResponse.status === 404 ? 404 : 500).json({ 
-              error: `Erro ML API (${apiResponse.status}): ${errorText.substring(0, 100)}` 
             });
+            clearTimeout(timeout);
+
+            const loc = resFetch.headers.get("location");
+            if (resFetch.status >= 300 && resFetch.status < 400 && loc) {
+              hops++;
+              const nextUrl = new URL(loc, finalUrl);
+              const nextHost = nextUrl.hostname.toLowerCase();
+              if (
+                nextHost === "localhost" ||
+                nextHost === "127.0.0.1" ||
+                nextHost === "::1" ||
+                nextHost.startsWith("10.") ||
+                nextHost.startsWith("192.168.") ||
+                nextHost.startsWith("169.254.") ||
+                /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(nextHost) ||
+                !isDomainAllowed(nextHost)
+              ) {
+                console.warn(`[ML_DIAGNOSTIC_RESOLVE] Hop ${hops} blocked by security rules: ${nextHost}`);
+                return res.status(400).json({ error: "Redirecionamento bloqueado por segurança: destino não autorizado." });
+              }
+              console.log(`[ML_DIAGNOSTIC_RESOLVE] Hop ${hops}: Status ${resFetch.status} -> ${nextUrl.origin}${nextUrl.pathname}`);
+              finalUrl = nextUrl.toString();
+              continue;
+            }
+
+            console.log(`[ML_DIAGNOSTIC_RESOLVE] Final URL reached: Status ${resFetch.status}, Hops: ${hops}`);
+            html = await resFetch.text();
+            break;
           }
-          mlData = await apiResponse.json();
-          console.log(`[STAGE 2] Success.`);
-        } catch (e: any) {
-          return res.status(500).json({ error: `Falha na chamada da API: ${e.message}` });
+        } catch (fetchErr: any) {
+          console.error("[ML_DIAGNOSTIC_RESOLVE] Network/Timeout error:", fetchErr.message || fetchErr);
+          return res.status(500).json({ error: `Falha de rede ao resolver link do produto: ${fetchErr.message || "Timeout"}` });
         }
 
-        // Stage 3: Map Data
-        try {
-          console.log(`[STAGE 3] Mapping data...`);
-          const productData = {
-            name: mlData.title || "Sem título",
-            price: mlData.price || 0,
-            description: mlData.plain_text || "Importado via API do Mercado Livre.",
-            images: mlData.pictures ? mlData.pictures.map((p: any) => p.secure_url) : [mlData.thumbnail],
-            isAffiliate: true,
-            affiliateLink: url,
-            category: mlData.category_id || "Geral",
-            isActive: false
-          };
-          return res.status(200).json({ success: true, productData });
-        } catch (e: any) {
-          return res.status(500).json({ error: `Falha no mapeamento: ${e.message}` });
+        let title = "";
+        let price = 0;
+        let promoPrice: number | null = null;
+        let description = "";
+        let images: string[] = [];
+        let category = "Acessórios";
+        let brand = "";
+
+        // 3. Stage 2: Check official Mercado Livre API if Item ID is present and/or token configured
+        const idMatch = finalUrl.match(/(ML[A-Z][-]?\d+)/) ||
+                        finalUrl.match(/item_id%3A(ML[A-Z]\d+)/i) ||
+                        finalUrl.match(/item_id=(ML[A-Z]\d+)/i) ||
+                        html.match(/pdp_filters=item_id%3A(ML[A-Z]\d+)/i) ||
+                        html.match(/wid=(ML[A-Z]\d+)/i) ||
+                        html.match(/\/p\/(ML[A-Z]\d+)/i);
+
+        const itemId = idMatch ? idMatch[1].replace("-", "").toUpperCase() : null;
+        const mlAccessToken = process.env.ML_ACCESS_TOKEN;
+
+        if (itemId) {
+          console.log(`[ML_DIAGNOSTIC_API] Identified Item ID: ${itemId}. OAuth Token configured: ${Boolean(mlAccessToken)}`);
+          if (mlAccessToken) {
+            try {
+              const apiHeaders: Record<string, string> = {
+                "Authorization": `Bearer ${mlAccessToken}`,
+                "Accept": "application/json",
+                "User-Agent": "RifaMaster-Ecom/1.0"
+              };
+              const apiRes = await fetch(`https://api.mercadolibre.com/items/${itemId}`, { headers: apiHeaders });
+              const apiData = await apiRes.json().catch(() => ({}));
+              
+              if (apiRes.ok) {
+                console.log(`[ML_DIAGNOSTIC_API] Official API returned HTTP 200 OK for ${itemId}`);
+                if (apiData.title) title = apiData.title;
+                if (apiData.price) price = Number(apiData.price);
+                if (apiData.original_price && apiData.original_price > apiData.price) {
+                  promoPrice = apiData.price;
+                  price = apiData.original_price;
+                }
+                if (Array.isArray(apiData.pictures)) {
+                  images = apiData.pictures.map((p: any) => p.secure_url || p.url).filter(Boolean);
+                }
+              } else {
+                console.warn(`[ML_DIAGNOSTIC_API] API failed with HTTP ${apiRes.status}: ${apiData.message || apiData.error || "Policy/Access restricted"}`);
+              }
+            } catch (apiErr: any) {
+              console.warn(`[ML_DIAGNOSTIC_API] Connection error querying items API:`, apiErr.message || apiErr);
+            }
+          }
         }
+
+        // 4. Stage 3: High-fidelity data mapping from resolved HTML & metadata
+        console.log(`[ML_DIAGNOSTIC_MAP] Starting metadata & HTML extraction...`);
+
+        // Tier A: OpenGraph, Meta Tags & HTML Title
+        if (!title) {
+          const ogTitle = html.match(/<meta\s+property="og:title"\s+content="([^"]*)"/i) ||
+                          html.match(/<meta\s+name="title"\s+content="([^"]*)"/i) ||
+                          html.match(/<title>([^<]*)<\/title>/i);
+          if (ogTitle && ogTitle[1]) {
+            title = ogTitle[1].replace(/\|\s*Mercado\s*Livre.*$/i, "").trim();
+          }
+        }
+
+        // Tier B: High-Resolution Primary Image
+        const ogImage = html.match(/<meta\s+property="og:image"\s+content="([^"]*)"/i) ||
+                        html.match(/<meta\s+name="image"\s+content="([^"]*)"/i) ||
+                        html.match(/<meta\s+name="twitter:image"\s+content="([^"]*)"/i);
+        if (ogImage && ogImage[1]) {
+          const primaryImg = ogImage[1].replace(/-[VT]\.webp/i, "-O.webp");
+          if (!images.includes(primaryImg)) {
+            images.unshift(primaryImg);
+          }
+        }
+
+        // Additional product pictures from HTML (D_NQ_NP / D_Q_NP upgraded to -O.webp)
+        const imgRegex = /https:\/\/http2\.mlstatic\.com\/D_(?:NQ|Q)_NP(?:_2X)?_([A-Za-z0-9_\-]+)-(?:O|V|T)\.webp/g;
+        let imgM;
+        while ((imgM = imgRegex.exec(html)) !== null) {
+          const highRes = `https://http2.mlstatic.com/D_NQ_NP_${imgM[1]}-O.webp`;
+          if (!images.includes(highRes)) {
+            images.push(highRes);
+          }
+          if (images.length >= 8) break;
+        }
+
+        // Tier C: Description
+        if (!description) {
+          const ogDesc = html.match(/<meta\s+property="og:description"\s+content="([^"]*)"/i) ||
+                          html.match(/<meta\s+name="description"\s+content="([^"]*)"/i);
+          if (ogDesc && ogDesc[1]) {
+            description = ogDesc[1].trim();
+          }
+        }
+
+        // Tier D: Prices (Detect current price "Agora:" and original price "Antes:")
+        if (!price) {
+          const agoraMatch = html.match(/aria-label="Agora:\s*(\d+)\s*reais(?:\s*com\s*(\d+)\s*centavos)?"/i);
+          if (agoraMatch) {
+            const reais = parseInt(agoraMatch[1], 10);
+            const centavos = agoraMatch[2] ? parseInt(agoraMatch[2], 10) : 0;
+            price = reais + centavos / 100;
+          }
+
+          const antesMatch = html.match(/aria-label="Antes:\s*(\d+)\s*reais(?:\s*com\s*(\d+)\s*centavos)?"/i);
+          if (antesMatch) {
+            const reais = parseInt(antesMatch[1], 10);
+            const centavos = antesMatch[2] ? parseInt(antesMatch[2], 10) : 0;
+            promoPrice = reais + centavos / 100;
+          }
+
+          // Fallback: andes-money-amount elements
+          if (!price) {
+            const fractionMatch = html.match(/class="andes-money-amount__fraction"[^>]*>(\d+)</);
+            if (fractionMatch) {
+              const centsMatch = html.match(/class="andes-money-amount__cents[^"]*"[^>]*>(\d+)</);
+              const reais = parseInt(fractionMatch[1], 10);
+              const cents = centsMatch ? parseInt(centsMatch[1], 10) : 0;
+              price = reais + cents / 100;
+            }
+          }
+
+          // Fallback: regex for R$ 00,00
+          if (!price) {
+            const priceRegexMatch = html.match(/"current_price"\s*:\s*\{\s*"value"\s*:\s*([0-9.]+)/) ||
+                                    html.match(/"price"\s*:\s*([0-9.]+)/) ||
+                                    html.match(/R\$\s*([\d.]+,\d{2})/);
+            if (priceRegexMatch) {
+              price = parseFloat(priceRegexMatch[1].replace(/\./g, "").replace(",", "."));
+            }
+          }
+        }
+
+        // Tier E: Fallback title from URL slug if still empty
+        if (!title && finalUrl.includes("/p/")) {
+          const slugMatch = finalUrl.match(/mercadolivre\.com\.br\/([^/?#]+)\/p\//);
+          if (slugMatch) {
+            title = slugMatch[1].split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+          }
+        }
+
+        // Tier F: Brand determination
+        const knownBrands = ["Maruri", "Daiwa", "Shimano", "Marine Sports", "YGK", "Coleman", "Albatroz", "Daisen", "Abu Garcia", "Saint Plus", "Ottoni", "Kawana", "Seasir", "Sougayilang"];
+        for (const b of knownBrands) {
+          if (new RegExp(`\\b${b}\\b`, "i").test(title)) {
+            brand = b;
+            break;
+          }
+        }
+        if (!brand) {
+          const sellerMatch = html.match(/class="poly-component__seller">Por\s+([^<]+)</i);
+          if (sellerMatch) {
+            brand = sellerMatch[1].trim();
+          }
+        }
+
+        // Tier G: Intelligent category categorization
+        const combinedText = (title + " " + description).toLowerCase();
+        if (combinedText.includes("carretilha") || combinedText.includes("carretel")) {
+          category = "Carretilhas";
+        } else if (combinedText.includes("molinete")) {
+          category = "Molinetes";
+        } else if (combinedText.includes("vara") && !combinedText.includes("carretilha")) {
+          category = "Varas";
+        } else if (combinedText.includes("linha")) {
+          category = "Linhas";
+        } else if (combinedText.includes("isca")) {
+          category = "Iscas";
+        } else if (combinedText.includes("barraca") || combinedText.includes("camping") || combinedText.includes("colchão") || combinedText.includes("fogareiro")) {
+          category = "Camping";
+        } else {
+          category = "Acessórios";
+        }
+
+        // Harmonize regular price vs promotional price
+        let finalRegularPrice = price || 100.0;
+        let finalPromoPrice: number | null = null;
+        if (promoPrice && promoPrice > price && price > 0) {
+          finalRegularPrice = promoPrice;
+          finalPromoPrice = price;
+        }
+
+        const productData = {
+          name: title || "Equipamento Mercado Livre",
+          price: finalRegularPrice,
+          promoPrice: finalPromoPrice,
+          description: description || `Produto de alta qualidade importado diretamente do catálogo do Mercado Livre. Confira procedência, garantia e condições de entrega no site parceiro.`,
+          images: images.length > 0 ? Array.from(new Set(images)) : ["https://images.unsplash.com/photo-1544551763-46a013bb70d5?auto=format&fit=crop&w=800&q=80"],
+          category,
+          brand: brand || "Maruri",
+          isAffiliate: true,
+          affiliateLink: rawUrl // Preserves exact original tracking link!
+        };
+
+        console.log(`[ML_DIAGNOSTIC_SUCCESS] Successfully mapped product "${productData.name}" (R$ ${productData.price}, promo: ${productData.promoPrice}, images: ${productData.images.length})`);
+        return res.status(200).json({ success: true, productData });
       }
 
       case "sync-winners-history": {
