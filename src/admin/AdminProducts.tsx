@@ -20,9 +20,10 @@ import {
   Plus,
   Check,
   AlertTriangle,
+  ExternalLink,
 } from "lucide-react";
 import { Product, ProductCategory, RaffleConfig } from "../types";
-import { storeService, StoreConfig } from "../services/storeService";
+import { storeService, StoreConfig, isValidMercadoLivreAffiliateUrl } from "../services/storeService";
 import { adminService } from "../services/adminService";
 import { performRobustImageUpload } from "../services/uploadService";
 import { useRaffleConfig } from "./RaffleConfigContext";
@@ -247,6 +248,18 @@ export const AdminProducts: React.FC<AdminProductsProps> = () => {
     if (parsedPrice <= 0) {
       alert("Informe um preço válido para o produto.");
       return;
+    }
+
+    if (formIsAffiliate) {
+      const cleanLink = formAffiliateLink.trim();
+      if (!cleanLink) {
+        alert("Por favor, informe o link de afiliado oficial do Mercado Livre.");
+        return;
+      }
+      if (!isValidMercadoLivreAffiliateUrl(cleanLink)) {
+        alert("O link informado não é um link oficial válido do Mercado Livre. O link deve começar com https:// e pertencer a mercadolivre.com.br, mercadolibre.com ou meli.la.");
+        return;
+      }
     }
 
     try {
@@ -541,9 +554,15 @@ export const AdminProducts: React.FC<AdminProductsProps> = () => {
 
                   {/* INFO TAGS & STOCK */}
                   <div className="flex flex-wrap items-center gap-1.5 my-2">
-                    <span className="text-[10px] px-2 py-0.5 bg-zinc-900 border border-zinc-800 text-zinc-300 font-bold rounded">
-                      Estoque: {prod.stock}
-                    </span>
+                    {prod.isAffiliate ? (
+                      <span className="text-[9px] px-1.5 py-0.5 bg-[#FFE600]/20 text-[#FFE600] font-black rounded uppercase flex items-center gap-0.5">
+                        <ExternalLink className="w-2.5 h-2.5" /> Afiliado ML
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 bg-zinc-900 border border-zinc-800 text-zinc-300 font-bold rounded">
+                        Estoque: {prod.stock}
+                      </span>
+                    )}
                     {prod.isHighlight && (
                       <span className="text-[9px] px-1.5 py-0.5 bg-amber-500/20 text-amber-300 font-black rounded uppercase">
                         Destaque
@@ -564,7 +583,7 @@ export const AdminProducts: React.FC<AdminProductsProps> = () => {
 
                 {/* ACTIONS */}
                 <div className="pt-3 border-t border-zinc-900 flex items-center justify-between gap-2 mt-2">
-                  <div className="flex gap-1">
+                  <div className="flex items-center gap-1">
                     <button
                       onClick={() => handleOpenEditModal(prod)}
                       className="p-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-lg text-xs font-bold border border-zinc-800 flex items-center gap-1 cursor-pointer"
@@ -572,6 +591,17 @@ export const AdminProducts: React.FC<AdminProductsProps> = () => {
                     >
                       <Edit3 className="w-3.5 h-3.5" /> Editar
                     </button>
+                    {prod.isAffiliate && prod.affiliateLink && (
+                      <a
+                        href={prod.affiliateLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 bg-yellow-500/10 hover:bg-yellow-500/20 text-[#FFE600] rounded-lg text-xs font-bold border border-yellow-500/30 flex items-center gap-1 cursor-pointer"
+                        title="Testar destino oficial de afiliado Mercado Livre"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" /> Testar Destino
+                      </a>
+                    )}
                     <button
                       onClick={() => handleDuplicate(prod.id)}
                       className="p-2 bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-lg text-xs font-bold border border-zinc-800 flex items-center gap-1 cursor-pointer"
@@ -632,27 +662,41 @@ export const AdminProducts: React.FC<AdminProductsProps> = () => {
                 </div>
                 
                 {formIsAffiliate ? (
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      placeholder="Cole o link de afiliado aqui..."
-                      value={formAffiliateLink}
-                      onChange={(e) => setFormAffiliateLink(e.target.value)}
-                      className="flex-1 bg-black border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#FF8A00]"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleFetchAffiliateProduct}
-                      disabled={fetchingAffiliate}
-                      className="px-4 bg-[#FF8A00] text-black font-black rounded-xl text-xs hover:bg-[#FF9C1A] flex items-center gap-1"
-                    >
-                      {fetchingAffiliate ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
-                      Buscar
-                    </button>
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        placeholder="Cole o link de afiliado oficial do Mercado Livre (ou encurtado meli.la)..."
+                        value={formAffiliateLink}
+                        onChange={(e) => setFormAffiliateLink(e.target.value)}
+                        className="flex-1 bg-black border border-zinc-800 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-[#FF8A00]"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleFetchAffiliateProduct}
+                        disabled={fetchingAffiliate}
+                        className="px-4 bg-[#FF8A00] text-black font-black rounded-xl text-xs hover:bg-[#FF9C1A] flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        {fetchingAffiliate ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
+                        Buscar
+                      </button>
+                    </div>
+
+                    {formAffiliateLink.trim() && (
+                      isValidMercadoLivreAffiliateUrl(formAffiliateLink) ? (
+                        <p className="text-[11px] text-emerald-400 font-bold flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5" /> Link oficial válido do Mercado Livre (destino de compra direto)
+                        </p>
+                      ) : (
+                        <p className="text-[11px] text-red-400 font-bold flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5" /> URL inválida. Deve iniciar com https:// e pertencer a mercadolivre.com.br, mercadolibre.com ou meli.la
+                        </p>
+                      )
+                    )}
                   </div>
                 ) : (
                   <p className="text-xs text-zinc-400">
-                    Preencha os dados do produto manualmente abaixo.
+                    Produto Próprio: A compra será realizada via WhatsApp utilizando o contato administrativo cadastrado no sistema.
                   </p>
                 )}
               </div>

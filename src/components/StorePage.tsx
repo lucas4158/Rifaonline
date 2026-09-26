@@ -17,7 +17,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { Product, ProductCategory } from "../types";
-import { storeService } from "../services/storeService";
+import { storeService, executeProductBuy } from "../services/storeService";
 import { ProductCard } from "./ProductCard";
 import { ProductBuyModal } from "./ProductBuyModal";
 import { useRaffleConfig } from "../admin/RaffleConfigContext";
@@ -47,18 +47,26 @@ export const StorePage: React.FC<StorePageProps> = ({ currentPath = "/loja", set
   const [selectedProductForBuy, setSelectedProductForBuy] = useState<Product | null>(null);
 
   const { raffleConfig } = useRaffleConfig();
-  const adminWhatsApp = raffleConfig.pixPhone || raffleConfig.pixReceiver || "5563999659203";
+  const adminWhatsApp = raffleConfig.pixPhone || raffleConfig.pixReceiver || "";
 
   const handleSelectProductForBuy = (product: Product | null) => {
-    setSelectedProductForBuy(product);
-    if (product) {
-      const newUrl = `/loja?produto=${product.id}`;
-      window.history.pushState(null, "", newUrl);
-    } else {
+    if (!product) {
+      setSelectedProductForBuy(null);
       if (window.location.search.includes("produto=")) {
         window.history.pushState(null, "", "/loja");
       }
+      return;
     }
+
+    // Direct redirect for Mercado Livre affiliate products
+    if (product.isAffiliate) {
+      executeProductBuy(product, adminWhatsApp);
+      return;
+    }
+
+    setSelectedProductForBuy(product);
+    const newUrl = `/loja?produto=${product.id}`;
+    window.history.pushState(null, "", newUrl);
   };
 
   // Realtime subscription to store_products
@@ -241,6 +249,7 @@ export const StorePage: React.FC<StorePageProps> = ({ currentPath = "/loja", set
                   product={prod}
                   onBuyClick={handleSelectProductForBuy}
                   onNavigateToRaffle={handleNavigateToRaffle}
+                  adminWhatsApp={adminWhatsApp}
                 />
               ))}
             </div>
@@ -292,6 +301,7 @@ export const StorePage: React.FC<StorePageProps> = ({ currentPath = "/loja", set
                   product={prod}
                   onBuyClick={handleSelectProductForBuy}
                   onNavigateToRaffle={handleNavigateToRaffle}
+                  adminWhatsApp={adminWhatsApp}
                 />
               ))}
             </div>

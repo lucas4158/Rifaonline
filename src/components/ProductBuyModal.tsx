@@ -1,7 +1,20 @@
 import React, { useState } from "react";
-import { X, ShoppingBag, MessageCircle, ShieldCheck, Ticket, Plus, Minus, Lock, Share2, Copy, Check } from "lucide-react";
+import {
+  X,
+  ShoppingBag,
+  MessageCircle,
+  ShieldCheck,
+  Ticket,
+  Plus,
+  Minus,
+  Share2,
+  Check,
+  ExternalLink,
+  AlertTriangle,
+} from "lucide-react";
 import { Product } from "../types";
 import { safeCopyToClipboard } from "../utils/helpers";
+import { getProductBuyAction, executeProductBuy } from "../services/storeService";
 
 interface ProductBuyModalProps {
   product: Product | null;
@@ -13,11 +26,12 @@ interface ProductBuyModalProps {
 export const ProductBuyModal: React.FC<ProductBuyModalProps> = ({
   product,
   onClose,
-  adminWhatsApp = "5563999659203",
+  adminWhatsApp,
   onNavigateToRaffle,
 }) => {
   if (!product) return null;
 
+  const buyAction = getProductBuyAction(product, adminWhatsApp);
   const activePrice = product.promoPrice && product.promoPrice > 0 ? product.promoPrice : product.price;
   const [quantity, setQuantity] = useState<number>(1);
   const [customerName, setCustomerName] = useState<string>("");
@@ -71,35 +85,39 @@ export const ProductBuyModal: React.FC<ProductBuyModalProps> = ({
   const handleBuyWhatsApp = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!customerName.trim()) {
-      alert("Por favor, preencha o seu nome para continuar.");
+    const cleanPhone = (adminWhatsApp || "").replace(/\D/g, "");
+    if (!cleanPhone) {
+      alert("Telefone administrativo do WhatsApp não configurado no sistema. Entre em contato com o administrador.");
       return;
     }
 
-    if (!customerPhone.trim()) {
-      alert("Por favor, preencha o seu telefone para contato.");
-      return;
-    }
-
-    const cleanPhone = adminWhatsApp.replace(/\D/g, "") || "5563999659203";
-    const formattedPrice = totalPrice.toLocaleString("pt-BR", {
+    const formattedPrice = (quantity > 1 ? totalPrice : activePrice).toLocaleString("pt-BR", {
       style: "currency",
       currency: "BRL",
     });
 
+    const productUrl = `${window.location.origin}/loja?produto=${encodeURIComponent(product.id)}`;
+
     const messageLines = [
-      `Olá!`,
-      `Tenho interesse no seguinte produto:`,
-      ``,
-      `*Produto:* ${product.name}`,
-      `*Quantidade:* ${quantity}`,
-      `*Valor Total:* ${formattedPrice}`,
-      ``,
-      `*Meu nome é:* ${customerName.trim()}`,
-      `*Meu telefone é:* ${customerPhone.trim()}`,
-      ``,
-      `Gostaria de finalizar a compra.`,
+      "Olá! Tenho interesse neste produto da Loja Premium do RifaMaster:",
+      "",
+      `Produto: ${product.name}`,
+      `Preço: ${formattedPrice}`,
+      `Link: ${productUrl}`,
     ];
+
+    if (quantity > 1) {
+      messageLines.push(`Quantidade: ${quantity}`);
+    }
+    if (customerName.trim()) {
+      messageLines.push(`Nome: ${customerName.trim()}`);
+    }
+    if (customerPhone.trim()) {
+      messageLines.push(`Telefone: ${customerPhone.trim()}`);
+    }
+
+    messageLines.push("");
+    messageLines.push("Gostaria de saber como comprar.");
 
     const encodedMessage = encodeURIComponent(messageLines.join("\n"));
     const whatsappUrl = `https://wa.me/${cleanPhone}?text=${encodedMessage}`;
@@ -150,12 +168,16 @@ export const ProductBuyModal: React.FC<ProductBuyModalProps> = ({
 
         {/* HEADER */}
         <div className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-[#FF8A00]/20 border border-[#FF8A00]/40 flex items-center justify-center text-[#FF8A00]">
-            <ShoppingBag className="w-4 h-4" />
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+            product.isAffiliate ? "bg-[#FFE600]/20 border border-[#FFE600]/40 text-[#FFE600]" : "bg-[#FF8A00]/20 border border-[#FF8A00]/40 text-[#FF8A00]"
+          }`}>
+            {product.isAffiliate ? <ExternalLink className="w-4 h-4" /> : <ShoppingBag className="w-4 h-4" />}
           </div>
           <div>
-            <span className="text-[10px] font-black uppercase tracking-widest text-[#FFC247]">
-              Finalizar Pedido • Loja Premium
+            <span className={`text-[10px] font-black uppercase tracking-widest ${
+              product.isAffiliate ? "text-[#FFE600]" : "text-[#FFC247]"
+            }`}>
+              {product.isAffiliate ? "Produto Parceiro • Mercado Livre" : "Finalizar Pedido • Loja Premium"}
             </span>
             <h3 className="text-lg sm:text-xl font-extrabold uppercase font-montserrat text-white leading-tight">
               {product.name}
@@ -213,6 +235,11 @@ export const ProductBuyModal: React.FC<ProductBuyModalProps> = ({
                 <span className="px-2 py-0.5 bg-[#FF8A00]/10 border border-[#FF8A00]/30 text-[#FFC247] text-[10px] font-black uppercase tracking-wider rounded">
                   {product.category}
                 </span>
+                {product.isAffiliate && (
+                  <span className="px-2 py-0.5 bg-[#FFE600]/20 border border-[#FFE600]/40 text-[#FFE600] text-[10px] font-black uppercase tracking-wider rounded">
+                    Mercado Livre
+                  </span>
+                )}
               </div>
 
               <p className="text-xs text-zinc-400 line-clamp-3 leading-relaxed mb-3">
@@ -221,11 +248,17 @@ export const ProductBuyModal: React.FC<ProductBuyModalProps> = ({
 
               {/* Stock Badge */}
               <div className="text-xs font-semibold text-zinc-300">
-                Estoque:{" "}
-                {product.stock > 0 ? (
-                  <span className="text-emerald-400 font-bold">{product.stock} unidades disponíveis</span>
+                {product.isAffiliate ? (
+                  <span className="text-[#FFE600] font-bold">Entrega Oficial Mercado Livre</span>
                 ) : (
-                  <span className="text-red-400 font-bold">Esgotado</span>
+                  <>
+                    Estoque:{" "}
+                    {product.stock > 0 ? (
+                      <span className="text-emerald-400 font-bold">{product.stock} unidades disponíveis</span>
+                    ) : (
+                      <span className="text-red-400 font-bold">Esgotado</span>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -248,26 +281,28 @@ export const ProductBuyModal: React.FC<ProductBuyModalProps> = ({
                 </div>
               </div>
 
-              {/* QUANTITY COUNTER */}
-              <div className="flex items-center gap-2 bg-black border border-zinc-800 rounded-lg p-1">
-                <button
-                  type="button"
-                  onClick={handleDecrement}
-                  disabled={quantity <= 1}
-                  className="w-7 h-7 rounded bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 text-white flex items-center justify-center transition-all cursor-pointer"
-                >
-                  <Minus className="w-3.5 h-3.5" />
-                </button>
-                <span className="w-7 text-center font-black text-sm text-white">{quantity}</span>
-                <button
-                  type="button"
-                  onClick={handleIncrement}
-                  disabled={quantity >= maxQuantity}
-                  className="w-7 h-7 rounded bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 text-white flex items-center justify-center transition-all cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                </button>
-              </div>
+              {/* QUANTITY COUNTER (ONLY FOR OWN PRODUCTS) */}
+              {!product.isAffiliate && (
+                <div className="flex items-center gap-2 bg-black border border-zinc-800 rounded-lg p-1">
+                  <button
+                    type="button"
+                    onClick={handleDecrement}
+                    disabled={quantity <= 1}
+                    className="w-7 h-7 rounded bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 text-white flex items-center justify-center transition-all cursor-pointer"
+                  >
+                    <Minus className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="w-7 text-center font-black text-sm text-white">{quantity}</span>
+                  <button
+                    type="button"
+                    onClick={handleIncrement}
+                    disabled={quantity >= maxQuantity}
+                    className="w-7 h-7 rounded bg-zinc-900 hover:bg-zinc-800 disabled:opacity-40 text-white flex items-center justify-center transition-all cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -304,65 +339,126 @@ export const ProductBuyModal: React.FC<ProductBuyModalProps> = ({
           </div>
         )}
 
-        {/* CUSTOMER INFO FORM */}
-        <form onSubmit={handleBuyWhatsApp} className="space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-black uppercase text-zinc-300 mb-1">
-                Seu Nome
-              </label>
-              <input
-                type="text"
-                placeholder="Ex: João da Silva"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                required
-                className="w-full bg-black/80 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-600 outline-none focus:border-[#FF8A00] transition-all"
-              />
+        {/* DIFFERENTIATED PURCHASE FLOW: AFFILIATE (MERCADO LIVRE) VS OWN PRODUCT (WHATSAPP) */}
+        {product.isAffiliate ? (
+          /* MERCADO LIVRE AFFILIATE DIRECT CALLOUT */
+          <div className="space-y-4">
+            <div className="bg-[#141407] border border-[#FFE600]/30 rounded-2xl p-4 space-y-2">
+              <div className="flex items-center gap-2 text-[#FFE600] font-bold text-xs uppercase tracking-wide">
+                <ExternalLink className="w-4 h-4 shrink-0" />
+                <span>Venda e Entrega Oficial Mercado Livre</span>
+              </div>
+              <p className="text-xs text-zinc-300 leading-relaxed">
+                Este produto é parceiro oficial da nossa Loja Premium. A venda, o pagamento, a garantia e a entrega são realizados integralmente pelo <strong>Mercado Livre</strong>. Ao clicar em comprar, você será redirecionado para a página oficial do produto.
+              </p>
             </div>
 
-            <div>
-              <label className="block text-[11px] font-black uppercase text-zinc-300 mb-1">
-                Seu WhatsApp / Telefone
-              </label>
-              <input
-                type="text"
-                placeholder="Ex: (11) 99999-9999"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                required
-                className="w-full bg-black/80 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-600 outline-none focus:border-[#FF8A00] transition-all"
-              />
+            <div className="pt-2 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-[10px] text-zinc-400 font-bold uppercase block">
+                  Valor do Produto
+                </span>
+                <span className="text-2xl font-black text-[#FFE600] font-montserrat">
+                  {activePrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                </span>
+              </div>
+
+              {buyAction.destination === "mercadolivre" ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    executeProductBuy(product, adminWhatsApp);
+                    onClose();
+                  }}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 bg-[#FFE600] hover:bg-[#ffd900] text-black font-black uppercase tracking-wider text-sm py-3.5 px-6 rounded-xl shadow-[0_8px_25px_rgba(255,230,0,0.3)] transition-all active:scale-98 cursor-pointer font-montserrat"
+                >
+                  <ExternalLink className="w-5 h-5" />
+                  <span>Comprar no Mercado Livre</span>
+                </button>
+              ) : (
+                <div className="space-y-1">
+                  <button
+                    type="button"
+                    disabled={true}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-zinc-800 text-zinc-500 font-bold uppercase tracking-wider text-xs py-3 px-5 rounded-xl cursor-not-allowed font-montserrat opacity-60"
+                  >
+                    <AlertTriangle className="w-4 h-4 text-amber-500" />
+                    <span>Link Indisponível</span>
+                  </button>
+                  <p className="text-[11px] text-amber-400 font-medium">
+                    Link de afiliado inválido ou não configurado.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-zinc-500 text-center font-medium">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Compra 100% segura através do programa de afiliados oficial do Mercado Livre.</span>
             </div>
           </div>
+        ) : (
+          /* OWN PRODUCT: WHATSAPP DIRECT PURCHASE */
+          <div>
+            <form onSubmit={handleBuyWhatsApp} className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-black uppercase text-zinc-300 mb-1">
+                    Seu Nome <span className="text-zinc-500 font-normal">(opcional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: João da Silva"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="w-full bg-black/80 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-600 outline-none focus:border-[#FF8A00] transition-all"
+                  />
+                </div>
 
-          {/* TOTAL & BUY BUTTON */}
-          <div className="pt-2 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <span className="text-[10px] text-zinc-400 font-bold uppercase block">
-                Valor Total do Pedido
-              </span>
-              <span className="text-2xl font-black text-[#FFC247] font-montserrat">
-                {totalPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-              </span>
+                <div>
+                  <label className="block text-[11px] font-black uppercase text-zinc-300 mb-1">
+                    Seu WhatsApp / Telefone <span className="text-zinc-500 font-normal">(opcional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ex: (11) 99999-9999"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    className="w-full bg-black/80 border border-zinc-800 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder-zinc-600 outline-none focus:border-[#FF8A00] transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* TOTAL & BUY BUTTON */}
+              <div className="pt-2 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <span className="text-[10px] text-zinc-400 font-bold uppercase block">
+                    Valor Total do Pedido
+                  </span>
+                  <span className="text-2xl font-black text-[#FFC247] font-montserrat">
+                    {totalPrice.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  </span>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={product.stock <= 0}
+                  className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 bg-gradient-to-r from-[#25D366] to-[#128C7E] hover:from-[#22c35e] hover:to-[#0f7a6e] text-white font-black uppercase tracking-wider text-sm py-3.5 px-6 rounded-xl shadow-[0_8px_25px_rgba(37,211,102,0.35)] transition-all active:scale-98 cursor-pointer font-montserrat disabled:opacity-50"
+                >
+                  <MessageCircle className="w-5 h-5 fill-white" />
+                  <span>Comprar pelo WhatsApp</span>
+                </button>
+              </div>
+            </form>
+
+            <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-zinc-500 text-center font-medium">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+              <span>Atendimento direto com nossa equipe via WhatsApp. Compra 100% segura.</span>
             </div>
-
-            <button
-              type="submit"
-              disabled={product.stock <= 0}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-2.5 bg-gradient-to-r from-[#25D366] to-[#128C7E] hover:from-[#22c35e] hover:to-[#0f7a6e] text-white font-black uppercase tracking-wider text-sm py-3.5 px-6 rounded-xl shadow-[0_8px_25px_rgba(37,211,102,0.35)] transition-all active:scale-98 cursor-pointer font-montserrat disabled:opacity-50"
-            >
-              <MessageCircle className="w-5 h-5 fill-white" />
-              <span>Comprar pelo WhatsApp</span>
-            </button>
           </div>
-        </form>
-
-        <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] text-zinc-500 text-center font-medium">
-          <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-          <span>Atendimento direto com nossa equipe via WhatsApp. Compra 100% segura.</span>
-        </div>
+        )}
       </div>
     </div>
   );
 };
+

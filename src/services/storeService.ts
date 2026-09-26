@@ -412,3 +412,212 @@ class StoreService {
 }
 
 export const storeService = new StoreService();
+
+// ============================================================================
+// BUY REDIRECTION & DESTINATION DECISION HELPERS (CENTRALIZED LOGIC)
+// ============================================================================
+
+export type ProductBuyDestination = "mercadolivre" | "whatsapp" | "invalid_affiliate";
+
+export interface ProductBuyAction {
+  destination: ProductBuyDestination;
+  buttonLabel: string;
+  targetUrl: string | null;
+  canBuy: boolean;
+  isAffiliate: boolean;
+  errorMessage?: string;
+  infoNotice?: string;
+}
+
+/**
+ * Validates if a URL is an authorized HTTPS Mercado Livre/meli.la affiliate URL.
+ * Strictly blocks non-HTTPS, javascript:, data:, and unauthorized domains to prevent SSRF and phishing.
+ */
+export function isValidMercadoLivreAffiliateUrl(url?: string | null): boolean {
+  if (!url || typeof url !== "string") return false;
+  const trimmed = url.trim();
+
+  // Must strictly start with https://
+  if (!trimmed.toLowerCase().startsWith("https://")) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+
+    // Protocol must strictly be https:
+    if (parsed.protocol !== "https:") {
+      return false;
+    }
+
+    const host = parsed.hostname.toLowerCase();
+
+    // Whitelist official Mercado Livre / Mercado Libre domains and shortener
+    // 1. Shortener: meli.la or subdomains
+    if (host === "meli.la" || host.endsWith(".meli.la")) {
+      return true;
+    }
+
+    // 2. Official Mercado Livre Brazil domains
+    if (
+      host === "mercadolivre.com.br" ||
+      host.endsWith(".mercadolivre.com.br") ||
+      host === "mercadolivre.com" ||
+      host.endsWith(".mercadolivre.com")
+    ) {
+      return true;
+    }
+
+    // 3. Official Mercado Libre domains (international / regional)
+    if (
+      host === "mercadolibre.com" ||
+      host.endsWith(".mercadolibre.com") ||
+      /^([a-z0-9-]+\.)?mercadoli[bv]re\.[a-z]{2,3}(\.[a-z]{2})?$/.test(host)
+    ) {
+      return true;
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Generates the canonical URL for a product in Loja Premium.
+ */
+export function getProductCanonicalUrl(productId: string): string {
+  if (typeof window !== "undefined" && window.location && window.location.origin) {
+    return `${window.location.origin}/loja?produto=${encodeURIComponent(productId)}`;
+  }
+  return `/loja?produto=${encodeURIComponent(productId)}`;
+}
+
+/**
+ * Builds the WhatsApp buy URL with the pre-filled message required for own products:
+ *
+ * “Olá! Tenho interesse neste produto da Loja Premium do RifaMaster:
+ *
+ * Produto: [nome]
+ * Preço: R$ [valor]
+ * Link: [endereço do produto]
+ *
+ * Gostaria de saber como comprar.”
+ */
+export function buildWhatsAppBuyUrl(product: Product, adminPhone?: string): string {
+  const cleanPhone = (adminPhone || "").replace(/\D/g, "");
+  if (!cleanPhone) {
+    return "";
+  }
+
+  const activePrice =
+    product.promoPrice && product.promoPrice > 0 ? product.promoPrice : product.price;
+  const formattedPrice = activePrice.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+
+  const productUrl = getProductCanonicalUrl(product.id);
+
+  const message = [
+    "Olá! Tenho interesse neste produto da Loja Premium do RifaMaster:",
+    "",
+    `Produto: ${product.name}`,
+    `Preço: ${formattedPrice}`,
+    `Link: ${productUrl}`,
+    "",
+    "Gostaria de saber como comprar.",
+  ].join("\n");
+
+  return `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`;
+}
+
+/**
+ * Centralized decision function for product buy action.
+ * Determines whether a product is:
+ * 1. An affiliate Mercado Livre product -> "Comprar no Mercado Livre" (opens affiliate link directly)
+ * 2. An affiliate with an invalid link -> "Link Indisponível" (disabled, never forwards to WhatsApp)
+ * 3. An own/WhatsApp product -> "Comprar pelo WhatsApp" (opens admin WhatsApp with prefilled message)
+ */
+export function getProductBuyAction(product: Product, adminPhone?: string): ProductBuyAction {
+  if (product.isAffiliate) {
+    const rawLink = product.affiliateLink?.trim() || "";
+    const isValid = isValidMercadoLivreAffiliateUrl(rawLink);
+
+    if (!isValid || !rawLink) {
+      return {
+        destination: "invalid_affiliate",
+        buttonLabel: "Link Indisponível",
+        targetUrl: null,
+        canBuy: false,
+        isAffiliate: true,
+        errorMessage: "O link de afiliado do Mercado Livre deste produto está inválido ou indisponível.",
+        infoNotice: "Produto de afiliado sem link válido configurado.",
+      };
+    }
+
+    return {
+      destination: "mercadolivre",
+      buttonLabel: "Comprar no Mercado Livre",
+      targetUrl: rawLink,
+      canBuy: true,
+      isAffiliate: true,
+      infoNotice: "Venda, pagamento e entrega realizados pelo Mercado Livre.",
+    };
+  }
+
+  // Own product or other origin
+  const isOutOfStock = product.stock <= 0 || Boolean(product.isUnavailable);
+  const cleanPhone = (adminPhone || "").replace(/\D/g, "");
+  const whatsAppUrl = cleanPhone ? buildWhatsAppBuyUrl(product, cleanPhone) : "";
+
+  return {
+    destination: "whatsapp",
+    buttonLabel: "Comprar pelo WhatsApp",
+    targetUrl: whatsAppUrl || null,
+    canBuy: !isOutOfStock && Boolean(whatsAppUrl),
+    isAffiliate: false,
+    errorMessage: isOutOfStock
+      ? "Produto esgotado ou indisponível."
+      : !whatsAppUrl
+      ? "Telefone administrativo do WhatsApp não configurado no sistema."
+      : undefined,
+    infoNotice: "Atendimento direto com a equipe via WhatsApp.",
+  };
+}
+
+/**
+ * Centralized executor for product buy.
+ * Performs the exact destination redirect based on the product type.
+ */
+export function executeProductBuy(product: Product, adminPhone?: string): boolean {
+  const action = getProductBuyAction(product, adminPhone);
+
+  if (action.destination === "invalid_affiliate") {
+    alert(action.errorMessage || "Este produto é afiliado do Mercado Livre, mas o link de afiliado está inválido ou indisponível.");
+    return false;
+  }
+
+  if (action.destination === "mercadolivre") {
+    if (action.targetUrl) {
+      window.open(action.targetUrl, "_blank", "noopener,noreferrer");
+      return true;
+    }
+    alert("Link do Mercado Livre não encontrado.");
+    return false;
+  }
+
+  // destination === "whatsapp"
+  if (!action.canBuy) {
+    alert(action.errorMessage || "Não foi possível iniciar o atendimento via WhatsApp.");
+    return false;
+  }
+
+  if (action.targetUrl) {
+    window.open(action.targetUrl, "_blank", "noopener,noreferrer");
+    return true;
+  }
+
+  return false;
+}
+
